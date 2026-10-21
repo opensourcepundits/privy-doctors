@@ -1,0 +1,41 @@
+<script lang="ts">
+	import Badge from '#lib/components/Badge.svelte';
+	import { formatDate } from '#lib/format';
+	import type { PageProps } from './$types';
+
+	let { data, form }: PageProps = $props();
+	const order = $derived(data.prescription);
+</script>
+
+<header class="px-4 pt-5">
+	<a class="text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}?tab=prescriptions">Prescriptions</a>
+	<div class="mt-3 flex items-center justify-between">
+		<h1 class="display text-2xl font-bold">#{order.code}</h1>
+		<Badge>{order.status}</Badge>
+	</div>
+	<p class="text-sm text-[#64748B]">{data.patient.first_name} {data.patient.last_name} · {data.patient.pid}</p>
+</header>
+
+<section class="space-y-3 px-4 py-4">
+	<article class="card text-sm">
+		<p>{formatDate(order.ordered_at)}</p>
+		<p class="mt-2 font-semibold">{order.prescriber}</p>
+		<p>{order.specialty} · NPI on file for e-sign</p>
+		<p class="mt-2">{order.facility}</p>
+		<p>{order.pharmacy}</p>
+		{#if order.course_label}<p class="mt-2 text-[#64748B]">{order.course_label}</p>{/if}
+	</article>
+	{#each order.items as item}
+		<article class="card">
+			<h2 class="font-semibold">{item.name} {item.strength}</h2>
+			<p class="text-sm text-[#64748B]">{item.form} · {item.frequency}</p>
+			<p class="mt-2 text-sm">{item.sig}</p>
+			<p class="mt-2 text-sm">{item.indication}</p>
+			<p class="mt-2 text-xs text-[#64748B]">Dispense {item.quantity ?? '—'} · {item.supply_label} · {item.refills}</p>
+		</article>
+	{/each}
+	{#if form?.sent}
+		<p class="rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-800">Renewal request transmitted.</p>
+	{/if}
+	<form method="POST" action="?/renew"><button class="btn" type="submit">Renew prescription</button></form>
+</section>
