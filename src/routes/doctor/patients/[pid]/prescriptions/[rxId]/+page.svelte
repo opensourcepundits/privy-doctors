@@ -8,7 +8,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}?tab=prescriptions">Prescriptions</a>
+	<a class="text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}?tab=prescriptions">Prescriptions</a>
 	<div class="mt-3 flex items-center justify-between">
 		<h1 class="display text-2xl font-bold">#{order.code}</h1>
 		<Badge>{order.status}</Badge>

@@ -8,7 +8,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/patient">Home</a>
+	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
 	<h1 class="display mt-2 text-2xl font-bold">Vitals and health stats</h1>
 	<p class="text-sm text-[#64748B]">{data.patient.first_name} {data.patient.last_name} · biometric sync active</p>
 </header>
@@ -19,12 +19,15 @@
 			<article class="card">
 				<p class="kicker">Blood pressure</p>
 				<p class="display nums text-3xl font-bold">{latest.systolic}/{latest.diastolic}</p>
+				<p class="mt-1 text-xs text-[#64748B]">Last checked</p>
+				<p class="text-xs text-[#64748B]">{formatTime(latest.recorded_at)} · {formatDate(latest.recorded_at)}</p>
 				<p class="text-xs text-emerald-700">Target 110–125 / 70–80</p>
 			</article>
 			<article class="card">
 				<p class="kicker">Resting HR</p>
 				<p class="display nums text-3xl font-bold">{latest.heart_rate}</p>
-				<p class="text-xs text-[#64748B]">{formatTime(latest.recorded_at)}</p>
+				<p class="mt-1 text-xs text-[#64748B]">Last checked</p>
+				<p class="text-xs text-[#64748B]">{formatTime(latest.recorded_at)} · {formatDate(latest.recorded_at)}</p>
 			</article>
 		</div>
 	{/if}
@@ -33,7 +36,7 @@
 		<div class="mt-3 flex h-28 items-end gap-2">
 			{#each data.vitals as row}
 				<div class="flex flex-1 flex-col items-center gap-1">
-					<div class="w-full rounded-t bg-[#0D7377]" style="height: {(row.systolic / maxSys) * 100}%"></div>
+					<div class="w-full rounded-t bg-brand" style="height: {(row.systolic / maxSys) * 100}%"></div>
 					<span class="text-[10px] text-[#64748B]">{formatDate(row.recorded_at).split(',')[0]}</span>
 				</div>
 			{/each}

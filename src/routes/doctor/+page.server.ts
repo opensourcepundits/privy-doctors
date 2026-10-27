@@ -1,7 +1,10 @@
-import { todayAppointments } from '#lib/server/clinic';
+import { todayAppointments, upcomingForDoctor } from '#lib/server/clinic';
 
 export async function load({ parent }) {
 	const { doctor } = await parent();
-	const appointments = await todayAppointments(doctor.id);
-	return { appointments };
+	const [appointments, upcoming] = await Promise.all([
+		todayAppointments(doctor.id),
+		upcomingForDoctor(doctor.id)
+	]);
+	return { appointments, upcoming };
 }

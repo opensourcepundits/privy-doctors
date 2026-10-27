@@ -7,6 +7,7 @@ import {
 	pgTable,
 	serial,
 	text,
+	time,
 	timestamp
 } from 'drizzle-orm/pg-core';
 
@@ -24,6 +25,7 @@ export const doctors = pgTable('doctors', {
 	name: text('name').notNull(),
 	credentials: text('credentials').notNull(),
 	specialty: text('specialty').notNull(),
+	gender: text('gender').notNull(),
 	npi: text('npi'),
 	practice: text('practice').notNull(),
 	location: text('location').notNull(),
@@ -45,6 +47,7 @@ export const patients = pgTable('patients', {
 	surgeries: jsonb('surgeries').notNull(),
 	phone: text('phone'),
 	nic: text('nic').unique(),
+	passport: text('passport').unique(),
 	conciergeNote: text('concierge_note'),
 	insuranceName: text('insurance_name'),
 	insuranceGroup: text('insurance_group'),
@@ -65,6 +68,15 @@ export const appointments = pgTable('appointments', {
 	status: text('status').notNull(),
 	location: text('location'),
 	lastVisitLabel: text('last_visit_label')
+});
+
+export const availability = pgTable('availability', {
+	id: serial('id').primaryKey(),
+	doctorId: integer('doctor_id').notNull().references(() => doctors.id),
+	kind: text('kind').notNull(),
+	weekday: integer('weekday').notNull(),
+	startTime: time('start_time').notNull(),
+	endTime: time('end_time').notNull()
 });
 
 export const encounters = pgTable('encounters', {

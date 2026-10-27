@@ -7,7 +7,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/patient">Home</a>
+	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
 	<p class="kicker mt-3">Cardiology care plan</p>
 	<h1 class="display text-2xl font-bold">{data.patient.first_name} {data.patient.last_name}</h1>
 	<p class="text-sm">Medications on your current care plan.</p>

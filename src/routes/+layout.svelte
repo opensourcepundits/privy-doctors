@@ -7,6 +7,7 @@
 </script>
 
 <svelte:head>
+	<title>CareOS</title>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 

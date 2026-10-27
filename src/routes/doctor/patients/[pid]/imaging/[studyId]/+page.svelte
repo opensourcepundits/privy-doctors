@@ -7,7 +7,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}?tab=images">Back to images</a>
+	<a class="text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}?tab=images">Back to images</a>
 	<p class="kicker mt-3">{data.study.status} · {formatDate(data.study.performed_on)}</p>
 	<h1 class="display text-2xl font-bold">{data.study.title}</h1>
 	<p class="text-sm text-[#64748B]">{data.patient.first_name} {data.patient.last_name} · {data.patient.pid}</p>
@@ -26,7 +26,7 @@
 			<p class="kicker">Agatston calcium score</p>
 			<p class="display nums text-4xl font-bold">{data.study.calcium_score}</p>
 			<p class="text-sm text-[#64748B]">Mild calcification · CAD-RADS 1</p>
-			<div class="mt-3 h-2 rounded-full bg-[#E5EEFF]">
+			<div class="mt-3 h-2 rounded-full bg-brand-soft">
 				<div class="h-2 rounded-full bg-[#F59E0B]" style="width: 18%"></div>
 			</div>
 		</article>
@@ -34,7 +34,7 @@
 	{#each vessels as vessel}
 		<article class="card">
 			<p class="font-semibold">{vessel.name}</p>
-			<p class="text-sm text-[#0D7377]">{vessel.status}</p>
+			<p class="text-sm text-brand">{vessel.status}</p>
 			<p class="mt-1 text-sm">{vessel.note}</p>
 		</article>
 	{/each}

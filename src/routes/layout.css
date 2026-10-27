@@ -1,18 +1,52 @@
 @import 'tailwindcss';
 
+/* Clinic is the doctor workspace: cool teal on a gray canvas.
+   Care is the patient portal: deep blue on warm paper.
+   Tokens are overridden by .scheme-doctor and .scheme-patient. */
 @theme {
 	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-	--color-teal: #0d7377;
 	--color-ink: #0f172a;
 	--color-canvas: #f8fafc;
 	--color-line: #e2e8f0;
 	--color-muted: #64748b;
+	--color-brand: #0d7377;
+	--color-brand-strong: #0a5c5f;
+	--color-brand-soft: #e5f3f3;
+	--color-brand-tint: #d2eaea;
+	--color-brand-wash: #f2fafa;
+	--color-brand-accent: #14b8a6;
+	--color-shell: #d9e3ee;
+	--color-shell-desk: #eef3f8;
+}
+
+.scheme-doctor {
+	--color-brand: #0d7377;
+	--color-brand-strong: #0a5c5f;
+	--color-brand-soft: #e5f3f3;
+	--color-brand-tint: #d2eaea;
+	--color-brand-wash: #f2fafa;
+	--color-brand-accent: #14b8a6;
+	--color-shell: #d9e3ee;
+	--color-shell-desk: #eef3f8;
+	--color-canvas: #f8fafc;
+}
+
+.scheme-patient {
+	--color-brand: #1f4e89;
+	--color-brand-strong: #173a68;
+	--color-brand-soft: #e7effa;
+	--color-brand-tint: #d4e3f6;
+	--color-brand-wash: #f3f7fc;
+	--color-brand-accent: #3d7cc4;
+	--color-shell: #e6ddd2;
+	--color-shell-desk: #f3eee6;
+	--color-canvas: #fbf7f2;
 }
 
 body {
 	margin: 0;
-	background: #d9e3ee;
-	color: #0f172a;
+	background: var(--color-shell);
+	color: var(--color-ink);
 	font-family: Inter, sans-serif;
 }
 
@@ -29,7 +63,7 @@ body {
 }
 
 .card {
-	border: 1px solid #e2e8f0;
+	border: 1px solid var(--color-line);
 	border-radius: 1rem;
 	background: white;
 	padding: 1rem;
@@ -37,38 +71,57 @@ body {
 }
 
 .btn {
+	box-sizing: border-box;
 	display: flex;
-	height: 3rem;
 	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	min-height: 3rem;
+	height: auto;
 	align-items: center;
 	justify-content: center;
 	gap: 0.4rem;
+	padding: 0.5rem 1rem;
 	border: 0;
 	border-radius: 0.5rem;
-	background: #0d7377;
+	background: var(--color-brand);
 	color: white;
 	font-weight: 650;
 	font-size: 0.95rem;
+	line-height: 1.2;
+	text-align: center;
+	overflow-wrap: break-word;
 	cursor: pointer;
 	text-decoration: none;
 }
 
-.btn:hover { background: #0a5c5f; }
+.btn:hover { background: var(--color-brand-strong); }
 
 .btn-line {
+	box-sizing: border-box;
 	display: flex;
-	height: 3rem;
 	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	min-height: 3rem;
+	height: auto;
 	align-items: center;
 	justify-content: center;
 	gap: 0.4rem;
+	padding: 0.5rem 1rem;
 	border-radius: 0.5rem;
-	border: 1px solid #0d7377;
+	border: 1px solid var(--color-brand);
 	background: transparent;
-	color: #0d7377;
+	color: var(--color-brand);
 	font-weight: 650;
+	font-size: 0.95rem;
+	line-height: 1.2;
+	text-align: center;
+	overflow-wrap: break-word;
 	cursor: pointer;
 }
+
+.btn-line:hover { background: var(--color-brand-soft); }
 
 .field {
 	height: 2.75rem;
@@ -81,9 +134,11 @@ body {
 	outline: none;
 }
 
-.field:focus {
-	border-color: #0d7377;
-	box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+.field:focus,
+.select-brand:focus {
+	border-color: var(--color-brand);
+	background: white;
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 20%, transparent);
 }
 
 input.field.field-search {
@@ -125,7 +180,7 @@ textarea.field {
 	.btn:not(.btn-block),
 	.btn-line:not(.btn-block) {
 		width: fit-content;
-		min-width: 12rem;
+		min-width: min(12rem, 100%);
 		max-width: 100%;
 		padding-inline: 1.25rem;
 	}
@@ -147,7 +202,7 @@ textarea.field {
 	font-weight: 700;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
-	color: #64748b;
+	color: var(--color-muted);
 }
 
 .nums { font-variant-numeric: tabular-nums; }

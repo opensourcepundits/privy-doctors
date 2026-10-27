@@ -12,6 +12,7 @@ CREATE TABLE doctors (
   name text NOT NULL,
   credentials text NOT NULL,
   specialty text NOT NULL,
+  gender text NOT NULL CHECK (gender IN ('Female', 'Male')),
   npi text,
   practice text NOT NULL,
   location text NOT NULL,
@@ -33,6 +34,7 @@ CREATE TABLE patients (
   surgeries jsonb NOT NULL DEFAULT '[]'::jsonb,
   phone text,
   nic text UNIQUE,
+  passport text UNIQUE,
   concierge_note text,
   insurance_name text,
   insurance_group text,
@@ -53,6 +55,16 @@ CREATE TABLE appointments (
   status text NOT NULL,
   location text,
   last_visit_label text
+);
+
+CREATE TABLE availability (
+  id serial PRIMARY KEY,
+  doctor_id int NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('clinic', 'home')),
+  weekday int NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+  start_time time NOT NULL,
+  end_time time NOT NULL,
+  CHECK (end_time > start_time)
 );
 
 CREATE TABLE encounters (

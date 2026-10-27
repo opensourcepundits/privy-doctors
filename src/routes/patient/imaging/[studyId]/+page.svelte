@@ -7,7 +7,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/patient/history">History</a>
+	<a class="text-sm font-semibold text-brand" href="/patient/history">History</a>
 	<p class="kicker mt-3">Clinically verified · {formatDate(data.study.performed_on)}</p>
 	<h1 class="display text-2xl font-bold">{data.study.title}</h1>
 	<p class="text-sm text-[#64748B]">{data.study.facility}</p>
@@ -27,7 +27,7 @@
 	{#each vessels as vessel}
 		<article class="card">
 			<p class="font-semibold">{vessel.name}</p>
-			<p class="text-sm text-[#0D7377]">{vessel.status}</p>
+			<p class="text-sm text-brand">{vessel.status}</p>
 			<p class="text-sm">{vessel.note}</p>
 		</article>
 	{/each}

@@ -45,6 +45,6 @@
 		<p class="font-semibold">{data.patient.insurance_name}</p>
 		<p>Group {data.patient.insurance_group}</p>
 		<p>Member {data.patient.insurance_member}</p>
-		<a class="font-semibold text-[#0D7377]" href="/patient/help">Questions about a bill</a>
+		<a class="font-semibold text-brand" href="/patient/help">Questions about a bill</a>
 	</article>
 </section>

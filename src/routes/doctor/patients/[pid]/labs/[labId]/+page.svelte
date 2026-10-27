@@ -6,7 +6,7 @@
 </script>
 
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}?tab=labs">Back to labs</a>
+	<a class="text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}?tab=labs">Back to labs</a>
 	<p class="kicker mt-3">{formatDate(data.lab.collected_on)} · {data.patient.first_name} {data.patient.last_name}</p>
 	<h1 class="display text-2xl font-bold">{data.lab.name}</h1>
 	<p class="text-sm text-[#64748B]">{data.lab.facility} · {data.lab.panel_id}</p>
@@ -34,8 +34,8 @@
 			<p class="display nums mt-2 text-2xl font-bold">{result.value_text ?? result.value_num} <span class="text-base font-medium text-[#64748B]">{result.unit}</span></p>
 			{#if result.ref_low != null && result.ref_high != null && result.value_num != null}
 				<p class="text-xs text-[#64748B]">Ref {result.ref_low} – {result.ref_high}</p>
-				<div class="mt-2 h-2 rounded-full bg-[#E5EEFF]">
-					<div class="h-2 rounded-full bg-[#14B8A6]" style="width: {gaugePercent(value, low, high)}%"></div>
+				<div class="mt-2 h-2 rounded-full bg-brand-soft">
+					<div class="h-2 rounded-full bg-brand-accent" style="width: {gaugePercent(value, low, high)}%"></div>
 				</div>
 			{/if}
 		</article>

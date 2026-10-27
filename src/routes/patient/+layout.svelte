@@ -5,6 +5,7 @@
 	let { data, children }: LayoutProps = $props();
 	const nav = [
 		{ href: '/patient', label: 'Home', icon: 'home' },
+		{ href: '/patient/book', label: 'Book', icon: 'calendar_month' },
 		{ href: '/patient/prescriptions', label: 'Prescriptions', icon: 'medication' },
 		{ href: '/patient/history', label: 'History', icon: 'clinical_notes' },
 		{ href: '/patient/billing', label: 'Billing', icon: 'receipt_long' },
@@ -13,6 +14,7 @@
 </script>
 
 <Frame
+	scheme="patient"
 	path={data.path}
 	query={data.query}
 	notice={data.notice}

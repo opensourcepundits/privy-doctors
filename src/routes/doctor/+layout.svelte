@@ -12,6 +12,6 @@
 	];
 </script>
 
-<Frame path={data.path} query={data.query} notice={data.notice} {nav} who={data.doctor.name} role={data.doctor.specialty}>
+<Frame scheme="doctor" path={data.path} query={data.query} notice={data.notice} {nav} who={data.doctor.name} role={data.doctor.specialty}>
 	{@render children()}
 </Frame>

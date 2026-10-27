@@ -47,15 +47,98 @@ const [patientUser] = await sql`
 `;
 
 const [doctor] = await sql`
-	INSERT INTO doctors (user_id, name, credentials, specialty, npi, practice, location, phone)
+	INSERT INTO doctors (user_id, name, credentials, specialty, gender, npi, practice, location, phone)
 	VALUES (
-		${doctorUser.id}, 'Dr. Sarah Jensen', 'MD, FACC', 'Cardiology', '1982049182',
+		${doctorUser.id}, 'Dr. Sarah Jensen', 'MD, FACC', 'Cardiology', 'Female', '1982049182',
 		'Private Practice • Cardiology Specialist',
 		'Suite 410, St. Jude Heart Pavilion',
 		'(555) 234-8990'
 	)
 	RETURNING id
 `;
+
+for (const weekday of [1, 2, 3, 4, 5]) {
+	await sql`
+		INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+		VALUES (${doctor.id}, 'clinic', ${weekday}, '09:00', '17:00')
+	`;
+}
+for (const weekday of [2, 4]) {
+	await sql`
+		INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+		VALUES (${doctor.id}, 'home', ${weekday}, '18:00', '20:00')
+	`;
+}
+
+const roster = [
+	{
+		name: 'Dr. Elena Rostova',
+		credentials: 'MD, FACC',
+		specialty: 'Cardiac Electrophysiology',
+		gender: 'Female',
+		practice: 'St. Jude Heart Clinic',
+		location: 'Suite 418, St. Jude Heart Pavilion',
+		phone: '(555) 234-8992',
+		clinic: [[1, '09:00', '13:00'], [3, '09:00', '13:00'], [5, '09:00', '13:00']],
+		home: []
+	},
+	{
+		name: 'Dr. James Okonkwo',
+		credentials: 'MD',
+		specialty: 'Interventional Cardiology',
+		gender: 'Male',
+		practice: 'St. Jude Heart Pavilion',
+		location: 'Suite 422, St. Jude Heart Pavilion',
+		phone: '(555) 234-8994',
+		clinic: [[2, '10:00', '16:00'], [4, '10:00', '16:00']],
+		home: []
+	},
+	{
+		name: 'Dr. Priya Shah',
+		credentials: 'MD',
+		specialty: 'Heart Failure',
+		gender: 'Female',
+		practice: 'St. Jude Heart Pavilion',
+		location: 'Suite 406, St. Jude Heart Pavilion',
+		phone: '(555) 234-8996',
+		clinic: [[1, '13:00', '17:00'], [2, '13:00', '17:00'], [3, '13:00', '17:00'], [4, '13:00', '17:00']],
+		home: [[3, '18:00', '20:00']]
+	},
+	{
+		name: 'Dr. Marcus Hale',
+		credentials: 'MD',
+		specialty: 'Preventive Cardiology',
+		gender: 'Male',
+		practice: 'St. Jude Heart Pavilion',
+		location: 'Suite 402, St. Jude Heart Pavilion',
+		phone: '(555) 234-8998',
+		clinic: [[5, '08:00', '12:00']],
+		home: []
+	}
+];
+
+for (const clinician of roster) {
+	const [created] = await sql`
+		INSERT INTO doctors (name, credentials, specialty, gender, practice, location, phone)
+		VALUES (
+			${clinician.name}, ${clinician.credentials}, ${clinician.specialty}, ${clinician.gender},
+			${clinician.practice}, ${clinician.location}, ${clinician.phone}
+		)
+		RETURNING id
+	`;
+	for (const [weekday, start, end] of clinician.clinic) {
+		await sql`
+			INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+			VALUES (${created.id}, 'clinic', ${weekday}, ${start}, ${end})
+		`;
+	}
+	for (const [weekday, start, end] of clinician.home) {
+		await sql`
+			INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+			VALUES (${created.id}, 'home', ${weekday}, ${start}, ${end})
+		`;
+	}
+}
 
 const people = [
 	{
@@ -486,4 +569,4 @@ await sql`
 `;
 
 await sql.end();
-console.log('Seeded ClinicaPrivata on the 17 Nov 2024 clinic day.');
+console.log('Seeded CareOS on the 17 Nov 2024 clinic day.');

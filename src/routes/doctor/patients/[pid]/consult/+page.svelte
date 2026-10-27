@@ -53,15 +53,15 @@
 	<article class="card">
 		<div class="flex flex-wrap items-center gap-2">
 			<h2 class="display text-lg font-bold">{data.patient.first_name} {data.patient.last_name}</h2>
-			<span class="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800">{data.patient.pid}</span>
+			<span class="rounded-full border border-brand-tint bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand">{data.patient.pid}</span>
 			<span class="rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-medium text-[#64748B]">{data.consult.code}</span>
 		</div>
 		<p class="mt-1 text-xs font-medium text-[#64748B]">
-			Age {ageOn(data.patient.dob)} · {data.patient.sex} · DOB {formatDate(data.patient.dob)}{data.patient.nic ? ` · NIC ${data.patient.nic}` : ''}
+			Age {ageOn(data.patient.dob)} · {data.patient.sex} · DOB {formatDate(data.patient.dob)}{data.patient.nic ? ` · NIC ${data.patient.nic}` : ''}{data.patient.passport ? ` · Passport ${data.patient.passport}` : ''}
 		</p>
 		<div class="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-[#F1F5F9] p-1 text-center text-xs">
 			{#each modes as [value, label, icon]}
-				<label class="flex cursor-pointer items-center justify-center gap-1 rounded-lg px-1 py-2 text-[11px] sm:text-xs {modality === value ? 'border border-[#E2E8F0] bg-white font-semibold text-[#0D7377] shadow-sm' : 'text-[#64748B]'}">
+				<label class="flex cursor-pointer items-center justify-center gap-1 rounded-lg px-1 py-2 text-[11px] sm:text-xs {modality === value ? 'border border-[#E2E8F0] bg-white font-semibold text-brand shadow-sm' : 'text-[#64748B]'}">
 					<input class="sr-only" type="radio" name="modality" value={value} form="continue" checked={modality === value} onchange={() => (modality = value)} />
 					<span class="material-symbols-outlined text-[15px]">{icon}</span>
 					{label}
@@ -78,14 +78,14 @@
 						<h3 class="display text-[15px] font-bold">Consultation entries</h3>
 						<p class="text-[11px] text-[#64748B]">Log vitals, symptoms, and exam findings</p>
 					</div>
-					<span class="shrink-0 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800">
+					<span class="shrink-0 rounded-full border border-brand-tint bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand">
 						{data.consult.entries.length} items recorded
 					</span>
 				</div>
 				<div class="mt-3 flex gap-2 overflow-x-auto">
 					{#each chips as chip}
 						<button class="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2.5 py-1 text-[11px] font-medium text-[#334155]" type="button" onclick={() => (kind = chip)}>
-							<span class="material-symbols-outlined text-[14px] text-[#0D7377]">add</span>
+							<span class="material-symbols-outlined text-[14px] text-brand">add</span>
 							{chip}
 						</button>
 					{/each}
@@ -140,7 +140,7 @@
 		<article class="card">
 			<div class="flex items-center justify-between gap-3">
 				<h3 class="display flex items-center gap-1.5 text-[15px] font-bold">
-					<span class="material-symbols-outlined text-[#0D7377]">edit_note</span>
+					<span class="material-symbols-outlined text-brand">edit_note</span>
 					Clinical impressions and notes
 				</h3>
 			</div>

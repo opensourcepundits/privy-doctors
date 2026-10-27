@@ -1,0 +1,311 @@
+<script lang="ts">
+	import { formatLongDate, formatTime } from '#lib/format';
+	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
+	import type { PageProps } from './$types';
+
+	let { data, form }: PageProps = $props();
+	let query = $state('');
+	let specialty = $state('All');
+	let gender = $state('All');
+	let chosenId = $state<number | null>(null);
+	let bookingsOpen = $state(false);
+	let kindByDoctor = $state<Record<number, 'clinic' | 'home'>>({});
+	let slotByDoctor = $state<Record<number, string>>({});
+	let moreByDoctor = $state<Record<number, boolean>>({});
+	let detail = $state<HTMLElement | null>(null);
+
+	const specialties = $derived([...new Set(data.doctors.map((doctor) => doctor.specialty))].sort());
+	const filtered = $derived(
+		data.doctors.filter((doctor) => {
+			const needle = query.trim().toLowerCase().replace(/\./g, '');
+			const name = doctor.name.toLowerCase().replace(/\./g, '');
+			const nameOk = !needle || name.includes(needle);
+			const specialtyOk = specialty === 'All' || doctor.specialty === specialty;
+			const genderOk = gender === 'All' || doctor.gender === gender;
+			return nameOk && specialtyOk && genderOk;
+		})
+	);
+	const chosen = $derived(filtered.find((doctor) => doctor.id === chosenId) ?? null);
+	const filtering = $derived(query.trim() !== '' || specialty !== 'All' || gender !== 'All');
+
+	function monogram(name: string) {
+		const parts = name.replace(/^Dr\.\s+/i, '').split(/\s+/).filter(Boolean);
+		return `${parts[0]?.[0] ?? ''}${parts.at(-1)?.[0] ?? ''}`.toUpperCase();
+	}
+
+	function kindFor(doctorId: number, hasClinic: boolean) {
+		return kindByDoctor[doctorId] ?? (hasClinic ? 'clinic' : 'home');
+	}
+
+	function setKind(doctorId: number, kind: 'clinic' | 'home') {
+		kindByDoctor[doctorId] = kind;
+		slotByDoctor[doctorId] = '';
+	}
+
+	function choose(doctorId: number) {
+		chosenId = chosenId === doctorId ? null : doctorId;
+	}
+
+	function clearSearch() {
+		query = '';
+		specialty = 'All';
+		gender = 'All';
+	}
+
+	function byDate(slots: OpenSlot[]) {
+		const groups: { date: string; label: string; slots: OpenSlot[] }[] = [];
+		for (const slot of slots) {
+			const last = groups.at(-1);
+			if (last?.date === slot.date) last.slots.push(slot);
+			else groups.push({ date: slot.date, label: slot.dateLabel, slots: [slot] });
+		}
+		return groups;
+	}
+
+	function nextOpen(slots: OpenSlot[]) {
+		const slot = slots[0];
+		return slot ? `${slot.dateLabel} · ${slot.timeLabel}` : 'No open times in the next three weeks';
+	}
+
+	$effect(() => {
+		if (!chosen) return;
+		detail?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+	});
+</script>
+
+<header class="px-4 pt-5 lg:px-0">
+	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
+	<h1 class="display mt-2 text-2xl font-bold lg:text-3xl">Book an appointment</h1>
+	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">Search the clinicians, then open one schedule. Visits are 30 minutes.</p>
+</header>
+
+{#if form?.message}
+	<p class="mx-4 mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:mx-0">{form.message}</p>
+{/if}
+
+{#if data.upcoming.length}
+	<section class="px-4 pt-4 lg:px-0">
+		<button
+			class="flex w-full items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 text-left lg:hidden"
+			type="button"
+			aria-expanded={bookingsOpen}
+			onclick={() => (bookingsOpen = !bookingsOpen)}
+		>
+			<span>
+				<span class="display block text-lg font-semibold">Already booked</span>
+				<span class="text-sm text-[#64748B]">{data.upcoming.length} upcoming {data.upcoming.length === 1 ? 'visit' : 'visits'}</span>
+			</span>
+			<span class="material-symbols-outlined text-brand" aria-hidden="true">{bookingsOpen ? 'expand_less' : 'expand_more'}</span>
+		</button>
+		<div class="{bookingsOpen ? 'mt-3 grid' : 'hidden'} gap-3 lg:mt-0 lg:grid lg:grid-cols-2">
+			{#each data.upcoming as visit}
+				<article class="card !py-3">
+					<p class="kicker">{visit.title}</p>
+					<p class="mt-1 font-semibold">{formatLongDate(visit.starts_at)}</p>
+					<p class="text-sm">{formatTime(visit.starts_at)} · {visit.duration_min} min · {visit.doctor_name}</p>
+					<p class="text-sm text-[#64748B]">{visit.location}</p>
+				</article>
+			{/each}
+		</div>
+	</section>
+{/if}
+
+<section class="px-4 py-4 lg:px-0">
+	<div class="card lg:flex lg:items-end lg:gap-3 lg:p-4">
+		<label class="relative block lg:min-w-0 lg:flex-1">
+			<span class="material-symbols-outlined field-icon text-[#64748B]" aria-hidden="true">search</span>
+			<input class="field field-search !pr-3" bind:value={query} placeholder="Search by doctor name" autocomplete="off" />
+		</label>
+		<div class="mt-3 grid gap-3 sm:grid-cols-2 lg:mt-0 lg:w-[28rem] lg:shrink-0">
+			<label class="relative block" for="specialty">
+				<span class="pointer-events-none absolute top-2.5 left-3.5 text-[0.68rem] font-bold tracking-[0.08em] text-[#64748B] uppercase lg:hidden">Specialty</span>
+				<select
+					class="h-16 w-full appearance-none rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] pt-6 pr-12 pb-2 pl-3.5 text-sm font-semibold text-[#0F172A] outline-none select-brand lg:h-11 lg:rounded-xl lg:py-0 lg:pr-10 lg:pl-3"
+					id="specialty"
+					aria-label="Specialty"
+					bind:value={specialty}
+				>
+					<option value="All">All specialties</option>
+					{#each specialties as item}
+						<option value={item}>{item}</option>
+					{/each}
+				</select>
+				<span class="material-symbols-outlined pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-brand" aria-hidden="true">expand_more</span>
+			</label>
+			<label class="relative block" for="gender">
+				<span class="pointer-events-none absolute top-2.5 left-3.5 text-[0.68rem] font-bold tracking-[0.08em] text-[#64748B] uppercase lg:hidden">Gender</span>
+				<select
+					class="h-16 w-full appearance-none rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] pt-6 pr-12 pb-2 pl-3.5 text-sm font-semibold text-[#0F172A] outline-none select-brand lg:h-11 lg:rounded-xl lg:py-0 lg:pr-10 lg:pl-3"
+					id="gender"
+					aria-label="Gender"
+					bind:value={gender}
+				>
+					<option value="All">Anyone</option>
+					<option value="Female">Female</option>
+					<option value="Male">Male</option>
+				</select>
+				<span class="material-symbols-outlined pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-brand" aria-hidden="true">expand_more</span>
+			</label>
+		</div>
+	</div>
+	<div class="mt-3 flex items-center justify-between gap-3 text-sm">
+		<p class="text-[#64748B]">{filtered.length} {filtered.length === 1 ? 'clinician' : 'clinicians'}</p>
+		{#if filtering}
+			<button class="font-semibold text-brand" type="button" onclick={clearSearch}>Clear search</button>
+		{/if}
+	</div>
+
+	<div class="mt-3 {chosen ? 'lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:items-start lg:gap-6' : ''}">
+		{#if filtered.length}
+			<div class={chosen ? 'grid gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'}>
+				{#each filtered as doctor}
+					{@const picked = chosen?.id === doctor.id}
+					<button
+						class="text-left {chosen
+							? `rounded-xl border px-3 py-2.5 ${picked ? 'border-brand bg-brand-soft' : 'border-[#E2E8F0] bg-white'}`
+							: `card ${picked ? 'border-brand ring-2 ring-brand/15' : ''}`}"
+						type="button"
+						aria-pressed={picked}
+						onclick={() => choose(doctor.id)}
+					>
+						<div class="flex items-center gap-3">
+							<div class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand">
+								{monogram(doctor.name)}
+							</div>
+							<div class="min-w-0">
+								<p class="display truncate text-base font-bold">{doctor.name}</p>
+								<p class="truncate text-sm text-[#64748B]">{chosen ? doctor.specialty : doctor.credentials}</p>
+							</div>
+						</div>
+						{#if !chosen}
+							<p class="mt-3 text-sm font-semibold text-brand">{doctor.specialty}</p>
+							<p class="text-sm text-[#64748B]">{doctor.gender}</p>
+							<p class="mt-2 text-sm">{nextOpen(doctor.slots)}</p>
+						{/if}
+					</button>
+				{/each}
+			</div>
+		{:else}
+			<p class="card text-sm text-[#64748B]">No clinicians match that search.</p>
+		{/if}
+
+		{#if chosen}
+			{@const clinic = chosen.hours.filter((row) => row.kind === 'clinic')}
+			{@const home = chosen.hours.filter((row) => row.kind === 'home')}
+			{@const kind = kindFor(chosen.id, clinic.length > 0)}
+			{@const slots = chosen.slots.filter((slot) => slot.kind === kind)}
+			{@const days = byDate(slots)}
+			{@const visibleDays = moreByDoctor[chosen.id] ? days : days.slice(0, 2)}
+			{@const selected = slots.find((slot) => slot.startsAt === slotByDoctor[chosen.id])}
+			<aside class="mt-4 lg:sticky lg:top-4 lg:mt-0" bind:this={detail}>
+				<article class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
+					<div class="h-1 bg-brand"></div>
+					<div class="space-y-5 p-4 lg:p-6">
+						<div class="flex items-start gap-4">
+							<div class="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-brand text-lg font-bold text-white">
+								{monogram(chosen.name)}
+							</div>
+							<div class="min-w-0">
+								<p class="kicker">{chosen.specialty} · {chosen.gender}</p>
+								<h2 class="display mt-1 text-2xl font-bold">{chosen.name}</h2>
+								<p class="text-sm">{chosen.credentials}</p>
+								<p class="mt-1 text-sm text-[#64748B]">{chosen.practice}</p>
+								<p class="text-sm text-[#64748B]">{chosen.location}</p>
+							</div>
+						</div>
+
+						<div class="grid gap-4 rounded-xl bg-[#F8FAFC] p-3 sm:grid-cols-2">
+							<div>
+								<p class="kicker">Clinic hours</p>
+								<ul class="mt-2 space-y-1 text-sm">
+									{#each groupByWeekday(clinic) as day}
+										<li>{WEEKDAYS[day.weekday].slice(0, 3)} · {day.rows.map((row) => `${formatClock(row.start_time)}–${formatClock(row.end_time)}`).join(', ')}</li>
+									{:else}
+										<li class="text-[#64748B]">None published.</li>
+									{/each}
+								</ul>
+							</div>
+							<div>
+								<p class="kicker">At-home visits</p>
+								<ul class="mt-2 space-y-1 text-sm">
+									{#each groupByWeekday(home) as day}
+										<li>{WEEKDAYS[day.weekday].slice(0, 3)} · {day.rows.map((row) => `${formatClock(row.start_time)}–${formatClock(row.end_time)}`).join(', ')}</li>
+									{:else}
+										<li class="text-[#64748B]">None published.</li>
+									{/each}
+								</ul>
+							</div>
+						</div>
+
+						<form class="grid gap-4" method="POST" action="?/book">
+							<input type="hidden" name="doctor_id" value={chosen.id} />
+							<input type="hidden" name="kind" value={kind} />
+							<input type="hidden" name="starts_at" value={selected?.startsAt ?? ''} />
+
+							{#if clinic.length && home.length}
+								<div class="grid grid-cols-2 gap-2 rounded-xl bg-[#F1F5F9] p-1">
+									<button
+										class="h-10 rounded-lg text-sm font-semibold {kind === 'clinic' ? 'bg-white text-brand shadow-sm' : 'text-[#64748B]'}"
+										type="button"
+										onclick={() => setKind(chosen.id, 'clinic')}
+									>
+										Clinic
+									</button>
+									<button
+										class="h-10 rounded-lg text-sm font-semibold {kind === 'home' ? 'bg-white text-brand shadow-sm' : 'text-[#64748B]'}"
+										type="button"
+										onclick={() => setKind(chosen.id, 'home')}
+									>
+										At home
+									</button>
+								</div>
+							{:else}
+								<p class="font-semibold">{kind === 'home' ? 'At-home times' : 'Clinic times'}</p>
+							{/if}
+
+							{#if visibleDays.length}
+								<div class="grid gap-4">
+									{#each visibleDays as day}
+										<div>
+											<p class="text-sm font-semibold">{day.label}</p>
+											<div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
+												{#each day.slots as slot}
+													<button
+														class="h-10 rounded-lg text-sm font-semibold {slotByDoctor[chosen.id] === slot.startsAt
+															? 'bg-brand text-white'
+															: 'bg-[#F1F5F9] text-[#0F172A] hover:bg-brand-soft'}"
+														type="button"
+														onclick={() => (slotByDoctor[chosen.id] = slot.startsAt)}
+													>
+														{slot.timeLabel}
+													</button>
+												{/each}
+											</div>
+										</div>
+									{/each}
+								</div>
+								{#if days.length > 2 && !moreByDoctor[chosen.id]}
+									<button class="text-left text-sm font-semibold text-brand" type="button" onclick={() => (moreByDoctor[chosen.id] = true)}>
+										Show more days
+									</button>
+								{/if}
+								<label class="block text-sm font-semibold" for="reason-{chosen.id}">
+									A note for your doctor
+									<textarea class="field mt-1 !min-h-24" id="reason-{chosen.id}" name="reason" placeholder="Share how you’ve been feeling, or what you’d like to talk about."></textarea>
+								</label>
+								<div class="flex flex-col gap-3 border-t border-[#E2E8F0] pt-4 lg:flex-row lg:items-center lg:justify-between">
+									<p class="text-sm text-[#64748B]">{selected ? `${selected.dateLabel} · ${selected.timeLabel}` : 'Choose a time to continue'}</p>
+									<button class="btn disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={!selected}>
+										Book this time
+									</button>
+								</div>
+							{:else}
+								<p class="text-sm text-[#64748B]">No open times in the next three weeks.</p>
+							{/if}
+						</form>
+					</div>
+				</article>
+			</aside>
+		{/if}
+	</div>
+</section>

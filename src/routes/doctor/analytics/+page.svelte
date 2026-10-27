@@ -13,7 +13,7 @@
 <section class="grid grid-cols-2 gap-3 px-4 pt-4 lg:grid-cols-4 lg:px-0">
 	{#each data.metrics as metric}
 		<article class="card">
-			<p class="text-xs font-semibold text-[#0D7377]">{metric.delta}</p>
+			<p class="text-xs font-semibold text-brand">{metric.delta}</p>
 			<p class="display nums mt-1 text-3xl font-bold">{metric.value}</p>
 			<p class="text-sm font-semibold">{metric.label}</p>
 			<p class="text-xs text-[#64748B]">{metric.caption}</p>
@@ -33,8 +33,8 @@
 					<span>{item.name}</span>
 					<span class="nums text-[#64748B]">{item.units} · {item.share}%</span>
 				</div>
-				<div class="h-2 rounded-full bg-[#E5EEFF]">
-					<div class="h-2 rounded-full bg-[#0D7377]" style="width: {item.share}%"></div>
+				<div class="h-2 rounded-full bg-brand-soft">
+					<div class="h-2 rounded-full bg-brand" style="width: {item.share}%"></div>
 				</div>
 			</div>
 		{/each}
@@ -52,8 +52,8 @@
 					<p class="font-semibold">{cohort.name}</p>
 					<p class="nums text-sm">{cohort.share}% ({cohort.patients} pts)</p>
 				</div>
-				<div class="mt-2 h-2 rounded-full bg-[#E5EEFF]">
-					<div class="h-2 rounded-full bg-[#14B8A6]" style="width: {cohort.share}%"></div>
+				<div class="mt-2 h-2 rounded-full bg-brand-soft">
+					<div class="h-2 rounded-full bg-brand-accent" style="width: {cohort.share}%"></div>
 				</div>
 			</article>
 		{/each}

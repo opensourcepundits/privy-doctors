@@ -80,7 +80,8 @@ export const actions = {
 		const sex = String(data.get('sex') ?? '').trim();
 		const phone = String(data.get('phone') ?? '').trim();
 		const nic = String(data.get('nic') ?? '').trim();
-		const entered = { offerNew: true, firstName, lastName, dob, sex, phone, nic, name: `${firstName} ${lastName}`.trim() };
+		const passport = String(data.get('passport') ?? '').trim();
+		const entered = { offerNew: true, firstName, lastName, dob, sex, phone, nic, passport, name: `${firstName} ${lastName}`.trim() };
 
 		if (!firstName || !lastName) return fail(400, { ...entered, message: 'Enter a first and last name.' });
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob))) {
@@ -89,16 +90,27 @@ export const actions = {
 		if (!sexes.includes(sex as (typeof sexes)[number])) {
 			return fail(400, { ...entered, message: 'Choose Female or Male.' });
 		}
-		if (!/^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/.test(nic)) {
-			return fail(400, { ...entered, message: 'Enter the national identity card number.' });
+		const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
+		if (!nic && !passport) {
+			return fail(400, { ...entered, message: 'Enter a NIC or a passport number.' });
+		}
+		if (nic && !identity.test(nic)) {
+			return fail(400, { ...entered, message: 'Enter a NIC using letters and numbers.' });
+		}
+		if (passport && !identity.test(passport)) {
+			return fail(400, { ...entered, message: 'Enter a passport number using letters and numbers.' });
 		}
 
 		let patient;
 		try {
-			patient = await createWalkInPatient(doctor.id, { firstName, lastName, dob, sex, phone, nic });
+			patient = await createWalkInPatient(doctor.id, { firstName, lastName, dob, sex, phone, nic, passport });
 		} catch (error) {
+			const constraint = error && typeof error === 'object' && 'constraint_name' in error ? String(error.constraint_name) : '';
 			if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
-				return fail(409, { ...entered, message: 'A chart already uses that NIC.' });
+				const message = constraint.includes('passport')
+					? 'A chart already uses that passport number.'
+					: 'A chart already uses that NIC.';
+				return fail(409, { ...entered, message });
 			}
 			throw error;
 		}

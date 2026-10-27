@@ -1,5 +1,5 @@
 <header class="px-4 pt-5">
-	<a class="text-sm font-semibold text-[#0D7377]" href="/patient">Home</a>
+	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
 	<h1 class="display mt-2 text-2xl font-bold">Nurse triage</h1>
 </header>
 <section class="space-y-3 px-4 py-4 text-sm">

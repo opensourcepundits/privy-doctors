@@ -11,20 +11,20 @@
 		['labs', 'Labs']
 	] as const;
 	const tone = (status: string) =>
-		status === 'active' ? 'teal' : status === 'completed' ? 'success' : status === 'ceased' ? 'muted' : 'warning';
+		status === 'active' ? 'brand' : status === 'completed' ? 'success' : status === 'ceased' ? 'muted' : 'warning';
 </script>
 
 <header class="px-4 pt-5 lg:px-0">
-	<a class="inline-flex items-center gap-1 text-sm font-semibold text-[#0D7377]" href="/doctor">
+	<a class="inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor">
 		<span class="material-symbols-outlined text-base">arrow_back</span> Schedule
 	</a>
 	<div class="mt-3 flex items-center gap-3">
-		<div class="grid h-12 w-12 place-items-center rounded-full bg-[#0D7377] font-bold text-white">
+		<div class="grid h-12 w-12 place-items-center rounded-full bg-brand font-bold text-white">
 			{data.patient.first_name[0]}{data.patient.last_name[0]}
 		</div>
 		<div>
 			<h1 class="display text-2xl font-bold">{data.patient.first_name} {data.patient.last_name}</h1>
-			<p class="text-sm text-[#64748B]">{data.patient.pid} · {ageOn(data.patient.dob)}y · {data.patient.sex}{#if data.patient.blood_type} · Blood {data.patient.blood_type}{/if}{#if data.patient.nic} · NIC {data.patient.nic}{/if}</p>
+			<p class="text-sm text-[#64748B]">{data.patient.pid} · {ageOn(data.patient.dob)}y · {data.patient.sex}{#if data.patient.blood_type} · Blood {data.patient.blood_type}{/if}{#if data.patient.nic} · NIC {data.patient.nic}{/if}{#if data.patient.passport} · Passport {data.patient.passport}{/if}</p>
 		</div>
 	</div>
 	<p class="mt-3 text-sm">DOB {formatDate(data.patient.dob)} · {data.patient.concierge_note}</p>
@@ -36,7 +36,7 @@
 <nav class="mt-4 flex gap-2 overflow-x-auto px-4 lg:px-0">
 	{#each tabs as [id, label]}
 		<a
-			class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {data.tab === id ? 'bg-[#0D7377] text-white' : 'bg-white text-[#64748B]'}"
+			class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {data.tab === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}"
 			href="?tab={id}">{label}</a>
 	{/each}
 </nav>
@@ -48,7 +48,7 @@
 			<article class="card">
 				<p class="text-xs text-[#64748B]">{formatDate(visit.occurred_on)}</p>
 				<h2 class="font-semibold">{visit.doctor_name}</h2>
-				<p class="text-sm text-[#0D7377]">{visit.kind}</p>
+				<p class="text-sm text-brand">{visit.kind}</p>
 				<p class="mt-2 text-sm"><span class="font-semibold">Focus:</span> {visit.focus}</p>
 				<p class="mt-1 text-sm">{visit.findings}</p>
 				<p class="mt-2 text-sm text-[#334155]">{visit.plan}</p>
@@ -70,7 +70,7 @@
 				<p class="mt-2 text-sm">{order.prescriber} · {order.specialty}</p>
 				<p class="mt-2 text-sm">{order.items.map((item) => item.name).join(' · ')}</p>
 				<p class="text-xs text-[#64748B]">{order.facility}</p>
-				<a class="mt-3 inline-flex text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}/prescriptions/{order.id}">View prescription details</a>
+				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/prescriptions/{order.id}">View prescription details</a>
 			</article>
 		{/each}
 		<a class="btn" href="/doctor/patients/{data.patient.pid}/consult/orders">Create prescription order</a>
@@ -78,13 +78,13 @@
 		<p class="kicker">{data.imaging.length} verified studies</p>
 		{#each data.imaging as study}
 			<article class="card">
-				<p class="text-xs font-semibold text-[#0D7377]">{study.modality} · {formatDate(study.performed_on)}</p>
+				<p class="text-xs font-semibold text-brand">{study.modality} · {formatDate(study.performed_on)}</p>
 				<h2 class="font-semibold">{study.title}</h2>
 				<p class="text-sm text-[#64748B]">{study.facility}</p>
 				{#if study.radiologist}<p class="text-sm">Radiologist: {study.radiologist}</p>{/if}
 				<p class="mt-2 text-sm">{study.summary}</p>
 				<p class="text-xs text-[#64748B]">{study.meta}</p>
-				<a class="mt-3 inline-flex text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}/imaging/{study.id}">View scan</a>
+				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/imaging/{study.id}">View scan</a>
 			</article>
 		{/each}
 	{:else}
@@ -110,7 +110,7 @@
 						</li>
 					{/each}
 				</ul>
-				<a class="mt-3 inline-flex text-sm font-semibold text-[#0D7377]" href="/doctor/patients/{data.patient.pid}/labs/{lab.id}">View lab detail</a>
+				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/labs/{lab.id}">View lab detail</a>
 			</article>
 		{/each}
 	{/if}

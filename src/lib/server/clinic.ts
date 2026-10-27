@@ -1,3 +1,5 @@
+import { CLINIC_DAY } from '#lib/format';
+import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
 
 export type PatientRow = {
@@ -15,6 +17,7 @@ export type PatientRow = {
 	surgeries: { year: string; name: string }[];
 	phone: string | null;
 	nic: string | null;
+	passport: string | null;
 	concierge_note: string | null;
 	insurance_name: string | null;
 	insurance_group: string | null;
@@ -29,6 +32,195 @@ export async function doctorForUser(userId: number) {
 		SELECT * FROM doctors WHERE user_id = ${userId}
 	`;
 	return doctor ?? null;
+}
+
+export async function updateDoctorProfile(
+	doctorId: number,
+	userId: number | null,
+	input: { name: string; credentials: string; specialty: string; practice: string; location: string; phone: string }
+) {
+	const name = input.name.trim();
+	const credentials = input.credentials.trim();
+	const specialty = input.specialty.trim();
+	const practice = input.practice.trim();
+	const location = input.location.trim();
+	const phone = input.phone.trim();
+	if (name.length < 2 || name.length > 80) return { error: 'Enter the name as it should appear on the profile.' };
+	if (credentials.length < 2 || credentials.length > 40) return { error: 'Enter the credentials, such as MD, FACC.' };
+	if (specialty.length < 2 || specialty.length > 80) return { error: 'Enter the specialty.' };
+	if (practice.length < 2 || practice.length > 160) return { error: 'Enter the practice name.' };
+	if (location.length < 2 || location.length > 160) return { error: 'Enter the practice location.' };
+	if (phone && (phone.length > 40 || !/^[+0-9()\-.\s]+$/.test(phone))) {
+		return { error: 'Enter a phone number using digits, spaces, and + ( ) - .' };
+	}
+	await client.begin(async (sql) => {
+		await sql`
+			UPDATE doctors
+			SET name = ${name}, credentials = ${credentials}, specialty = ${specialty},
+				practice = ${practice}, location = ${location}, phone = ${phone || null}
+			WHERE id = ${doctorId}
+		`;
+		if (userId) await sql`UPDATE users SET name = ${name} WHERE id = ${userId}`;
+	});
+	return { ok: true as const };
+}
+
+export async function accountEmail(userId: number | null) {
+	if (!userId) return null;
+	const [user] = await client<{ email: string }[]>`SELECT email FROM users WHERE id = ${userId}`;
+	return user?.email ?? null;
+}
+
+const patientFields = new Set([
+	'first_name',
+	'last_name',
+	'dob',
+	'sex',
+	'blood_type',
+	'nic',
+	'passport',
+	'phone',
+	'email',
+	'conditions',
+	'allergies',
+	'surgeries',
+	'insurance_name',
+	'insurance_group',
+	'insurance_member'
+]);
+
+function listLines(value: string, limit: number) {
+	const items = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+	if (items.length > limit) return { error: `Keep this list to ${limit} lines.` };
+	if (items.some((item) => item.length > 120)) return { error: 'Keep each line under 120 characters.' };
+	return { items };
+}
+
+export async function updatePatientField(patientId: number, field: string, raw: string) {
+	if (!patientFields.has(field)) return { error: 'Choose a detail to update.' };
+	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE id = ${patientId}`;
+	if (!patient) return { error: 'That chart could not be found.' };
+	const value = raw.trim();
+	const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
+
+	try {
+		if (field === 'first_name' || field === 'last_name') {
+			if (value.length < 2 || value.length > 40) return { error: 'Enter a name using 2 to 40 characters.' };
+			const first = field === 'first_name' ? value : patient.first_name;
+			const last = field === 'last_name' ? value : patient.last_name;
+			if (first === patient.first_name && last === patient.last_name) return { error: 'That is already on file.' };
+			await client.begin(async (sql) => {
+				if (field === 'first_name') await sql`UPDATE patients SET first_name = ${value} WHERE id = ${patientId}`;
+				else await sql`UPDATE patients SET last_name = ${value} WHERE id = ${patientId}`;
+				if (patient.user_id) await sql`UPDATE users SET name = ${`${first} ${last}`} WHERE id = ${patient.user_id}`;
+			});
+			return { ok: true as const };
+		}
+
+		if (field === 'dob') {
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return { error: 'Enter a valid date of birth.' };
+			if (value < '1900-01-01' || value > CLINIC_DAY) return { error: 'Enter a date of birth on or before the clinic day.' };
+			const current = String(patient.dob).slice(0, 10);
+			if (value === current) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET dob = ${value} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'sex') {
+			if (value !== 'Female' && value !== 'Male') return { error: 'Choose Female or Male.' };
+			if (value === patient.sex) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET sex = ${value} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'blood_type') {
+			if (value && !/^(A|B|AB|O)[+-]$/.test(value)) return { error: 'Enter a blood type such as A+ or O-.' };
+			if ((value || null) === (patient.blood_type ?? null)) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET blood_type = ${value || null} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'nic' || field === 'passport') {
+			if (value && !identity.test(value)) return { error: 'Use 5 to 32 letters and numbers.' };
+			const nextNic = field === 'nic' ? value : (patient.nic ?? '');
+			const nextPassport = field === 'passport' ? value : (patient.passport ?? '');
+			if (!nextNic && !nextPassport) return { error: 'Keep a NIC or a passport number on the chart.' };
+			if ((value || null) === ((field === 'nic' ? patient.nic : patient.passport) ?? null)) {
+				return { error: 'That is already on file.' };
+			}
+			if (field === 'nic') await client`UPDATE patients SET nic = ${value || null} WHERE id = ${patientId}`;
+			else await client`UPDATE patients SET passport = ${value || null} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'phone') {
+			if (value && (value.length > 40 || !/^[+0-9()\-.\s]+$/.test(value))) {
+				return { error: 'Enter a phone number using digits, spaces, and + ( ) - .' };
+			}
+			if ((value || null) === (patient.phone ?? null)) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET phone = ${value || null} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'email') {
+			if (!patient.user_id) return { error: 'This chart has no sign-in email to change.' };
+			if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || value.length > 120) return { error: 'Enter a valid email address.' };
+			const current = await accountEmail(patient.user_id);
+			if (value.toLowerCase() === current?.toLowerCase()) return { error: 'That is already on file.' };
+			const [taken] = await client<{ id: number }[]>`SELECT id FROM users WHERE lower(email) = lower(${value}) AND id <> ${patient.user_id}`;
+			if (taken) return { error: 'Another account already uses that email.' };
+			await client`UPDATE users SET email = ${value} WHERE id = ${patient.user_id}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'conditions' || field === 'allergies') {
+			const parsed = listLines(value, 12);
+			if ('error' in parsed) return parsed;
+			const current = field === 'conditions' ? patient.conditions : patient.allergies;
+			if (parsed.items.join('\n') === current.join('\n')) return { error: 'That is already on file.' };
+			if (field === 'conditions') await client`UPDATE patients SET conditions = ${client.json(parsed.items)} WHERE id = ${patientId}`;
+			else await client`UPDATE patients SET allergies = ${client.json(parsed.items)} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'surgeries') {
+			const parsed = listLines(value, 12);
+			if ('error' in parsed) return parsed;
+			const surgeries: { year: string; name: string }[] = [];
+			for (const line of parsed.items) {
+				const yearFirst = /^(\d{4})\s*[—–-]\s*(.+)$/.exec(line);
+				const nameFirst = /^(.+?)\s*[—–-]\s*(\d{4})$/.exec(line);
+				const year = yearFirst?.[1] ?? nameFirst?.[2];
+				const name = (yearFirst?.[2] ?? nameFirst?.[1] ?? '').trim();
+				if (!year || !name || name.length > 80) return { error: 'Write each procedure as 1998 — Appendectomy.' };
+				surgeries.push({ year, name });
+			}
+			const current = patient.surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
+			const next = surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
+			if (next === current) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET surgeries = ${client.json(surgeries)} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+
+		if (field === 'insurance_name' || field === 'insurance_group' || field === 'insurance_member') {
+			if (value.length > 120) return { error: 'Keep this under 120 characters.' };
+			const current =
+				field === 'insurance_name' ? patient.insurance_name : field === 'insurance_group' ? patient.insurance_group : patient.insurance_member;
+			if ((value || null) === (current ?? null)) return { error: 'That is already on file.' };
+			if (field === 'insurance_name') await client`UPDATE patients SET insurance_name = ${value || null} WHERE id = ${patientId}`;
+			else if (field === 'insurance_group') await client`UPDATE patients SET insurance_group = ${value || null} WHERE id = ${patientId}`;
+			else await client`UPDATE patients SET insurance_member = ${value || null} WHERE id = ${patientId}`;
+			return { ok: true as const };
+		}
+	} catch (error) {
+		const constraint = error && typeof error === 'object' && 'constraint_name' in error ? String(error.constraint_name) : '';
+		if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+			return { error: constraint.includes('passport') ? 'A chart already uses that passport number.' : 'A chart already uses that NIC.' };
+		}
+		throw error;
+	}
+
+	return { error: 'Choose a detail to update.' };
 }
 
 export async function patientForUser(userId: number) {
@@ -70,20 +262,172 @@ export async function upcomingAppointment(patientId: number) {
 		FROM appointments a
 		JOIN doctors d ON d.id = a.doctor_id
 		WHERE a.patient_id = ${patientId}
-		  AND a.starts_at::date > DATE '2024-11-17'
+		  AND a.starts_at::date > ${CLINIC_DAY}
 		ORDER BY a.starts_at
 		LIMIT 1
 	`;
 	return row ?? null;
 }
 
+export async function futureAppointments(patientId: number) {
+	return client`
+		SELECT a.*, d.name AS doctor_name, d.credentials, d.specialty
+		FROM appointments a
+		JOIN doctors d ON d.id = a.doctor_id
+		WHERE a.patient_id = ${patientId}
+		  AND a.starts_at::date > ${CLINIC_DAY}
+		ORDER BY a.starts_at
+	`;
+}
+
+export async function upcomingForDoctor(doctorId: number) {
+	return client`
+		SELECT a.*, p.first_name, p.last_name, p.pid
+		FROM appointments a
+		JOIN patients p ON p.id = a.patient_id
+		WHERE a.doctor_id = ${doctorId}
+		  AND a.starts_at::date > ${CLINIC_DAY}
+		ORDER BY a.starts_at
+	`;
+}
+
+type AvailabilityRow = WindowRow & { id: number; doctor_id: number };
+
+export async function doctorSchedule(doctorId: number) {
+	return client<AvailabilityRow[]>`
+		SELECT * FROM availability
+		WHERE doctor_id = ${doctorId}
+		ORDER BY kind, weekday, start_time
+	`;
+}
+
+export async function setDayAvailability(
+	doctorId: number,
+	input: { kind: string; weekday: number; ranges: { start: string; end: string }[] }
+) {
+	if (input.kind !== 'clinic' && input.kind !== 'home') {
+		return { error: 'Choose clinic hours or at-home hours.' };
+	}
+	if (!Number.isInteger(input.weekday) || input.weekday < 0 || input.weekday > 6) {
+		return { error: 'Choose a day.' };
+	}
+	const filled = input.ranges.filter((range) => range.start.trim() || range.end.trim());
+	if (!filled.length) return { error: 'Add at least one time range.' };
+	if (filled.length > 3) return { error: 'A day can have at most three time ranges.' };
+	const parsed: { start: string; end: string }[] = [];
+	for (const range of filled) {
+		const start = parseClock(range.start);
+		const end = parseClock(range.end);
+		if (!start || !end) return { error: 'Enter a start and end for each range.' };
+		if (start >= end) return { error: 'Each range needs an end time later than its start.' };
+		parsed.push({ start, end });
+	}
+	parsed.sort((left, right) => left.start.localeCompare(right.start));
+	for (let index = 1; index < parsed.length; index += 1) {
+		if (parsed[index].start < parsed[index - 1].end) {
+			return { error: 'Ranges on the same day cannot overlap.' };
+		}
+	}
+	await client.begin(async (sql) => {
+		await sql`
+			DELETE FROM availability
+			WHERE doctor_id = ${doctorId} AND kind = ${input.kind} AND weekday = ${input.weekday}
+		`;
+		for (const range of parsed) {
+			await sql`
+				INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+				VALUES (${doctorId}, ${input.kind}, ${input.weekday}, ${range.start}, ${range.end})
+			`;
+		}
+	});
+	return { ok: true as const };
+}
+
+export async function removeAvailability(doctorId: number, id: number) {
+	await client`DELETE FROM availability WHERE id = ${id} AND doctor_id = ${doctorId}`;
+}
+
+export async function bookingBoard() {
+	const doctors = await client<
+		{
+			id: number;
+			name: string;
+			credentials: string;
+			specialty: string;
+			gender: string;
+			practice: string;
+			location: string;
+			phone: string | null;
+		}[]
+	>`
+		SELECT id, name, credentials, specialty, gender, practice, location, phone
+		FROM doctors
+		ORDER BY name
+	`;
+	const hours = await client<AvailabilityRow[]>`
+		SELECT * FROM availability ORDER BY doctor_id, weekday, start_time
+	`;
+	const horizon = addDays(CLINIC_DAY, 21);
+	const taken = await client<{ doctor_id: number; starts_at: Date | string; duration_min: number }[]>`
+		SELECT doctor_id, starts_at, duration_min
+		FROM appointments
+		WHERE starts_at::date > ${CLINIC_DAY}
+		  AND starts_at::date <= ${horizon}
+		  AND status <> 'cancelled'
+	`;
+	return doctors.map((doctor) => {
+		const windows = hours.filter((row) => row.doctor_id === doctor.id);
+		const blocks = taken
+			.filter((row) => row.doctor_id === doctor.id)
+			.map((row) => ({ start: localStamp(row.starts_at), duration: Number(row.duration_min) }));
+		return { ...doctor, hours: windows, slots: openSlots(windows, blocks) };
+	});
+}
+
+export async function bookAppointment(
+	patientId: number,
+	input: { doctorId: number; kind: string; startsAt: string; reason: string }
+) {
+	if (input.kind !== 'clinic' && input.kind !== 'home') {
+		return { error: 'Choose a clinic visit or an at-home visit.' };
+	}
+	if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(input.startsAt)) {
+		return { error: 'Choose an open time.' };
+	}
+	const board = await bookingBoard();
+	const doctor = board.find((row) => row.id === input.doctorId);
+	if (!doctor) return { error: 'That clinician is not on the schedule.' };
+	const slot = doctor.slots.find((item) => item.kind === input.kind && item.startsAt === input.startsAt);
+	if (!slot) return { error: 'That time is no longer open. Choose another.' };
+	const reason = input.reason.trim().slice(0, 240) || 'Requested from the patient portal';
+	const title = input.kind === 'home' ? 'At-home visit' : 'Clinic consultation';
+	const location = input.kind === 'home' ? "At the patient's home" : doctor.location;
+	await client`
+		INSERT INTO appointments (
+			patient_id, doctor_id, starts_at, duration_min, title, reason, status, location, last_visit_label
+		) VALUES (
+			${patientId}, ${doctor.id}, ${input.startsAt}, 30, ${title}, ${reason}, 'scheduled',
+			${location}, 'Booked from the patient portal'
+		)
+	`;
+	return { ok: true as const };
+}
+
 export async function createWalkInPatient(
 	doctorId: number,
-	input: { firstName: string; lastName: string; dob: string; sex: string; phone: string; nic: string }
+	input: {
+		firstName: string;
+		lastName: string;
+		dob: string;
+		sex: string;
+		phone: string;
+		nic: string;
+		passport: string;
+	}
 ) {
 	const [patient] = await client`
 		INSERT INTO patients (
-			primary_doctor_id, pid, first_name, last_name, dob, sex, phone, nic, concierge_note
+			primary_doctor_id, pid, first_name, last_name, dob, sex, phone, nic, passport, concierge_note
 		)
 		VALUES (
 			${doctorId},
@@ -97,7 +441,8 @@ export async function createWalkInPatient(
 			${input.dob},
 			${input.sex},
 			${input.phone || null},
-			${input.nic},
+			${input.nic || null},
+			${input.passport || null},
 			'Added during a consultation. No portal account.'
 		)
 		RETURNING *
@@ -114,6 +459,7 @@ export async function searchPatients(query: string) {
 		   OR last_name ILIKE ${q}
 		   OR pid ILIKE ${q}
 		   OR nic ILIKE ${q}
+		   OR passport ILIKE ${q}
 		   OR (first_name || ' ' || last_name) ILIKE ${q}
 		ORDER BY last_name, first_name
 	`;

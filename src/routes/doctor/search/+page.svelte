@@ -11,7 +11,7 @@
 	<p class="kicker">Patient index</p>
 	<h1 class="display text-2xl font-bold lg:text-3xl">{data.intent === 'consult' ? 'Start a consultation' : 'Find a patient'}</h1>
 	{#if data.intent === 'consult'}
-		<p class="mt-1 text-sm text-[#64748B]">Enter the patient name, then start. The start time is saved with the consultation.</p>
+		<p class="mt-1 text-sm text-[#64748B]">Enter a name, NIC, or passport number, then start. The start time is saved with the consultation.</p>
 	{/if}
 </header>
 
@@ -25,7 +25,7 @@
 			required
 			autocomplete="off"
 			value={form?.name ?? ''}
-			placeholder="First and last name"
+			placeholder="Name, NIC, or passport"
 		/>
 		{#if form?.message && !form?.matches && !form?.offerNew}
 			<p class="text-sm text-red-600">{form.message}</p>
@@ -41,7 +41,7 @@
 			<form class="card space-y-3" method="POST" action="?intent=consult&/register">
 				<div>
 					<h2 class="display text-base font-bold">New patient</h2>
-					<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit.</p>
+					<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit. Enter a NIC, a passport number, or both.</p>
 				</div>
 				{#if form?.message && form?.offerNew}
 					<p class="text-sm text-red-600">{form.message}</p>
@@ -72,7 +72,11 @@
 				</div>
 				<label class="block text-sm font-semibold" for="nic">
 					NIC
-					<input class="field mt-1" id="nic" name="nic" required autocomplete="off" value={form?.nic ?? ''} placeholder="National identity card" />
+					<input class="field mt-1" id="nic" name="nic" autocomplete="off" value={form?.nic ?? ''} placeholder="National identity card" />
+				</label>
+				<label class="block text-sm font-semibold" for="passport">
+					Passport number
+					<input class="field mt-1" id="passport" name="passport" autocomplete="off" value={form?.passport ?? ''} placeholder="Passport number" />
 				</label>
 				<label class="block text-sm font-semibold" for="phone">
 					Phone
@@ -99,7 +103,7 @@
 					<input type="hidden" name="pid" value={patient.pid} />
 					<input type="hidden" name="name" value={form?.name ?? ''} />
 					<div class="flex items-center gap-3">
-						<div class="grid h-11 w-11 place-items-center rounded-full bg-[#E5EEFF] font-bold text-[#0D7377]">
+						<div class="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
 							{initials(patient.first_name, patient.last_name)}
 						</div>
 						<div>
@@ -120,8 +124,8 @@
 	<form class="px-4 pt-4 lg:max-w-xl lg:px-0" method="GET">
 		<label class="relative block">
 			<span class="material-symbols-outlined field-icon text-[#64748B]" aria-hidden="true">search</span>
-			<input class="field field-search" name="q" value={data.q} placeholder="Name or PID" />
-			<button class="absolute top-1/2 right-1.5 h-8 -translate-y-1/2 rounded-lg bg-[#0D7377] px-3.5 text-xs font-semibold text-white" type="submit">Find</button>
+			<input class="field field-search" name="q" value={data.q} placeholder="Name, PID, NIC, or passport" />
+			<button class="absolute top-1/2 right-1.5 h-8 -translate-y-1/2 rounded-lg bg-brand px-3.5 text-xs font-semibold text-white" type="submit">Find</button>
 		</label>
 	</form>
 
@@ -129,12 +133,15 @@
 		{#each data.patients as patient}
 			<a class="card block" href="/doctor/patients/{patient.pid}">
 				<div class="flex items-center gap-3">
-					<div class="grid h-11 w-11 place-items-center rounded-full bg-[#E5EEFF] font-bold text-[#0D7377]">
+					<div class="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
 						{initials(patient.first_name, patient.last_name)}
 					</div>
 					<div>
 						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
 						<p class="text-sm text-[#64748B]">{patient.pid} • {ageOn(patient.dob)}y • {patient.sex}</p>
+						{#if patient.nic || patient.passport}
+							<p class="text-sm text-[#64748B]">{patient.nic ? `NIC ${patient.nic}` : ''}{patient.nic && patient.passport ? ' · ' : ''}{patient.passport ? `Passport ${patient.passport}` : ''}</p>
+						{/if}
 						<p class="text-sm">{patient.conditions[0] ?? patient.concierge_note}</p>
 					</div>
 				</div>

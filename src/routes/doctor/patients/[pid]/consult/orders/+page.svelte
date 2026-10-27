@@ -35,7 +35,7 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
 				<h2 class="display text-base font-bold">{data.patient.first_name} {data.patient.last_name}</h2>
-				<span class="rounded-md bg-[#DCE9FF] px-2 py-0.5 text-[11px] font-semibold text-[#334155]">{data.patient.pid}</span>
+				<span class="rounded-md bg-brand-tint px-2 py-0.5 text-[11px] font-semibold text-[#334155]">{data.patient.pid}</span>
 			</div>
 			<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Active encounter</span>
 		</div>
@@ -47,12 +47,12 @@
 	<section class="space-y-2">
 		<div class="flex items-center justify-between gap-2">
 			<h2 class="display flex items-center gap-2 text-sm font-bold">
-				<span class="grid h-7 w-7 place-items-center rounded-lg border border-teal-100 bg-teal-50 text-[#0D7377]">
+				<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
 					<span class="material-symbols-outlined text-[18px]">prescriptions</span>
 				</span>
 				e-Prescription orders
 			</h2>
-			<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0D7377] px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'medication' ? null : 'medication')}>
+			<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'medication' ? null : 'medication')}>
 				<span class="material-symbols-outlined text-base">add</span>
 				Add medication
 			</button>
@@ -83,15 +83,15 @@
 					<button class="btn" type="submit">Save medication</button>
 				</form>
 			{/if}
-			<div class="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-[#EFF4FF] p-2.5">
+			<div class="flex items-center justify-between gap-3 rounded-xl border border-brand-tint bg-brand-wash p-2.5">
 				<div class="flex min-w-0 items-center gap-2">
-					<span class="material-symbols-outlined text-[18px] text-[#0D7377]">local_pharmacy</span>
+					<span class="material-symbols-outlined text-[18px] text-brand">local_pharmacy</span>
 					<div class="min-w-0">
 						<p class="truncate text-xs font-semibold">{pharmacyParts[0] || 'No pharmacy selected'}</p>
 						{#if pharmacyParts[1]}<p class="truncate text-[11px] text-[#64748B]">{pharmacyParts.slice(1).join(' · ')}</p>{/if}
 					</div>
 				</div>
-				<button class="shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-[#0D7377]" type="button" onclick={() => (editingPharmacy = !editingPharmacy)}>
+				<button class="shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-brand" type="button" onclick={() => (editingPharmacy = !editingPharmacy)}>
 					{editingPharmacy ? 'Close' : 'Change'}
 				</button>
 			</div>
@@ -108,12 +108,12 @@
 		<section class="space-y-2">
 			<div class="flex items-center justify-between gap-2">
 				<h2 class="display flex items-center gap-2 text-sm font-bold">
-					<span class="grid h-7 w-7 place-items-center rounded-lg border border-teal-100 bg-teal-50 text-[#006B5F]">
+					<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
 						<span class="material-symbols-outlined text-[18px]">diversity_1</span>
 					</span>
 					Referrals
 				</h2>
-				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-[#DCE9FF] px-2.5 text-xs font-semibold" type="button" onclick={() => (open = open === 'referral' ? null : 'referral')}>
+				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand-tint px-2.5 text-xs font-semibold" type="button" onclick={() => (open = open === 'referral' ? null : 'referral')}>
 					<span class="material-symbols-outlined text-base">add</span>
 					Add
 				</button>
@@ -131,7 +131,7 @@
 						</form>
 					</div>
 					{#if order.note}
-						<p class="mt-2 rounded-xl border border-[#E2E8F0] bg-[#EFF4FF] p-2.5 text-[11px] text-[#0F172A] italic">“{order.note}”</p>
+						<p class="mt-2 rounded-xl border border-[#E2E8F0] bg-brand-wash p-2.5 text-[11px] text-[#0F172A] italic">“{order.note}”</p>
 					{/if}
 				</article>
 			{:else}
@@ -150,12 +150,12 @@
 		<section class="space-y-2">
 			<div class="flex items-center justify-between gap-2">
 				<h2 class="display flex items-center gap-2 text-sm font-bold">
-					<span class="grid h-7 w-7 place-items-center rounded-lg border border-teal-100 bg-teal-50 text-[#0D7377]">
+					<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
 						<span class="material-symbols-outlined text-[18px]">query_stats</span>
 					</span>
 					Diagnostic tests
 				</h2>
-				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-[#0D7377] px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'test' ? null : 'test')}>
+				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'test' ? null : 'test')}>
 					<span class="material-symbols-outlined text-base">add</span>
 					Order diagnostic
 				</button>
@@ -165,7 +165,7 @@
 					<div class="flex items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 						<div class="min-w-0">
 							<p class="text-sm font-bold">{order.title}</p>
-							{#if order.detail}<p class="text-[11px] text-[#0D7377]">{order.detail}</p>{/if}
+							{#if order.detail}<p class="text-[11px] text-brand">{order.detail}</p>{/if}
 							{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 						</div>
 						<form method="POST" action="?/remove">
