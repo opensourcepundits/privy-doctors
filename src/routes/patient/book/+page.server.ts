@@ -1,8 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { actingPatient, bookAppointment, bookingBoard, futureAppointments } from '#lib/server/clinic';
 
-export async function load({ parent }) {
-	const { patient } = await parent();
+export function load({ locals }: { locals: App.Locals }) {
+	return { board: boardFor(locals) };
+}
+
+async function boardFor(locals: App.Locals) {
+	if (!locals.user) return { doctors: [], upcoming: [] };
+	const patient = await actingPatient(locals.user);
+	if (!patient) return { doctors: [], upcoming: [] };
 	const [doctors, upcoming] = await Promise.all([bookingBoard(), futureAppointments(patient.id)]);
 	return { doctors, upcoming };
 }

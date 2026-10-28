@@ -12,21 +12,27 @@ import {
 	updatePatientField
 } from '#lib/server/clinic';
 
-export async function load({ parent }) {
-	const { patient, preview } = await parent();
-	const [clinician, email] = await Promise.all([doctorById(patient.primary_doctor_id), accountEmail(patient.user_id)]);
-	const token = await ensureRecordToken(patient.id);
-	const svg = await QRCode.toString(recordPayload(token), {
-		type: 'svg',
-		margin: 1,
-		errorCorrectionLevel: 'M',
-		width: 208
-	});
+export function load({ parent }: { parent: () => Promise<{ patient: { id: number; primary_doctor_id: number | null; user_id: number | null }; preview: boolean }> }) {
 	return {
-		clinician,
-		email,
-		qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-		code: preview ? null : await activeAccessCode(patient.id)
+		pass: parent().then(async ({ patient, preview }) => {
+			const [clinician, email] = await Promise.all([
+				doctorById(patient.primary_doctor_id),
+				accountEmail(patient.user_id)
+			]);
+			const token = await ensureRecordToken(patient.id);
+			const svg = await QRCode.toString(recordPayload(token), {
+				type: 'svg',
+				margin: 1,
+				errorCorrectionLevel: 'M',
+				width: 208
+			});
+			return {
+				clinician,
+				email,
+				qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+				code: preview ? null : await activeAccessCode(patient.id)
+			};
+		})
 	};
 }
 

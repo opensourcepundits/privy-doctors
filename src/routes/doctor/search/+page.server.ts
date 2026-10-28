@@ -31,12 +31,18 @@ function forDoctor(patient: PatientRow & { access: string }) {
 	};
 }
 
-export async function load({ url, parent }) {
-	const { doctor } = await parent();
+export function load({ url, locals }: { url: URL; locals: App.Locals }) {
 	const q = url.searchParams.get('q') ?? '';
 	const intent = url.searchParams.get('intent');
+	return { q, intent, patients: roster(locals, q, intent) };
+}
+
+async function roster(locals: App.Locals, q: string, intent: string | null) {
+	if (!locals.user) return [];
+	const doctor = await doctorForUser(locals.user.id);
+	if (!doctor) return [];
 	const rows = await searchPatients(doctor.id, intent === 'consult' ? '' : q);
-	return { q, intent, patients: rows.map(forDoctor) };
+	return rows.map(forDoctor);
 }
 
 async function openOrAsk(doctorId: number, pid: string) {

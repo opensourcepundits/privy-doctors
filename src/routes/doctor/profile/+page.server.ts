@@ -8,10 +8,15 @@ async function requireDoctor(locals: App.Locals) {
 	return doctor;
 }
 
-export async function load({ parent }) {
-	const { doctor } = await parent();
-	const hours = await doctorSchedule(doctor.id);
-	return { hours };
+export function load({ locals }: { locals: App.Locals }) {
+	return { week: weekFor(locals) };
+}
+
+async function weekFor(locals: App.Locals) {
+	if (!locals.user) return [];
+	const doctor = await doctorForUser(locals.user.id);
+	if (!doctor) return [];
+	return doctorSchedule(doctor.id);
 }
 
 export const actions = {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { ageOn, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -7,19 +8,8 @@
 	let opened = $state(false);
 	let query = $state('');
 	const showNew = $derived(opened || Boolean(form?.offerNew));
-	const roster = $derived.by(() => {
-		const needle = query.trim().toLowerCase();
-		if (!needle) return data.patients;
-		return data.patients.filter((patient) => {
-			const haystack = [patient.first_name, patient.last_name, patient.pid, patient.nic, patient.passport]
-				.filter(Boolean)
-				.join(' ')
-				.toLowerCase();
-			return haystack.includes(needle) || `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(needle);
-		});
-	});
 
-	function identity(patient: (typeof data.patients)[number]) {
+	function identity(patient: { access: string; nic: string | null; passport: string | null }) {
 		if (patient.access !== 'granted') return 'Record locked';
 		const parts = [
 			patient.nic ? `NIC ${patient.nic}` : '',
@@ -60,9 +50,21 @@
 	{#if form?.message && !form?.offerNew}
 		<p class="mx-4 mt-3 text-sm text-red-600 lg:mx-0">{form.message}</p>
 	{/if}
-	<p class="mx-4 mt-3 text-sm text-[#64748B] lg:mx-0">{roster.length} {roster.length === 1 ? 'patient' : 'patients'}</p>
-
-	<section class="cards-2 px-4 py-4 lg:px-0">
+	<p class="mx-4 mt-3 text-sm text-[#64748B] lg:mx-0">Patients you can open</p>
+	{#await data.patients}
+		<div class="px-4 py-4 lg:px-0"><Skeleton count={4} /></div>
+	{:then patients}
+		{@const roster = patients.filter((patient) => {
+			const needle = query.trim().toLowerCase();
+			if (!needle) return true;
+			const haystack = [patient.first_name, patient.last_name, patient.pid, patient.nic, patient.passport]
+				.filter(Boolean)
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(needle) || `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(needle);
+		})}
+		<p class="mx-4 text-sm text-[#64748B] lg:mx-0">{roster.length} {roster.length === 1 ? 'patient' : 'patients'}</p>
+		<section class="cards-2 px-4 py-4 lg:px-0">
 		{#each roster as patient}
 			<form class="card lg:flex lg:items-center lg:justify-between lg:gap-6" method="POST" action="?intent=consult&/start">
 				<input type="hidden" name="pid" value={patient.pid} />
@@ -93,6 +95,9 @@
 			<p class="text-sm text-[#64748B]">No registered patient matches that search.</p>
 		{/each}
 	</section>
+	{:catch}
+		<p class="px-4 text-sm text-[#64748B] lg:px-0">The patient list could not be loaded.</p>
+	{/await}
 
 	<section class="mx-4 pb-4 lg:mx-0 lg:max-w-xl">
 		{#if showNew}
@@ -162,7 +167,10 @@
 	</form>
 
 	<section class="cards-2 px-4 py-4 lg:px-0">
-		{#each data.patients as patient}
+		{#await data.patients}
+			<Skeleton count={4} />
+		{:then patients}
+		{#each patients as patient}
 			<a class="card block" href={patient.access === 'granted' ? `/doctor/patients/${patient.pid}` : `/doctor/access/${patient.pid}`}>
 				<div class="flex items-center gap-3">
 					<div class="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
@@ -187,5 +195,8 @@
 		{:else}
 			<p class="text-sm text-[#64748B]">No patients match that search.</p>
 		{/each}
+		{:catch}
+			<p class="text-sm text-[#64748B]">The patient list could not be loaded.</p>
+		{/await}
 	</section>
 {/if}

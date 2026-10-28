@@ -1,6 +1,7 @@
 <script lang="ts">
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Mention from '#lib/components/Mention.svelte';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { ageOn, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -46,56 +47,61 @@
 	<div class="mb-3 flex items-end justify-between">
 		<div>
 			<h2 class="display text-lg font-semibold lg:text-xl">Today's patient schedule</h2>
-			<p class="text-sm text-[#64748B]">{data.appointments.length} upcoming</p>
 		</div>
 		<a class="text-sm font-semibold text-brand" href="/doctor/search">View all</a>
 	</div>
-	<div class="grid gap-3 lg:grid-cols-2">
-		{#each data.appointments as visit}
-			<article class="card">
-				<div class="flex gap-3">
-					<div class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand">
-						{initials(visit.first_name, visit.last_name)}
-					</div>
-					<div class="min-w-0 flex-1">
-						<div class="flex items-start justify-between gap-2">
-							<h3 class="font-semibold">{visit.first_name} {visit.last_name}, {ageOn(visit.dob)}y</h3>
-							<span class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</span>
-						</div>
-						<p class="text-sm font-medium text-[#0F172A]">{visit.title}</p>
-						<p class="text-xs text-[#64748B]">{visit.pid}</p>
-						<p class="mt-2 text-sm">Reason: <Mention text={visit.reason} /></p>
-						<p class="text-xs text-[#64748B]"><Mention text={visit.last_visit_label} /></p>
-						<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
-							Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
-						</a>
-					</div>
-				</div>
-			</article>
-		{/each}
-	</div>
-</section>
-
-{#if data.upcoming.length}
-	<section class="px-4 pt-6 pb-6 lg:px-0">
-		<h2 class="display text-lg font-semibold lg:text-xl">Booked ahead</h2>
-		<p class="text-sm text-[#64748B]">{data.upcoming.length} after today</p>
-		<div class="mt-3 grid gap-3 lg:grid-cols-2">
-			{#each data.upcoming as visit}
+	{#await data.schedule}
+		<Skeleton count={3} />
+	{:then schedule}
+		<p class="mb-3 text-sm text-[#64748B]">{schedule.appointments.length} upcoming</p>
+		<div class="grid gap-3 lg:grid-cols-2">
+			{#each schedule.appointments as visit}
 				<article class="card">
-					<div class="flex items-start justify-between gap-3">
-						<div>
-							<h3 class="font-semibold">{visit.first_name} {visit.last_name}</h3>
-							<p class="text-sm font-medium">{visit.title}</p>
-							<p class="text-xs text-[#64748B]">{visit.pid}</p>
+					<div class="flex gap-3">
+						<div class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft text-sm font-bold text-brand">
+							{initials(visit.first_name, visit.last_name)}
 						</div>
-						<p class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</p>
+						<div class="min-w-0 flex-1">
+							<div class="flex items-start justify-between gap-2">
+								<h3 class="font-semibold">{visit.first_name} {visit.last_name}, {ageOn(visit.dob)}y</h3>
+								<span class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</span>
+							</div>
+							<p class="text-sm font-medium text-[#0F172A]">{visit.title}</p>
+							<p class="text-xs text-[#64748B]">{visit.pid}</p>
+							<p class="mt-2 text-sm">Reason: <Mention text={visit.reason} /></p>
+							<p class="text-xs text-[#64748B]"><Mention text={visit.last_visit_label} /></p>
+							<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
+								Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
+							</a>
+						</div>
 					</div>
-					<p class="mt-2 text-sm">{formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
-					<p class="text-sm text-[#64748B]">{visit.location}</p>
-					<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
 				</article>
 			{/each}
 		</div>
-	</section>
-{/if}
+		{#if schedule.upcoming.length}
+			<div class="pt-6 pb-6">
+				<h2 class="display text-lg font-semibold lg:text-xl">Booked ahead</h2>
+				<p class="text-sm text-[#64748B]">{schedule.upcoming.length} after today</p>
+				<div class="mt-3 grid gap-3 lg:grid-cols-2">
+					{#each schedule.upcoming as visit}
+						<article class="card">
+							<div class="flex items-start justify-between gap-3">
+								<div>
+									<h3 class="font-semibold">{visit.first_name} {visit.last_name}</h3>
+									<p class="text-sm font-medium">{visit.title}</p>
+									<p class="text-xs text-[#64748B]">{visit.pid}</p>
+								</div>
+								<p class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</p>
+							</div>
+							<p class="mt-2 text-sm">{formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
+							<p class="text-sm text-[#64748B]">{visit.location}</p>
+							<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
+						</article>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	{:catch}
+		<p class="text-sm text-[#64748B]">The schedule could not be loaded.</p>
+	{/await}
+</section>

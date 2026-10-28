@@ -2,10 +2,15 @@ import { fail } from '@sveltejs/kit';
 import { actingPatient, saveTaskResult, taskOwned, tasksForPatient } from '#lib/server/clinic';
 import { saveTaskPdf } from '#lib/server/uploads';
 
-export async function load({ parent }) {
-	const { patient } = await parent();
-	const tasks = await tasksForPatient(patient.id);
-	return { tasks };
+export function load({ locals }: { locals: App.Locals }) {
+	return { tasks: tasksFor(locals) };
+}
+
+async function tasksFor(locals: App.Locals) {
+	if (!locals.user) return [];
+	const patient = await actingPatient(locals.user);
+	if (!patient) return [];
+	return tasksForPatient(patient.id);
 }
 
 export const actions = {

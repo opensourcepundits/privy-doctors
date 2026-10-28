@@ -1,14 +1,17 @@
 <script lang="ts">
 	import { WEEKDAYS, formatClock, groupByWeekday } from '#lib/schedule';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
-	const clinicHours = $derived(data.hours.filter((row) => row.kind === 'clinic'));
-	const homeHours = $derived(data.hours.filter((row) => row.kind === 'home'));
+	let hours = $state<null | Awaited<PageProps['data']['week']>>(null);
+	let hoursFailed = $state(false);
+	const clinicHours = $derived((hours ?? []).filter((row) => row.kind === 'clinic'));
+	const homeHours = $derived((hours ?? []).filter((row) => row.kind === 'home'));
 	const clinicDays = $derived(groupByWeekday(clinicHours));
 	const homeDays = $derived(groupByWeekday(homeHours));
 
-	function blankRanges(rows: typeof data.hours, weekday: number) {
+	function blankRanges(rows: typeof clinicHours, weekday: number) {
 		const saved = rows.filter((row) => row.weekday === weekday);
 		return {
 			shown: Math.min(3, Math.max(1, saved.length)),
@@ -32,6 +35,24 @@
 	});
 
 	$effect(() => {
+		let on = true;
+		hours = null;
+		hoursFailed = false;
+		data.week.then(
+			(rows) => {
+				if (on) hours = rows;
+			},
+			() => {
+				if (on) hoursFailed = true;
+			}
+		);
+		return () => {
+			on = false;
+		};
+	});
+
+	$effect(() => {
+		if (!hours) return;
 		const next = blankRanges(clinicHours, Number(clinicDay));
 		clinicShown = next.shown;
 		clinicStarts = next.starts;
@@ -39,6 +60,7 @@
 	});
 
 	$effect(() => {
+		if (!hours) return;
 		const next = blankRanges(homeHours, Number(homeDay));
 		homeShown = next.shown;
 		homeStarts = next.starts;
@@ -99,6 +121,11 @@
 		{/if}
 	</article>
 
+	{#if hoursFailed}
+		<p class="text-sm text-[#64748B] lg:col-span-2">The hours could not be loaded.</p>
+	{:else if !hours}
+		<div class="lg:col-span-2"><Skeleton count={2} /></div>
+	{:else}
 	<article class="card">
 		<p class="kicker">Clinic consultation hours</p>
 		<p class="mt-1 text-sm text-[#64748B]">Patients book office visits inside these hours. A day can have one, two, or three separate ranges, such as 8:00–12:00, 2:00–5:00, and 8:00–9:00. Each visit is 30 minutes.</p>
@@ -220,6 +247,7 @@
 			<button class="btn btn-block" type="submit">Save visitation hours</button>
 		</form>
 	</article>
+	{/if}
 
 	<div class="flex flex-col gap-3 lg:col-span-2 lg:flex-row">
 		<a class="btn" href="/patient">Open Noor Yadallee's patient view</a>

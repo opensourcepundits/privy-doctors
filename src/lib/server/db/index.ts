@@ -49,14 +49,14 @@ function neonDatabase(url: string) {
 	const cache = createQueryCache((strings, ...values) => http(strings, ...values));
 	let writer: postgres.Sql | undefined;
 	const query = (<T>(strings: TemplateStringsArray, ...values: unknown[]) => cache.query<T>(strings, ...values)) as ClinicSql;
-	query.begin = async (fn) => {
+	query.begin = (async (fn) => {
 		try {
 			writer ??= postgres(tcpUrl(url), postgresOptions(url));
 			return await writer.begin(fn as never);
 		} finally {
 			cache.clear();
 		}
-	};
+	}) as ClinicSql['begin'];
 	return { query, http };
 }
 

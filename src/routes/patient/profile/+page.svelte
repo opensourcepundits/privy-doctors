@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { ageOn, formatDate, formatTime, initials } from '#lib/format';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	const patient = $derived(data.patient);
+	let pass = $state<null | Awaited<PageProps['data']['pass']>>(null);
 	let editing = $state<string | null>(null);
 	let draft = $state('');
 	let review = $state<{ field: string; value: string } | null>(null);
@@ -18,13 +20,24 @@
 		nic: patient.nic ?? '',
 		passport: patient.passport ?? '',
 		phone: patient.phone ?? '',
-		email: data.email ?? '',
+		email: pass?.email ?? '',
 		conditions: patient.conditions.join('\n'),
 		allergies: patient.allergies.join('\n'),
 		surgeries: patient.surgeries.map((item) => `${item.year} — ${item.name}`).join('\n'),
 		insurance_name: patient.insurance_name ?? '',
 		insurance_group: patient.insurance_group ?? '',
 		insurance_member: patient.insurance_member ?? ''
+	});
+
+	$effect(() => {
+		let on = true;
+		pass = null;
+		data.pass.then((value) => {
+			if (on) pass = value;
+		});
+		return () => {
+			on = false;
+		};
 	});
 
 	function shown(field: keyof typeof raw, value = raw[field]) {
@@ -155,23 +168,29 @@
 </header>
 
 <section class="cards-2 px-4 py-4 text-sm lg:px-0">
-	{#if data.qr}
+	{#if !pass}
 		<article class="card span-2">
 			<p class="kicker">Record access</p>
 			<p class="mt-2">Show this code to a clinician. Scanning it adds them to My physicians and opens your full history. You are notified when that happens.</p>
-			<img class="mx-auto mt-4 w-52 rounded-xl bg-white p-2" src={data.qr} width="208" height="208" alt="QR code for {patient.first_name} {patient.last_name}'s medical record" />
+			<div class="mt-4"><Skeleton count={1} /></div>
+		</article>
+	{:else if pass.qr}
+		<article class="card span-2">
+			<p class="kicker">Record access</p>
+			<p class="mt-2">Show this code to a clinician. Scanning it adds them to My physicians and opens your full history. You are notified when that happens.</p>
+			<img class="mx-auto mt-4 w-52 rounded-xl bg-white p-2" src={pass.qr} width="208" height="208" alt="QR code for {patient.first_name} {patient.last_name}'s medical record" />
 			{#if !data.preview}
-				{#if data.code}
+				{#if pass.code}
 					<p class="mt-4 text-[#64748B]">Access code</p>
-					<p class="nums font-mono text-2xl tracking-widest">{data.code.code}</p>
-					<p class="text-[#64748B]">Expires {formatDate(data.code.expires_at)} · {formatTime(data.code.expires_at)}. It works once.</p>
+					<p class="nums font-mono text-2xl tracking-widest">{pass.code.code}</p>
+					<p class="text-[#64748B]">Expires {formatDate(pass.code.expires_at)} · {formatTime(pass.code.expires_at)}. It works once.</p>
 				{:else}
 					<p class="mt-4 text-[#64748B]">If a camera is not available, create a code the clinician can type. It works once and expires in 24 hours.</p>
 				{/if}
 				<form class="mt-4" method="POST" action="?/code">
-					<button class="btn" type="submit">{data.code ? 'Create a new access code' : 'Create access code'}</button>
+					<button class="btn" type="submit">{pass.code ? 'Create a new access code' : 'Create access code'}</button>
 				</form>
-				{#if data.code}
+				{#if pass.code}
 					<p class="mt-2 text-[#64748B]">Creating a new code replaces the one above.</p>
 				{/if}
 			{/if}
@@ -204,13 +223,18 @@
 		{@render editor('insurance_member', 'Member', 'text')}
 	</article>
 
-	{#if data.clinician}
+	{#if !pass}
 		<article class="card span-2">
 			<p class="kicker">Care team</p>
-			<p class="mt-3 font-semibold">{data.clinician.name}, {data.clinician.credentials}</p>
-			<p>{data.clinician.specialty} · {data.clinician.practice}</p>
-			<p class="text-[#64748B]">{data.clinician.location}</p>
-			{#if data.clinician.phone}<p class="mt-1">Concierge line {data.clinician.phone}</p>{/if}
+			<div class="mt-3"><Skeleton count={1} /></div>
+		</article>
+	{:else if pass.clinician}
+		<article class="card span-2">
+			<p class="kicker">Care team</p>
+			<p class="mt-3 font-semibold">{pass.clinician.name}, {pass.clinician.credentials}</p>
+			<p>{pass.clinician.specialty} · {pass.clinician.practice}</p>
+			<p class="text-[#64748B]">{pass.clinician.location}</p>
+			{#if pass.clinician.phone}<p class="mt-1">Concierge line {pass.clinician.phone}</p>{/if}
 		</article>
 	{/if}
 

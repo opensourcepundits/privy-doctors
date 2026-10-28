@@ -15,15 +15,24 @@ export async function userByEmail(email: string) {
 	return user ?? null;
 }
 
+const recentSessions = new Map<string, { at: number; user: SessionUser }>();
+
 export async function userFromSession(sessionId: string | undefined) {
 	if (!sessionId) return null;
+	const hit = recentSessions.get(sessionId);
+	if (hit && Date.now() - hit.at < 20_000) return hit.user;
 	const [user] = await client<SessionUser[]>`
 		SELECT u.id, u.email, u.role, u.name
 		FROM sessions s
 		JOIN users u ON u.id = s.user_id
 		WHERE s.id = ${sessionId} AND s.expires_at > now()
 	`;
-	return user ?? null;
+	if (!user) {
+		recentSessions.delete(sessionId);
+		return null;
+	}
+	recentSessions.set(sessionId, { at: Date.now(), user });
+	return user;
 }
 
 export async function createSession(userId: number) {
@@ -37,5 +46,6 @@ export async function createSession(userId: number) {
 
 export async function deleteSession(sessionId: string | undefined) {
 	if (!sessionId) return;
+	recentSessions.delete(sessionId);
 	await client`DELETE FROM sessions WHERE id = ${sessionId}`;
 }

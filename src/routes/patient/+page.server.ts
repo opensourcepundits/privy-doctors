@@ -1,8 +1,15 @@
-import { careOrdersFor, latestVital, pendingChartRequests, prescriptionsFor, tasksForPatient, upcomingAppointment } from '#lib/server/clinic';
+import { actingPatient, careOrdersFor, latestVital, pendingChartRequests, prescriptionsFor, tasksForPatient, upcomingAppointment } from '#lib/server/clinic';
 import { answerChartRequest } from '#lib/server/answers';
 
-export async function load({ parent }) {
-	const { patient } = await parent();
+export function load({ locals }: { locals: App.Locals }) {
+	return { home: homeFor(locals) };
+}
+
+async function homeFor(locals: App.Locals) {
+	const empty = { appointment: null, active: [], orders: [], vital: null, tasks: [], requests: [] };
+	if (!locals.user) return empty;
+	const patient = await actingPatient(locals.user);
+	if (!patient) return empty;
 	const [appointment, prescriptions, orders, vital, tasks, requests] = await Promise.all([
 		upcomingAppointment(patient.id),
 		prescriptionsFor(patient.id),

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import { ageOn } from '#lib/format';
 	import { historyEvents, type HistorySlice } from '#lib/history';
@@ -16,26 +17,6 @@
 		['procedures', 'Procedures'],
 		['hospital', 'Hospital visits']
 	] as const;
-
-	const events = $derived(
-		view === 'hospital'
-			? []
-			: historyEvents(
-					{
-						encounters: data.encounters,
-						reports: data.reports,
-						labs: data.labs,
-						imaging: data.imaging,
-						surgeries: data.patient.surgeries
-					},
-					view as HistorySlice,
-					{
-						lab: (id) => `/patient/labs/${id}`,
-						image: (id) => `/patient/imaging/${id}`,
-						report: data.preview ? undefined : (id) => `/patient/reports/${id}`
-					}
-				)
-	);
 </script>
 
 <header class="px-4 pt-5 lg:px-0">
@@ -53,5 +34,28 @@
 </nav>
 
 <section class="px-3 py-6 sm:px-4 lg:px-0">
-	<Timeline {events} emptyHref={view !== 'all' ? '?view=all' : ''} />
+	{#await data.record}
+		<Skeleton count={4} />
+	{:then record}
+		{@const events = !record || view === 'hospital'
+			? []
+			: historyEvents(
+					{
+						encounters: record.encounters,
+						reports: record.reports,
+						labs: record.labs,
+						imaging: record.imaging,
+						surgeries: data.patient.surgeries
+					},
+					view as HistorySlice,
+					{
+						lab: (id) => `/patient/labs/${id}`,
+						image: (id) => `/patient/imaging/${id}`,
+						report: data.preview ? undefined : (id) => `/patient/reports/${id}`
+					}
+				)}
+		<Timeline {events} emptyHref={view !== 'all' ? '?view=all' : ''} />
+	{:catch}
+		<p class="text-sm text-[#64748B]">The history could not be loaded.</p>
+	{/await}
 </section>

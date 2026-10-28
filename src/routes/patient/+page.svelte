@@ -1,15 +1,11 @@
 <script lang="ts">
 	import AccessRequests from '#lib/components/AccessRequests.svelte';
 	import Mention from '#lib/components/Mention.svelte';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { daysUntil, formatDate, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-	const meds = $derived(data.active.flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber }))));
-	const checked = $derived(
-		data.vital ? `${formatTime(data.vital.recorded_at)} · ${formatDate(data.vital.recorded_at)}` : 'No reading filed'
-	);
-	const tasksDone = $derived(data.tasks.filter((task) => task.stored_name).length);
 </script>
 
 <header class="px-4 pt-5 lg:px-0">
@@ -25,13 +21,6 @@
 	</div>
 </header>
 
-{#if data.requests.length}
-	<section class="grid gap-3 px-4 pt-4 lg:px-0">
-		<h2 class="display text-lg font-semibold">Allow record access</h2>
-		<AccessRequests requests={data.requests} preview={data.preview} />
-	</section>
-{/if}
-
 <div class="flex flex-wrap gap-2 px-4 pt-4 lg:px-0">
 	<a class="btn" href="/patient/book">
 		<span class="material-symbols-outlined text-lg">calendar_month</span>
@@ -43,32 +32,52 @@
 	</a>
 </div>
 
+{#await data.home}
+	<div class="space-y-4 px-4 pt-4 lg:px-0">
+		<h2 class="display text-lg font-semibold">Allow record access</h2>
+		<Skeleton kind="stats" count={2} />
+		<h2 class="display text-lg font-semibold">Active prescriptions</h2>
+		<Skeleton count={2} />
+		<h2 class="display text-lg font-semibold">Tasks</h2>
+		<Skeleton count={2} />
+	</div>
+{:then home}
+	{@const meds = home.active.flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber })))}
+	{@const checked = home.vital ? `${formatTime(home.vital.recorded_at)} · ${formatDate(home.vital.recorded_at)}` : 'No reading filed'}
+	{@const tasksDone = home.tasks.filter((task) => task.stored_name).length}
+{#if home.requests.length}
+	<section class="grid gap-3 px-4 pt-4 lg:px-0">
+		<h2 class="display text-lg font-semibold">Allow record access</h2>
+		<AccessRequests requests={home.requests} preview={data.preview} />
+	</section>
+{/if}
+
 <div class="grid items-start gap-4 px-4 pt-4 lg:grid-cols-2 lg:px-0">
 <div class="grid gap-4">
 <section class="grid grid-cols-2 gap-3">
 	<a class="card" href="/patient/vitals">
 		<p class="kicker">Resting HR</p>
-		<p class="display nums text-3xl font-bold">{data.vital?.heart_rate ?? '—'} <span class="text-sm">bpm</span></p>
+		<p class="display nums text-3xl font-bold">{home.vital?.heart_rate ?? '—'} <span class="text-sm">bpm</span></p>
 		<p class="mt-1 text-xs text-[#64748B]">Last checked</p>
 		<p class="text-xs text-[#64748B]">{checked}</p>
 	</a>
 	<a class="card" href="/patient/vitals">
 		<p class="kicker">Blood pressure</p>
-		<p class="display nums text-3xl font-bold">{data.vital ? `${data.vital.systolic}/${data.vital.diastolic}` : '—'}</p>
+		<p class="display nums text-3xl font-bold">{home.vital ? `${home.vital.systolic}/${home.vital.diastolic}` : '—'}</p>
 		<p class="mt-1 text-xs text-[#64748B]">Last checked</p>
 		<p class="text-xs text-[#64748B]">{checked}</p>
 	</a>
 </section>
 
-{#if data.appointment}
+{#if home.appointment}
 	<section>
 		<article class="card">
-			<p class="kicker">Next appointment · in {daysUntil(data.appointment.starts_at)} days</p>
-			<h2 class="display mt-1 text-xl font-bold">{formatLongDate(data.appointment.starts_at)}</h2>
-			<p class="text-sm">{formatTime(data.appointment.starts_at)} · {data.appointment.duration_min} min</p>
-			<p class="mt-2 font-semibold"><Mention text={data.appointment.doctor_name} />, {data.appointment.credentials}</p>
-			<p class="text-sm text-[#64748B]">{data.appointment.location}</p>
-			<p class="mt-2 text-sm">{data.appointment.title}</p>
+			<p class="kicker">Next appointment · in {daysUntil(home.appointment.starts_at)} days</p>
+			<h2 class="display mt-1 text-xl font-bold">{formatLongDate(home.appointment.starts_at)}</h2>
+			<p class="text-sm">{formatTime(home.appointment.starts_at)} · {home.appointment.duration_min} min</p>
+			<p class="mt-2 font-semibold"><Mention text={home.appointment.doctor_name} />, {home.appointment.credentials}</p>
+			<p class="text-sm text-[#64748B]">{home.appointment.location}</p>
+			<p class="mt-2 text-sm">{home.appointment.title}</p>
 		</article>
 	</section>
 {/if}
@@ -97,11 +106,11 @@
 
 <section>
 	<div class="mb-2 flex items-center justify-between">
-		<h2 class="display text-lg font-semibold">Tasks · {tasksDone} of {data.tasks.length}</h2>
+		<h2 class="display text-lg font-semibold">Tasks · {tasksDone} of {home.tasks.length}</h2>
 		<a class="text-sm font-semibold text-brand" href="/patient/tasks">Open checklist</a>
 	</div>
 	<div class="space-y-3">
-		{#each data.tasks as task}
+		{#each home.tasks as task}
 			<article class="card">
 				<p class="font-semibold">{task.title}</p>
 				<p class="text-sm text-[#64748B]">Consultation {task.consultation_code} · <Mention text={task.doctor_name} /></p>
@@ -114,9 +123,9 @@
 </section>
 
 <section class="pb-5">
-	<h2 class="display text-lg font-semibold">Pending tests · {data.orders.length}</h2>
+	<h2 class="display text-lg font-semibold">Pending tests · {home.orders.length}</h2>
 	<div class="mt-2 space-y-3">
-		{#each data.orders as order}
+		{#each home.orders as order}
 			<article class="card">
 				<p class="font-semibold">{order.title}</p>
 				<p class="text-sm text-[#64748B]">Ordered by <Mention text={order.ordered_by} /></p>
@@ -134,3 +143,6 @@
 </section>
 </div>
 </div>
+{:catch}
+	<p class="px-4 pt-4 text-sm text-[#64748B] lg:px-0">The home page could not be loaded.</p>
+{/await}

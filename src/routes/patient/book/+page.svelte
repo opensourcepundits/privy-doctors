@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import Mention from '#lib/components/Mention.svelte';
+	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { formatLongDate, formatTime } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let board = $state<null | Awaited<PageProps['data']['board']>>(null);
+	let boardFailed = $state(false);
 	let query = $state('');
 	let specialty = $state('All');
 	let gender = $state('All');
@@ -17,9 +20,9 @@
 	let moreByDoctor = $state<Record<number, boolean>>({});
 	let detail = $state<HTMLElement | null>(null);
 
-	const specialties = $derived([...new Set(data.doctors.map((doctor) => doctor.specialty))].sort());
+	const specialties = $derived([...new Set((board?.doctors ?? []).map((doctor) => doctor.specialty))].sort());
 	const filtered = $derived(
-		data.doctors.filter((doctor) => {
+		(board?.doctors ?? []).filter((doctor) => {
 			const needle = query.trim().toLowerCase().replace(/\./g, '');
 			const name = doctor.name.toLowerCase().replace(/\./g, '');
 			const nameOk = !needle || name.includes(needle);
@@ -79,6 +82,23 @@
 	});
 
 	$effect(() => {
+		let on = true;
+		board = null;
+		boardFailed = false;
+		data.board.then(
+			(value) => {
+				if (on) board = value;
+			},
+			() => {
+				if (on) boardFailed = true;
+			}
+		);
+		return () => {
+			on = false;
+		};
+	});
+
+	$effect(() => {
 		if (!chosen) return;
 		detail?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 	});
@@ -94,7 +114,12 @@
 	<p class="mx-4 mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:mx-0">{form.message}</p>
 {/if}
 
-{#if data.upcoming.length}
+{#if boardFailed}
+	<p class="px-4 pt-4 text-sm text-[#64748B] lg:px-0">The clinicians could not be loaded.</p>
+{:else if !board}
+	<div class="px-4 py-4 lg:px-0"><Skeleton count={4} /></div>
+{:else}
+{#if board.upcoming.length}
 	<section class="px-4 pt-4 lg:px-0">
 		<button
 			class="flex w-full items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 text-left lg:hidden"
@@ -104,12 +129,12 @@
 		>
 			<span>
 				<span class="display block text-lg font-semibold">Already booked</span>
-				<span class="text-sm text-[#64748B]">{data.upcoming.length} upcoming {data.upcoming.length === 1 ? 'visit' : 'visits'}</span>
+				<span class="text-sm text-[#64748B]">{board.upcoming.length} upcoming {board.upcoming.length === 1 ? 'visit' : 'visits'}</span>
 			</span>
 			<span class="material-symbols-outlined text-brand" aria-hidden="true">{bookingsOpen ? 'expand_less' : 'expand_more'}</span>
 		</button>
 		<div class="{bookingsOpen ? 'mt-3 grid' : 'hidden'} gap-3 lg:mt-0 lg:grid lg:grid-cols-2">
-			{#each data.upcoming as visit}
+			{#each board.upcoming as visit}
 				<article class="card !py-3">
 					<p class="kicker">{visit.title}</p>
 					<p class="mt-1 font-semibold">{formatLongDate(visit.starts_at)}</p>
@@ -318,3 +343,4 @@
 		{/if}
 	</div>
 </section>
+{/if}
