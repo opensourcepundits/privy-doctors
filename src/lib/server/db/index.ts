@@ -3,6 +3,7 @@ import { drizzle as drizzleNeon } from 'drizzle-orm/neon-http';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { DATABASE_URL, DATABASE_URL_UNPOOLED, POSTGRES_URL } from '$app/env/private';
+import { createQueryCache } from './cache';
 import * as schema from './schema';
 
 export interface ClinicSql {
@@ -44,11 +45,17 @@ function tcpUrl(url: string) {
 // The next page then waits while that connection is opened again. HTTPS queries do not keep a socket.
 function neonDatabase(url: string) {
 	const http = neon(url, { fetchOptions: { cache: 'no-store' } });
+	// Repeated reads stay in this process for 20 seconds. Any write drops them.
+	const cache = createQueryCache((strings, ...values) => http(strings, ...values));
 	let writer: postgres.Sql | undefined;
-	const query = (<T>(strings: TemplateStringsArray, ...values: unknown[]) => http(strings, ...values) as Promise<T>) as ClinicSql;
-	query.begin = (fn) => {
-		writer ??= postgres(tcpUrl(url), postgresOptions(url));
-		return writer.begin(fn as never);
+	const query = (<T>(strings: TemplateStringsArray, ...values: unknown[]) => cache.query<T>(strings, ...values)) as ClinicSql;
+	query.begin = async (fn) => {
+		try {
+			writer ??= postgres(tcpUrl(url), postgresOptions(url));
+			return await writer.begin(fn as never);
+		} finally {
+			cache.clear();
+		}
 	};
 	return { query, http };
 }
