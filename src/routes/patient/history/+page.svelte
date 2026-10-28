@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Mention from '#lib/components/Mention.svelte';
 	import { ageOn, asDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -6,6 +7,7 @@
 	const views = [
 		['all', 'All history'],
 		['consultations', 'Consultations'],
+		['reports', 'Self reports'],
 		['diagnostics', 'Diagnostics'],
 		['images', 'Medical images'],
 		['procedures', 'Procedures'],
@@ -23,6 +25,8 @@
 		body: string;
 		note: string;
 		href: string;
+		link: string;
+		image: string;
 	};
 
 	function stamped(value: Date | string) {
@@ -48,7 +52,29 @@
 					meta: `${visit.doctor_name} · ${visit.kind}`,
 					body: visit.findings,
 					note: visit.plan,
-					href: ''
+					href: '',
+					link: '',
+					image: ''
+				});
+			}
+		}
+		if (view === 'all' || view === 'reports') {
+			for (const report of data.reports) {
+				const when = stamped(report.occurred_on);
+				const strength = report.severity === 'mild' ? 'Mild' : report.severity === 'moderate' ? 'Moderate' : report.severity === 'severe' ? 'Severe' : '';
+				const meta = [strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ');
+				items.push({
+					...when,
+					at: when.at + report.id,
+					kind: 'Self report',
+					tone: 'bg-rose-600',
+					title: report.title,
+					meta: meta || 'Filed by you',
+					body: report.detail ?? '',
+					note: report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '',
+					href: '',
+					link: '',
+					image: ''
 				});
 			}
 		}
@@ -63,7 +89,9 @@
 					meta: [lab.facility, lab.ordering_md].filter(Boolean).join(' · '),
 					body: lab.note ?? '',
 					note: '',
-					href: ''
+					href: `/patient/labs/${lab.id}`,
+					link: 'View the lab report',
+					image: ''
 				});
 			}
 		}
@@ -78,7 +106,9 @@
 					meta: study.facility ?? '',
 					body: study.summary ?? '',
 					note: '',
-					href: `/patient/imaging/${study.id}`
+					href: `/patient/imaging/${study.id}`,
+					link: 'View the scan',
+					image: study.image_path ?? ''
 				});
 			}
 		}
@@ -95,7 +125,9 @@
 					meta: 'Procedure on file',
 					body: '',
 					note: '',
-					href: ''
+					href: '',
+					link: '',
+					image: ''
 				});
 			}
 		}
@@ -133,11 +165,14 @@
 					<div class="pb-8">
 						<p class="text-[11px] font-semibold tracking-wide text-[#64748B] uppercase">{event.kind}</p>
 						<h2 class="font-semibold">{event.title}</h2>
-						{#if event.meta}<p class="text-sm text-[#64748B]">{event.meta}</p>{/if}
-						{#if event.body}<p class="mt-1 text-sm">{event.body}</p>{/if}
-						{#if event.note}<p class="mt-1 text-sm text-[#64748B]">{event.note}</p>{/if}
+						{#if event.meta}<p class="text-sm text-[#64748B]"><Mention text={event.meta} /></p>{/if}
+						{#if event.body}<p class="mt-1 text-sm"><Mention text={event.body} /></p>{/if}
+						{#if event.note}<p class="mt-1 text-sm text-[#64748B]"><Mention text={event.note} /></p>{/if}
+						{#if event.image}
+							<a href={event.href}><img class="mt-2 h-28 w-full max-w-xs rounded-xl bg-[#020617] object-contain" src={event.image} alt="" /></a>
+						{/if}
 						{#if event.href}
-							<a class="mt-1 inline-flex text-sm font-semibold text-brand" href={event.href}>View the imaging report</a>
+							<a class="mt-1 inline-flex text-sm font-semibold text-brand" href={event.href}>{event.link}</a>
 						{/if}
 					</div>
 				</li>

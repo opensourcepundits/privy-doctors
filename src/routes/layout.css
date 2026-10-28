@@ -97,6 +97,32 @@ body {
 
 .btn:hover { background: var(--color-brand-strong); }
 
+.btn-split {
+	width: auto;
+	flex: 1 1 auto;
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.btn-caret {
+	display: grid;
+	width: 3rem;
+	min-height: 3rem;
+	flex: 0 0 3rem;
+	place-items: center;
+	border-top-right-radius: 0.5rem;
+	border-bottom-right-radius: 0.5rem;
+	background: var(--color-brand);
+	color: white;
+	cursor: pointer;
+}
+
+.btn-caret:hover { background: var(--color-brand-strong); }
+
+@media (min-width: 1024px) {
+	.btn-split { flex: 0 0 auto; }
+}
+
 .btn-line {
 	box-sizing: border-box;
 	display: flex;
@@ -206,3 +232,51 @@ textarea.field {
 }
 
 .nums { font-variant-numeric: tabular-nums; }
+
+.action-row {
+	display: grid;
+	gap: 0.5rem;
+	width: 100%;
+}
+
+.action-row > * {
+	min-width: 0;
+}
+
+.action-row .btn,
+.action-row .btn-split,
+.action-row .btn-line {
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+}
+
+.action-row .btn-split {
+	flex: 1 1 auto;
+}
+
+.action-row .btn-caret {
+	align-self: stretch;
+	height: auto;
+}
+
+@media (min-width: 1024px) {
+	.action-row:has(> :nth-child(2)) {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		max-width: 42rem;
+	}
+
+	.action-row .btn:not(.btn-block),
+	.action-row .btn-split,
+	.action-row .btn-line:not(.btn-block) {
+		width: 100%;
+		min-width: 0;
+		max-width: none;
+		flex: 1 1 auto;
+	}
+
+	.action-row:not(:has(> :nth-child(2))) .btn:not(.btn-block) {
+		width: fit-content;
+		min-width: min(12rem, 100%);
+	}
+}

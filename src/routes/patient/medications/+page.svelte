@@ -1,8 +1,10 @@
 <script lang="ts">
+	import Mention from '#lib/components/Mention.svelte';
+	import { formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
-	const current = $derived(data.prescriptions.filter((order) => order.status === 'active').flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber, code: order.code }))));
+	const current = $derived(data.prescriptions.filter((order) => order.status === 'active').flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber, code: order.code, prescription_completes: order.completes_on }))));
 	const past = $derived(data.prescriptions.filter((order) => order.status !== 'active').flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber, status: order.status }))));
 </script>
 
@@ -16,12 +18,14 @@
 <section class="space-y-3 px-4 py-4">
 	{#each current as med}
 		<article class="card">
-			<p class="text-xs text-[#64748B]">{med.prescriber} · {med.code}</p>
+			<p class="text-xs text-[#64748B]"><Mention text={med.prescriber} /> · {med.code}</p>
 			<h2 class="font-semibold">{med.name}</h2>
 			<p class="text-sm">{med.strength} {med.form}</p>
 			<p class="mt-2 text-sm">{med.indication}</p>
 			<p class="text-sm text-[#64748B]">{med.schedule_detail}</p>
 			<p class="text-xs text-[#64748B]">{med.remaining_label} · {med.refills}</p>
+			{#if med.prescription_completes}<p class="text-xs text-[#64748B]">Prescription completes {formatDate(med.prescription_completes)}</p>{/if}
+			{#if med.completes_on}<p class="text-xs text-[#64748B]">This medicine completes {formatDate(med.completes_on)}</p>{/if}
 		</article>
 	{/each}
 	<form class="card space-y-2" method="POST" action="?/otc">
@@ -35,7 +39,7 @@
 	{#each past as med}
 		<article class="card">
 			<p class="font-semibold">{med.name} {med.strength}</p>
-			<p class="text-sm capitalize">{med.status} · {med.prescriber}</p>
+			<p class="text-sm capitalize">{med.status} · <Mention text={med.prescriber} /></p>
 			<p class="text-sm text-[#64748B]">{med.indication}</p>
 		</article>
 	{/each}

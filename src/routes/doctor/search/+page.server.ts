@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { createWalkInPatient, doctorForUser, draftConsult, patientByPid, searchPatients } from '#lib/server/clinic';
+import { createWalkInPatient, doctorForUser, draftConsult, patientByPid, requestChartAccess, searchPatients, type PatientRow } from '#lib/server/clinic';
 
 const sexes = ['Female', 'Male'] as const;
 
@@ -8,19 +8,43 @@ function doctorFrom(locals: App.Locals) {
 	return doctorForUser(locals.user.id);
 }
 
-function splitName(name: string) {
-	const parts = name.trim().split(/\s+/).filter(Boolean);
+function forDoctor(patient: PatientRow & { access: string }) {
+	const hasPortal = Boolean(patient.user_id);
+	const shared = { ...patient, record_token: null, user_id: null, has_portal: hasPortal };
+	if (patient.access === 'granted') return shared;
 	return {
-		firstName: parts[0] ?? '',
-		lastName: parts.slice(1).join(' ')
+		...shared,
+		blood_type: null,
+		allergies: [],
+		conditions: [],
+		surgeries: [],
+		phone: null,
+		nic: null,
+		passport: null,
+		concierge_note: null,
+		insurance_name: null,
+		insurance_group: null,
+		insurance_member: null,
+		pharmacy_name: null,
+		pharmacy_address: null,
+		pharmacy_phone: null
 	};
 }
 
-export async function load({ url }) {
+export async function load({ url, parent }) {
+	const { doctor } = await parent();
 	const q = url.searchParams.get('q') ?? '';
 	const intent = url.searchParams.get('intent');
-	const patients = intent === 'consult' ? [] : await searchPatients(q);
-	return { q, intent, patients };
+	const rows = await searchPatients(doctor.id, intent === 'consult' ? '' : q);
+	return { q, intent, patients: rows.map(forDoctor) };
+}
+
+async function openOrAsk(doctorId: number, pid: string) {
+	const patient = await patientByPid(pid);
+	if (!patient) return { error: 'That patient could not be found.' as const };
+	const result = await requestChartAccess(patient.id, doctorId);
+	if (result !== 'granted') return { locked: patient.pid };
+	return { patient };
 }
 
 export const actions = {
@@ -29,45 +53,26 @@ export const actions = {
 		if (!doctor) redirect(303, '/login');
 
 		const data = await request.formData();
-		const name = String(data.get('name') ?? '').trim();
 		const pid = String(data.get('pid') ?? '').trim();
+		if (!pid) return fail(400, { message: 'Select a registered patient to start the consultation.' });
 
-		if (pid) {
-			const patient = await patientByPid(pid);
-			if (!patient) return fail(404, { name, message: 'That patient could not be found.' });
-			await draftConsult(patient.id, doctor.id);
-			redirect(303, `/doctor/patients/${patient.pid}/consult`);
-		}
-
-		if (!name) return fail(400, { message: 'Enter the patient name to start the consultation.' });
-
-		const matches = await searchPatients(name);
-		if (matches.length === 0) {
-			return fail(404, {
-				name,
-				offerNew: true,
-				...splitName(name),
-				message: 'No chart matches that name. Register them without a portal account, then start.'
-			});
-		}
-		if (matches.length > 1) {
-			return {
-				name,
-				message: 'Several patients match that name. Choose who is here.',
-				matches: matches.map((patient) => ({
-					pid: patient.pid,
-					first_name: patient.first_name,
-					last_name: patient.last_name,
-					dob: patient.dob,
-					sex: patient.sex,
-					conditions: patient.conditions ?? [],
-					concierge_note: patient.concierge_note
-				}))
-			};
-		}
-
-		await draftConsult(matches[0].id, doctor.id);
-		redirect(303, `/doctor/patients/${matches[0].pid}/consult`);
+		const gate = await openOrAsk(doctor.id, pid);
+		if ('error' in gate) return fail(404, { message: gate.error });
+		if ('locked' in gate) redirect(303, `/doctor/access/${gate.locked}`);
+		await draftConsult(gate.patient.id, doctor.id);
+		redirect(303, `/doctor/patients/${gate.patient.pid}/consult`);
+	},
+	request: async ({ request, locals }) => {
+		const doctor = await doctorFrom(locals);
+		if (!doctor) redirect(303, '/login');
+		const data = await request.formData();
+		const pid = String(data.get('pid') ?? '').trim();
+		if (!pid) return fail(400, { message: 'Select a registered patient.' });
+		const gate = await openOrAsk(doctor.id, pid);
+		if ('error' in gate) return fail(404, { message: gate.error });
+		if ('locked' in gate) redirect(303, `/doctor/access/${gate.locked}`);
+		await draftConsult(gate.patient.id, doctor.id);
+		redirect(303, `/doctor/patients/${gate.patient.pid}/consult`);
 	},
 	register: async ({ request, locals }) => {
 		const doctor = await doctorFrom(locals);

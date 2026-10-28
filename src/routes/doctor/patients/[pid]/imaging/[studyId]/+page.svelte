@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Mention from '#lib/components/Mention.svelte';
+	import StudyViewer from '#lib/components/StudyViewer.svelte';
 	import { formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -13,11 +15,12 @@
 	<p class="text-sm text-[#64748B]">{data.patient.first_name} {data.patient.last_name} · {data.patient.pid}</p>
 </header>
 
-<section class="space-y-3 px-4 py-4">
+<section class="space-y-3 px-4 py-4 lg:px-0">
+	<StudyViewer title={data.study.title} image={data.study.image_path} report={data.study.report_path} caption={data.study.meta} />
 	<article class="card text-sm">
 		<p>{data.study.facility}</p>
 		{#if data.study.equipment}<p class="text-[#64748B]">{data.study.equipment}</p>{/if}
-		{#if data.study.radiologist}<p class="mt-2">Interpreting physician: {data.study.radiologist}</p>{/if}
+		{#if data.study.radiologist}<p class="mt-2">Interpreting physician: <Mention text={data.study.radiologist} /></p>{/if}
 		{#if data.study.protocol}<p>Protocol: {data.study.protocol}</p>{/if}
 		<p class="mt-2">{data.study.meta}</p>
 	</article>

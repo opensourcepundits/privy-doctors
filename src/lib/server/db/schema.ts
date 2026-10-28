@@ -8,7 +8,8 @@ import {
 	serial,
 	text,
 	time,
-	timestamp
+	timestamp,
+	uniqueIndex
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
@@ -37,6 +38,7 @@ export const patients = pgTable('patients', {
 	userId: integer('user_id').references(() => users.id),
 	primaryDoctorId: integer('primary_doctor_id').references(() => doctors.id),
 	pid: text('pid').notNull().unique(),
+	recordToken: text('record_token').unique(),
 	firstName: text('first_name').notNull(),
 	lastName: text('last_name').notNull(),
 	dob: date('dob').notNull(),
@@ -116,7 +118,8 @@ export const prescriptions = pgTable('prescriptions', {
 	orderedAt: timestamp('ordered_at').notNull(),
 	status: text('status').notNull(),
 	authThrough: text('auth_through'),
-	courseLabel: text('course_label')
+	courseLabel: text('course_label'),
+	completesOn: date('completes_on')
 });
 
 export const prescriptionItems = pgTable('prescription_items', {
@@ -136,7 +139,8 @@ export const prescriptionItems = pgTable('prescription_items', {
 	scheduleDetail: text('schedule_detail'),
 	remainingLabel: text('remaining_label'),
 	dueLabel: text('due_label'),
-	sortOrder: integer('sort_order').notNull()
+	sortOrder: integer('sort_order').notNull(),
+	completesOn: date('completes_on')
 });
 
 export const doseLogs = pgTable('dose_logs', {
@@ -162,7 +166,8 @@ export const labs = pgTable('labs', {
 	specimen: text('specimen'),
 	panelId: text('panel_id'),
 	note: text('note'),
-	acknowledged: boolean('acknowledged').notNull()
+	acknowledged: boolean('acknowledged').notNull(),
+	reportPath: text('report_path')
 });
 
 export const labResults = pgTable('lab_results', {
@@ -196,7 +201,9 @@ export const imagingStudies = pgTable('imaging_studies', {
 	patientQuote: text('patient_quote'),
 	outlook: text('outlook'),
 	vessels: jsonb('vessels').notNull(),
-	status: text('status').notNull()
+	status: text('status').notNull(),
+	imagePath: text('image_path'),
+	reportPath: text('report_path')
 });
 
 export const careOrders = pgTable('care_orders', {
@@ -241,6 +248,7 @@ export const consultations = pgTable('consultations', {
 	modality: text('modality').notNull(),
 	narrative: text('narrative'),
 	pharmacy: text('pharmacy'),
+	completesOn: date('completes_on'),
 	startedAt: timestamp('started_at', { withTimezone: true }).notNull()
 });
 
@@ -258,7 +266,71 @@ export const consultationOrders = pgTable('consultation_orders', {
 	kind: text('kind').notNull(),
 	title: text('title').notNull(),
 	detail: text('detail'),
-	note: text('note')
+	note: text('note'),
+	completesOn: date('completes_on')
+});
+
+export const patientTasks = pgTable('patient_tasks', {
+	id: serial('id').primaryKey(),
+	patientId: integer('patient_id').notNull(),
+	consultationId: integer('consultation_id').notNull(),
+	orderId: integer('order_id'),
+	title: text('title').notNull(),
+	detail: text('detail'),
+	note: text('note'),
+	status: text('status').notNull(),
+	fileName: text('file_name'),
+	storedName: text('stored_name'),
+	uploadedAt: timestamp('uploaded_at')
+});
+
+export const referrals = pgTable('referrals', {
+	id: serial('id').primaryKey(),
+	patientId: integer('patient_id').notNull(),
+	fromDoctorId: integer('from_doctor_id').notNull(),
+	toDoctorId: integer('to_doctor_id').notNull(),
+	sourceConsultId: integer('source_consult_id'),
+	orderId: integer('order_id'),
+	followConsultId: integer('follow_consult_id'),
+	note: text('note'),
+	status: text('status').notNull(),
+	createdAt: timestamp('created_at').notNull()
+});
+
+export const patientAccess = pgTable(
+	'patient_access',
+	{
+		id: serial('id').primaryKey(),
+		patientId: integer('patient_id').notNull(),
+		doctorId: integer('doctor_id').notNull(),
+		status: text('status').notNull(),
+		source: text('source').notNull(),
+		createdAt: timestamp('created_at').notNull()
+	},
+	(table) => [uniqueIndex('patient_access_pair_idx').on(table.patientId, table.doctorId)]
+);
+
+export const accessCodes = pgTable('access_codes', {
+	id: serial('id').primaryKey(),
+	patientId: integer('patient_id').notNull(),
+	code: text('code').notNull().unique(),
+	createdAt: timestamp('created_at').notNull(),
+	expiresAt: timestamp('expires_at').notNull(),
+	usedAt: timestamp('used_at'),
+	usedBy: integer('used_by')
+});
+
+export const selfReports = pgTable('self_reports', {
+	id: serial('id').primaryKey(),
+	patientId: integer('patient_id').notNull(),
+	occurredOn: date('occurred_on').notNull(),
+	title: text('title').notNull(),
+	detail: text('detail'),
+	duration: text('duration'),
+	severity: text('severity'),
+	medsTaken: text('meds_taken'),
+	ongoing: boolean('ongoing').notNull(),
+	createdAt: timestamp('created_at').notNull()
 });
 
 export const sessions = pgTable('sessions', {

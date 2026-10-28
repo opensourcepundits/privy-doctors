@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { ageOn, formatLongDate, formatTime, initials } from '#lib/format';
+	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
+	import Mention from '#lib/components/Mention.svelte';
+	import { ageOn, formatDate, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -14,7 +16,7 @@
 	);
 </script>
 
-<header class="px-4 pt-6 lg:flex lg:items-end lg:justify-between lg:gap-6 lg:px-0">
+<header class="px-4 pt-6 lg:px-0">
 	<div class="flex items-center gap-3">
 		<div class="grid h-12 w-12 place-items-center rounded-full bg-brand text-sm font-bold text-white">{monogram}</div>
 		<div>
@@ -23,10 +25,13 @@
 			<p class="text-sm text-[#64748B]">{data.doctor.practice} · {data.doctor.specialty}</p>
 		</div>
 	</div>
-	<a class="btn mt-4 lg:mt-0" href="/doctor/search?intent=consult">
-		<span class="material-symbols-outlined text-lg">add</span>
-		Start new consultation
-	</a>
+	<div class="action-row mt-4">
+		<IncomingMenu href="/doctor/search?intent=consult" referrals={data.incoming} />
+		<a class="btn" href="/doctor/scan">
+			<span class="material-symbols-outlined text-lg">qr_code_scanner</span>
+			Scan QR
+		</a>
+	</div>
 </header>
 
 <form class="px-4 pt-4 lg:px-0" action="/doctor/search">
@@ -36,6 +41,21 @@
 		<button class="absolute top-1/2 right-1.5 h-8 -translate-y-1/2 rounded-lg bg-brand px-3.5 text-xs font-semibold text-white" type="submit">Find</button>
 	</label>
 </form>
+
+{#if data.notifications.length}
+	<section class="px-4 pt-6 lg:px-0">
+		<h2 class="display text-lg font-semibold lg:text-xl">Notifications</h2>
+		<div class="mt-3 grid gap-3 lg:grid-cols-2">
+			{#each data.notifications.slice(0, 4) as note}
+				<article class="card">
+					<p class="font-semibold">{note.title}</p>
+					<p class="text-sm"><Mention text={note.body} /></p>
+					<p class="text-xs text-[#64748B]">{formatDate(note.created_at)} · {formatTime(note.created_at)}</p>
+				</article>
+			{/each}
+		</div>
+	</section>
+{/if}
 
 <section class="px-4 pt-6 lg:px-0">
 	<div class="mb-3 flex items-end justify-between">
@@ -59,8 +79,8 @@
 						</div>
 						<p class="text-sm font-medium text-[#0F172A]">{visit.title}</p>
 						<p class="text-xs text-[#64748B]">{visit.pid}</p>
-						<p class="mt-2 text-sm">Reason: {visit.reason}</p>
-						<p class="text-xs text-[#64748B]">{visit.last_visit_label}</p>
+						<p class="mt-2 text-sm">Reason: <Mention text={visit.reason} /></p>
+						<p class="text-xs text-[#64748B]"><Mention text={visit.last_visit_label} /></p>
 						<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
 							Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
 						</a>
@@ -88,7 +108,7 @@
 					</div>
 					<p class="mt-2 text-sm">{formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
 					<p class="text-sm text-[#64748B]">{visit.location}</p>
-					<p class="mt-1 text-sm">Reason: {visit.reason}</p>
+					<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
 				</article>
 			{/each}
 		</div>

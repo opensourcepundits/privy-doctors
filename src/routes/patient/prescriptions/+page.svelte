@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
+	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -21,7 +22,7 @@
 	<details class="group border-t border-[#E2E8F0]" open={startOpen}>
 		<summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
 			<div class="min-w-0">
-				<p class="font-semibold">{order.prescriber} · {formatDate(order.ordered_at)}</p>
+				<p class="font-semibold"><Mention text={order.prescriber} /> · {formatDate(order.ordered_at)}</p>
 				<p class="truncate text-sm text-[#64748B]">{order.items.map((item) => item.name).join(', ')}</p>
 			</div>
 			<span class="flex shrink-0 items-center gap-2">
@@ -30,14 +31,14 @@
 			</span>
 		</summary>
 		<div class="space-y-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-			<p class="text-xs text-[#64748B]">{order.code}{#if order.course_label} · {order.course_label}{/if}</p>
+			<p class="text-xs text-[#64748B]">{order.code}{#if order.course_label} · {order.course_label}{/if}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
 			{#each order.items as item}
 				<div class="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
 					<p class="font-semibold">{item.name}</p>
 					<p class="text-sm text-[#334155]">{item.strength} {item.form}</p>
 					{#if item.sig}<p class="mt-1 text-sm">{item.sig}</p>{/if}
 					{#if item.indication}<p class="text-sm text-[#64748B]">{item.indication}</p>{/if}
-					<p class="mt-1 text-xs text-[#64748B]">{[item.supply_label, item.refills].filter(Boolean).join(' · ')}</p>
+					<p class="mt-1 text-xs text-[#64748B]">{[item.supply_label, item.refills, item.completes_on ? `Completes ${formatDate(item.completes_on)}` : ''].filter(Boolean).join(' · ')}</p>
 				</div>
 			{/each}
 		</div>

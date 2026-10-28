@@ -1,42 +1,100 @@
 <script lang="ts">
+	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import { ageOn, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	let opened = $state(false);
+	let query = $state('');
 	const showNew = $derived(opened || Boolean(form?.offerNew));
+	const roster = $derived.by(() => {
+		const needle = query.trim().toLowerCase();
+		if (!needle) return data.patients;
+		return data.patients.filter((patient) => {
+			const haystack = [patient.first_name, patient.last_name, patient.pid, patient.nic, patient.passport]
+				.filter(Boolean)
+				.join(' ')
+				.toLowerCase();
+			return haystack.includes(needle) || `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(needle);
+		});
+	});
+
+	function identity(patient: (typeof data.patients)[number]) {
+		if (patient.access !== 'granted') return 'Record locked';
+		const parts = [
+			patient.nic ? `NIC ${patient.nic}` : '',
+			patient.passport ? `Passport ${patient.passport}` : ''
+		].filter(Boolean);
+		return parts.join(' · ') || 'NIC / passport not on file';
+	}
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
-	<p class="kicker">Patient index</p>
-	<h1 class="display text-2xl font-bold lg:text-3xl">{data.intent === 'consult' ? 'Start a consultation' : 'Find a patient'}</h1>
-	{#if data.intent === 'consult'}
-		<p class="mt-1 text-sm text-[#64748B]">Enter a name, NIC, or passport number, then start. The start time is saved with the consultation.</p>
-	{/if}
+	<div>
+		<p class="kicker">Patient index</p>
+		<h1 class="display text-2xl font-bold lg:text-3xl">{data.intent === 'consult' ? 'Start a consultation' : 'Find a patient'}</h1>
+		<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
+			{#if data.intent === 'consult'}
+				Patients you already care for can be opened now. Everyone else stays locked until they allow access, or until you scan their QR code or enter an access code.
+			{:else}
+				Search finds a name and record number. The chart stays locked until the patient allows access, or you scan their QR code or enter an access code.
+			{/if}
+		</p>
+	</div>
+	<div class="action-row mt-4">
+		{#if data.intent === 'consult'}
+			<IncomingMenu referrals={data.incoming} />
+		{/if}
+		<a class="btn" href="/doctor/scan">
+			<span class="material-symbols-outlined text-lg">qr_code_scanner</span>
+			Scan QR
+		</a>
+	</div>
 </header>
 
 {#if data.intent === 'consult'}
-	<form class="card mx-4 mt-4 space-y-3 lg:mx-0 lg:max-w-xl" method="POST" action="?intent=consult&/start">
-		<label class="block text-sm font-semibold" for="patient-name">Patient name</label>
-		<input
-			class="field"
-			id="patient-name"
-			name="name"
-			required
-			autocomplete="off"
-			value={form?.name ?? ''}
-			placeholder="Name, NIC, or passport"
-		/>
-		{#if form?.message && !form?.matches && !form?.offerNew}
-			<p class="text-sm text-red-600">{form.message}</p>
-		{/if}
-		<button class="btn btn-block" type="submit">
-			<span class="material-symbols-outlined text-lg">play_arrow</span>
-			Start consultation
-		</button>
-	</form>
+	<label class="relative mx-4 mt-4 block lg:mx-0 lg:max-w-xl">
+		<span class="material-symbols-outlined field-icon text-[#64748B]" aria-hidden="true">search</span>
+		<input class="field field-search" bind:value={query} autocomplete="off" placeholder="Search by name, NIC, or passport" />
+	</label>
+	{#if form?.message && !form?.offerNew}
+		<p class="mx-4 mt-3 text-sm text-red-600 lg:mx-0">{form.message}</p>
+	{/if}
+	<p class="mx-4 mt-3 text-sm text-[#64748B] lg:mx-0">{roster.length} {roster.length === 1 ? 'patient' : 'patients'}</p>
 
-	<section class="mx-4 mt-4 lg:mx-0 lg:max-w-xl">
+	<section class="cards-2 px-4 py-4 lg:px-0">
+		{#each roster as patient}
+			<form class="card lg:flex lg:items-center lg:justify-between lg:gap-6" method="POST" action="?intent=consult&/start">
+				<input type="hidden" name="pid" value={patient.pid} />
+				<div class="flex min-w-0 items-center gap-3">
+					<div class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft font-bold text-brand">
+						{initials(patient.first_name, patient.last_name)}
+					</div>
+					<div class="min-w-0">
+						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
+						<p class="text-sm text-[#64748B]">{ageOn(patient.dob)}y · {patient.sex} · {patient.pid}</p>
+						<p class="text-sm">{identity(patient)}</p>
+					</div>
+				</div>
+				{#if patient.access === 'granted'}
+				<button class="btn mt-3 shrink-0 lg:mt-0" type="submit">
+					<span class="material-symbols-outlined text-lg">play_arrow</span>
+					Select and start consultation
+				</button>
+			{:else if patient.access === 'pending'}
+				<p class="mt-3 shrink-0 text-sm text-[#64748B] lg:mt-0 lg:max-w-56">Waiting for the patient to allow access.</p>
+			{:else if patient.has_portal}
+				<button class="btn mt-3 shrink-0 lg:mt-0" type="submit" formaction="?intent=consult&/request">Ask the patient for access</button>
+			{:else}
+				<a class="btn mt-3 shrink-0 lg:mt-0" href="/doctor/access/{patient.pid}">Scan QR or enter a code</a>
+			{/if}
+			</form>
+		{:else}
+			<p class="text-sm text-[#64748B]">No registered patient matches that search.</p>
+		{/each}
+	</section>
+
+	<section class="mx-4 pb-4 lg:mx-0 lg:max-w-xl">
 		{#if showNew}
 			<form class="card space-y-3" method="POST" action="?intent=consult&/register">
 				<div>
@@ -94,32 +152,6 @@
 			</button>
 		{/if}
 	</section>
-
-	{#if form?.matches}
-		<section class="cards-2 px-4 py-4 lg:px-0">
-			<p class="text-sm text-[#64748B]">{form.message}</p>
-			{#each form.matches as patient}
-				<form class="card" method="POST" action="?intent=consult&/start">
-					<input type="hidden" name="pid" value={patient.pid} />
-					<input type="hidden" name="name" value={form?.name ?? ''} />
-					<div class="flex items-center gap-3">
-						<div class="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
-							{initials(patient.first_name, patient.last_name)}
-						</div>
-						<div>
-							<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
-							<p class="text-sm text-[#64748B]">{patient.pid} • {ageOn(patient.dob)}y • {patient.sex}</p>
-							<p class="text-sm">{patient.conditions[0] ?? patient.concierge_note}</p>
-						</div>
-					</div>
-					<button class="btn btn-block mt-3" type="submit">
-						<span class="material-symbols-outlined text-lg">play_arrow</span>
-						Start consultation
-					</button>
-				</form>
-			{/each}
-		</section>
-	{/if}
 {:else}
 	<form class="px-4 pt-4 lg:max-w-xl lg:px-0" method="GET">
 		<label class="relative block">
@@ -131,7 +163,7 @@
 
 	<section class="cards-2 px-4 py-4 lg:px-0">
 		{#each data.patients as patient}
-			<a class="card block" href="/doctor/patients/{patient.pid}">
+			<a class="card block" href={patient.access === 'granted' ? `/doctor/patients/${patient.pid}` : `/doctor/access/${patient.pid}`}>
 				<div class="flex items-center gap-3">
 					<div class="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
 						{initials(patient.first_name, patient.last_name)}
@@ -139,10 +171,16 @@
 					<div>
 						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
 						<p class="text-sm text-[#64748B]">{patient.pid} • {ageOn(patient.dob)}y • {patient.sex}</p>
-						{#if patient.nic || patient.passport}
-							<p class="text-sm text-[#64748B]">{patient.nic ? `NIC ${patient.nic}` : ''}{patient.nic && patient.passport ? ' · ' : ''}{patient.passport ? `Passport ${patient.passport}` : ''}</p>
+						{#if patient.access === 'granted'}
+							{#if patient.nic || patient.passport}
+								<p class="text-sm text-[#64748B]">{patient.nic ? `NIC ${patient.nic}` : ''}{patient.nic && patient.passport ? ' · ' : ''}{patient.passport ? `Passport ${patient.passport}` : ''}</p>
+							{/if}
+							<p class="text-sm">{patient.conditions[0] ?? patient.concierge_note}</p>
+						{:else if patient.access === 'pending'}
+							<p class="text-sm text-[#64748B]">Waiting for the patient to allow access</p>
+						{:else}
+							<p class="text-sm text-[#64748B]">Record locked</p>
 						{/if}
-						<p class="text-sm">{patient.conditions[0] ?? patient.concierge_note}</p>
 					</div>
 				</div>
 			</a>

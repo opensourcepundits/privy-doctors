@@ -18,9 +18,13 @@ Thumbs.db
 !.env.example
 !.env.test
 
+# Uploaded patient results
+/data
+
 # Local MCP credentials
 .cursor/mcp.json
 
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+.cert

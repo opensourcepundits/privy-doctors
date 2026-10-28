@@ -1,17 +1,16 @@
-import { error, redirect } from '@sveltejs/kit';
-import { addConsultEntry, doctorForUser, draftConsult, patientByPid, removeConsultEntry, saveNarrative } from '#lib/server/clinic';
+import { redirect } from '@sveltejs/kit';
+import { addConsultEntry, draftConsult, referralForFollowUp, removeConsultEntry, saveNarrative } from '#lib/server/clinic';
+import { requireChart } from '#lib/server/guard';
 
 async function context(locals: App.Locals, pid: string) {
-	if (!locals.user) error(401, 'Sign in required');
-	const doctor = await doctorForUser(locals.user.id);
-	const patient = await patientByPid(pid);
-	if (!doctor || !patient) error(404, 'Record not found');
+	const { doctor, patient } = await requireChart(locals, pid);
 	const consult = await draftConsult(patient.id, doctor.id);
 	return { doctor, patient, consult };
 }
 
 export async function load({ params, locals }) {
-	return context(locals, params.pid);
+	const ctx = await context(locals, params.pid);
+	return { ...ctx, referral: await referralForFollowUp(ctx.consult.id) };
 }
 
 export const actions = {

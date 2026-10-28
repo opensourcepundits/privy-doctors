@@ -1,10 +1,34 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { accountEmail, actingPatient, doctorById, updatePatientField } from '#lib/server/clinic';
+import QRCode from 'qrcode';
+import {
+	accountEmail,
+	actingPatient,
+	activeAccessCode,
+	createAccessCode,
+	doctorById,
+	ensureRecordToken,
+	patientForUser,
+	recordPayload,
+	updatePatientField
+} from '#lib/server/clinic';
 
 export async function load({ parent }) {
-	const { patient } = await parent();
+	const { patient, preview } = await parent();
 	const [clinician, email] = await Promise.all([doctorById(patient.primary_doctor_id), accountEmail(patient.user_id)]);
-	return { clinician, email };
+	if (preview) return { clinician, email, qr: null, code: null };
+	const token = await ensureRecordToken(patient.id);
+	const svg = await QRCode.toString(recordPayload(token), {
+		type: 'svg',
+		margin: 1,
+		errorCorrectionLevel: 'M',
+		width: 208
+	});
+	return {
+		clinician,
+		email,
+		qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
+		code: await activeAccessCode(patient.id)
+	};
 }
 
 export const actions = {
@@ -20,6 +44,13 @@ export const actions = {
 		}
 		const result = await updatePatientField(patient.id, field, value);
 		if ('error' in result) return fail(400, { message: result.error, field, value });
-		redirect(303, '/patient/profile?notice=Profile updated');
+		redirect(303, `/patient/profile?notice=${encodeURIComponent('Profile updated')}`);
+	},
+	code: async ({ locals }) => {
+		if (!locals.user || locals.user.role !== 'patient') redirect(303, '/login');
+		const patient = await patientForUser(locals.user.id);
+		if (!patient) redirect(303, '/login');
+		await createAccessCode(patient.id);
+		redirect(303, `/patient/profile?notice=${encodeURIComponent('Access code created')}`);
 	}
 };

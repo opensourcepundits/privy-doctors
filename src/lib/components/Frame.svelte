@@ -17,7 +17,7 @@
 		who?: string;
 		role?: string;
 		scheme: 'doctor' | 'patient';
-		nav: { href: string; label: string; icon: string; fab?: boolean }[];
+		nav: { href: string; label: string; icon: string; fab?: boolean; badge?: number }[];
 		children: Snippet;
 	} = $props();
 
@@ -55,7 +55,7 @@
 				<div class="h-1 bg-brand"></div>
 				<div class="px-5 pt-5 pb-4">
 					<p class="display text-lg font-bold text-brand">CareOS</p>
-					<p class="text-xs text-[#64748B]">Cardiology practice</p>
+					<p class="text-xs text-[#64748B]">Private practice</p>
 				</div>
 				<nav class="flex flex-1 flex-col gap-1 px-3">
 					{#each nav as item}
@@ -67,6 +67,9 @@
 						>
 							<span class="material-symbols-outlined">{item.icon}</span>
 							{item.label}
+							{#if item.badge}
+								<span class="ml-auto rounded-full bg-brand px-1.5 text-[10px] leading-4 font-bold text-white">{item.badge}</span>
+							{/if}
 						</a>
 					{/each}
 				</nav>
@@ -99,7 +102,12 @@
 						? 'text-brand'
 						: 'text-[#64748B]'}"
 			>
-				<span class="material-symbols-outlined">{item.icon}</span>
+				<span class="relative">
+					<span class="material-symbols-outlined">{item.icon}</span>
+					{#if item.badge && !item.fab}
+						<span class="absolute -top-1 -right-2 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[9px] leading-4 font-bold text-white">{item.badge}</span>
+					{/if}
+				</span>
 				{#if !item.fab}<span class="max-w-full truncate px-0.5">{item.label}</span>{/if}
 			</a>
 		{/each}

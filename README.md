@@ -2,8 +2,9 @@
 
 CareOS is a cardiology practice app with two portals that share one record:
 
-- **Doctor portal** for Dr. Sarah Jensen: schedule, patient search, charts, consults, orders, and analytics.
-- **Patient portal** for Eleanor Vance: appointments, prescriptions, vitals, history, imaging, and billing.
+- **Doctor portal** for Dr. Irfan Ameerudden, general practitioner: schedule, patient search, charts, consults, orders, and analytics.
+- **Patient portal** for Noor Yadallee: appointments, prescriptions, vitals, history, imaging, and billing.
+- **Cardiologist account** for Dr. Sarah Jensen, used to test referrals.
 
 The seeded clinic day is **17 November 2024**. Dates in the app are relative to that day.
 
@@ -75,7 +76,7 @@ This runs `docker compose up -d --wait`. The first run downloads the `postgres:1
 npm run db:setup
 ```
 
-This applies `src/lib/server/schema.sql`, then loads the demo clinic: doctors, Eleanor’s chart, appointments, prescriptions, labs, imaging, vitals, and billing. It prints `Seeded CareOS on the 17 Nov 2024 clinic day.` when it finishes.
+This applies `src/lib/server/schema.sql`, then loads the demo clinic: doctors, Noor’s chart, appointments, prescriptions, labs, imaging, vitals, and billing. It prints `Seeded CareOS on the 17 Nov 2024 clinic day.` when it finishes.
 
 Running it again wipes the `public` schema and reseeds from scratch. Use that when you want a clean demo.
 
@@ -103,14 +104,15 @@ npm run db:setup
 
 ## Sign in
 
-Both demo accounts use the password `clinic-demo`.
+The demo accounts use the password `clinic-demo`.
 
 | Portal | Email | Button on the sign-in page |
 | --- | --- | --- |
-| Doctor | `sarah.jensen@clinica.privata` | Continue as Dr. Sarah Jensen |
-| Patient | `eleanor.vance@clinica.privata` | Continue as Eleanor Vance |
+| General practitioner | `irfan.ameerudden@clinica.privata` | Continue as Dr. Irfan Ameerudden |
+| Patient | `noor.yadallee@clinica.privata` | Continue as Noor Yadallee |
+| Cardiologist | `sarah.jensen@clinica.privata` | Continue as Dr. Sarah Jensen, cardiologist |
 
-The doctor can also open Eleanor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
+The doctor can also open Noor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
 
 ## Open it on a phone on the same network
 

@@ -222,7 +222,7 @@
 	</article>
 
 	<div class="flex flex-col gap-3 lg:col-span-2 lg:flex-row">
-		<a class="btn" href="/patient">Open Eleanor Vance's patient view</a>
+		<a class="btn" href="/patient">Open Noor Yadallee's patient view</a>
 		<form method="POST" action="/logout"><button class="btn-line" type="submit">Sign out</button></form>
 	</div>
 </section>

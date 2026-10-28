@@ -1,17 +1,55 @@
 <script lang="ts">
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
+	import Mention from '#lib/components/Mention.svelte';
+	import { formatDate, isoDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	let open = $state<'medication' | 'referral' | 'test' | null>(null);
-	let editingPharmacy = $state(false);
+	let specialist = $state('');
+	let picked = $state<number | null>(null);
+
+	const specialistMatches = $derived.by(() => {
+		const needle = specialist.trim().toLowerCase();
+		const rows = data.doctors.filter((doctor) => {
+			if (!needle) return true;
+			return [doctor.name, doctor.credentials, doctor.specialty, doctor.practice, doctor.location]
+				.join(' ')
+				.toLowerCase()
+				.includes(needle);
+		});
+		return rows.slice(0, 8);
+	});
+	const chosen = $derived(data.doctors.find((doctor) => doctor.id === picked) ?? null);
+
+	$effect.pre(() => {
+		if (form && 'referral' in form && form.referral) open = 'referral';
+	});
+	let completesOn = $state('');
+	let loadedId = 0;
+
+	function postedCompletion() {
+		if (form && 'completesOn' in form && typeof form.completesOn === 'string') return form.completesOn;
+		return '';
+	}
+
+	$effect.pre(() => {
+		const next = postedCompletion() || isoDate(data.consult.completes_on);
+		if (loadedId === data.consult.id && !postedCompletion()) return;
+		loadedId = data.consult.id;
+		completesOn = next;
+	});
 
 	const meds = $derived(data.consult.orders.filter((order) => order.kind === 'medication'));
 	const referrals = $derived(data.consult.orders.filter((order) => order.kind === 'referral'));
 	const tests = $derived(data.consult.orders.filter((order) => order.kind === 'test'));
 	const ready = $derived(Number(meds.length > 0) + Number(referrals.length > 0) + Number(tests.length > 0));
-	const pharmacy = $derived(String(data.consult.pharmacy ?? ''));
-	const pharmacyParts = $derived(pharmacy.split('•').map((part) => part.trim()));
+
+	function rememberCompletion() {
+		const body = new FormData();
+		body.set('completes_on', completesOn);
+		fetch('?/completion', { method: 'POST', body });
+	}
 </script>
 
 <header class="flex items-center justify-between gap-3 px-4 pt-5 lg:px-0">
@@ -64,6 +102,7 @@
 						<p class="text-sm font-bold">{order.title}</p>
 						{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
 						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
+						{#if order.completes_on}<p class="text-[11px] text-[#64748B]">Completes {formatDate(order.completes_on)}</p>{/if}
 					</div>
 					<form method="POST" action="?/remove">
 						<input type="hidden" name="id" value={order.id} />
@@ -80,27 +119,27 @@
 					<input class="field" name="title" placeholder="Medication" required />
 					<input class="field" name="detail" placeholder="Dose and supply" />
 					<input class="field" name="note" placeholder="Indication" />
+					<label class="block text-sm font-semibold">
+						Completion date
+						<span class="font-normal text-[#64748B]">optional</span>
+						<input class="field mt-1" name="completes_on" type="date" />
+					</label>
 					<button class="btn" type="submit">Save medication</button>
 				</form>
 			{/if}
-			<div class="flex items-center justify-between gap-3 rounded-xl border border-brand-tint bg-brand-wash p-2.5">
-				<div class="flex min-w-0 items-center gap-2">
-					<span class="material-symbols-outlined text-[18px] text-brand">local_pharmacy</span>
-					<div class="min-w-0">
-						<p class="truncate text-xs font-semibold">{pharmacyParts[0] || 'No pharmacy selected'}</p>
-						{#if pharmacyParts[1]}<p class="truncate text-[11px] text-[#64748B]">{pharmacyParts.slice(1).join(' · ')}</p>{/if}
-					</div>
-				</div>
-				<button class="shrink-0 rounded-lg border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs font-bold text-brand" type="button" onclick={() => (editingPharmacy = !editingPharmacy)}>
-					{editingPharmacy ? 'Close' : 'Change'}
-				</button>
-			</div>
-			{#if editingPharmacy}
-				<form class="flex flex-col gap-2 sm:flex-row" method="POST" action="?/pharmacy">
-					<input class="field" name="pharmacy" value={pharmacy} placeholder="Pharmacy name and address" required />
-					<button class="btn" type="submit">Save pharmacy</button>
-				</form>
-			{/if}
+			<label class="block text-sm font-semibold" for="rx-complete">
+				Prescription completion date
+				<input
+					class="field mt-1"
+					id="rx-complete"
+					name="completes_on"
+					type="date"
+					form="finalize"
+					required={meds.length > 0}
+					bind:value={completesOn}
+					onchange={rememberCompletion}
+				/>
+			</label>
 		</div>
 	</section>
 
@@ -122,7 +161,7 @@
 				<article class="card">
 					<div class="flex items-start justify-between gap-2">
 						<div>
-							<h3 class="text-sm font-bold">{order.title}</h3>
+							<h3 class="text-sm font-bold"><Mention text={order.title} /></h3>
 							{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
 						</div>
 						<form method="POST" action="?/remove">
@@ -139,8 +178,50 @@
 			{/each}
 			{#if open === 'referral'}
 				<form class="card space-y-2" method="POST" action="?/referral">
-					<input class="field" name="title" placeholder="Specialist" required />
-					<input class="field" name="detail" placeholder="Service and clinic" />
+					<label class="block text-sm font-semibold" for="specialist-search">
+						Specialist
+						<input
+							class="field mt-1"
+							id="specialist-search"
+							bind:value={specialist}
+							autocomplete="off"
+							placeholder="Search the doctor registry"
+							oninput={() => {
+								if (chosen && chosen.name !== specialist) picked = null;
+							}}
+						/>
+					</label>
+					{#if !chosen}
+						<ul class="overflow-hidden rounded-xl border border-[#E2E8F0]">
+							{#each specialistMatches as doctor}
+								<li class="border-t border-[#E2E8F0] first:border-t-0">
+									<button
+										class="block w-full px-3 py-2 text-left hover:bg-brand-wash"
+										type="button"
+										onclick={() => {
+											picked = doctor.id;
+											specialist = doctor.name;
+										}}
+									>
+										<span class="block text-sm font-semibold">{doctor.name}</span>
+										<span class="block text-xs text-[#64748B]">{doctor.credentials} · {doctor.specialty} · {doctor.practice}</span>
+									</button>
+								</li>
+							{:else}
+								<li class="px-3 py-2 text-sm text-[#64748B]">No clinician matches that search.</li>
+							{/each}
+						</ul>
+					{:else}
+						<div class="rounded-xl border border-brand-tint bg-brand-wash px-3 py-2">
+							<p class="text-sm font-semibold">{chosen.name}</p>
+							<p class="text-xs text-[#64748B]">{chosen.specialty} · {chosen.location}</p>
+							{#if !chosen.has_login}
+								<p class="mt-1 text-xs text-[#64748B]">No clinic login is on file, so this referral is saved on the order and no alert is sent.</p>
+							{/if}
+							<button class="mt-1 text-xs font-semibold text-brand" type="button" onclick={() => (picked = null)}>Choose someone else</button>
+						</div>
+					{/if}
+					<input type="hidden" name="doctor_id" value={picked ?? ''} />
 					<input class="field" name="note" placeholder="Referral note" />
 					<button class="btn" type="submit">Save referral</button>
 				</form>
@@ -160,13 +241,20 @@
 					Order diagnostic
 				</button>
 			</div>
+			<p class="text-xs text-[#64748B]">Each test is added to this patient’s checklist and stays linked to this consultation. They upload the result PDF there.</p>
 			<div class="card space-y-2">
 				{#each tests as order}
+					{@const task = data.consult.tasks.find((item) => item.order_id === order.id)}
 					<div class="flex items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 						<div class="min-w-0">
 							<p class="text-sm font-bold">{order.title}</p>
 							{#if order.detail}<p class="text-[11px] text-brand">{order.detail}</p>{/if}
 							{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
+							{#if task?.stored_name}
+								<a class="text-[11px] font-semibold text-brand" href="/files/tasks/{task.id}">Result PDF received</a>
+							{:else if task}
+								<p class="text-[11px] text-[#64748B]">On the patient checklist</p>
+							{/if}
 						</div>
 						<form method="POST" action="?/remove">
 							<input type="hidden" name="id" value={order.id} />
@@ -195,7 +283,7 @@
 			<span class="text-[#64748B]">Ready for final sign-off</span>
 			<span class="font-bold text-emerald-700">{ready} of 3 categories started</span>
 		</div>
-		<form method="POST" action="?/finalize">
+		<form id="finalize" method="POST" action="?/finalize">
 			<button class="btn btn-block" type="submit">
 				<span class="material-symbols-outlined text-[19px]">lock</span>
 				Authorize orders and finalize consultation

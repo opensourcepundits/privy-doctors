@@ -1,18 +1,17 @@
 import { error } from '@sveltejs/kit';
-import { acknowledgeLab, labById, patientByPid } from '#lib/server/clinic';
+import { acknowledgeLab, labById } from '#lib/server/clinic';
+import { requireChart } from '#lib/server/guard';
 
-export async function load({ params }) {
-	const patient = await patientByPid(params.pid);
-	if (!patient) error(404, 'Patient not found');
+export async function load({ params, locals }) {
+	const { patient } = await requireChart(locals, params.pid);
 	const lab = await labById(patient.id, Number(params.labId));
 	if (!lab) error(404, 'Lab not found');
 	return { patient, lab };
 }
 
 export const actions = {
-	acknowledge: async ({ params }) => {
-		const patient = await patientByPid(params.pid);
-		if (!patient) error(404, 'Patient not found');
+	acknowledge: async ({ params, locals }) => {
+		const { patient } = await requireChart(locals, params.pid);
 		await acknowledgeLab(Number(params.labId), patient.id);
 		return { acknowledged: true };
 	}

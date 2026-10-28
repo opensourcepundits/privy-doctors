@@ -1,13 +1,20 @@
 <script lang="ts">
+	import Mention from '#lib/components/Mention.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
-	<p class="kicker">Cardiology practice stream</p>
+	<p class="kicker">Practice stream</p>
 	<h1 class="display text-2xl font-bold">Practice analytics</h1>
 	<p class="text-sm text-[#64748B]">Encounter capacity, diagnostic yield, and inflow metrics</p>
+	<div class="action-row mt-4">
+		<a class="btn" href="/doctor/analytics/patients">
+			<span class="material-symbols-outlined text-lg">group</span>
+			My patients
+		</a>
+	</div>
 </header>
 
 <section class="grid grid-cols-2 gap-3 px-4 pt-4 lg:grid-cols-4 lg:px-0">
@@ -68,7 +75,7 @@
 		{#each data.referrals as source}
 			<article class="card flex items-center justify-between gap-3">
 				<div>
-					<p class="font-semibold">{source.name}</p>
+					<p class="font-semibold"><Mention text={source.name} /></p>
 					<p class="text-sm text-[#64748B]">{source.channel} · {source.share}%</p>
 				</div>
 				<p class="nums font-semibold">{source.patients} pts</p>

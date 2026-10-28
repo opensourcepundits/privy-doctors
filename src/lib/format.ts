@@ -15,6 +15,15 @@ export function formatDate(value: Date | string | null | undefined) {
 	}).format(asDate(value));
 }
 
+export function isoDate(value: Date | string | null | undefined) {
+	if (!value) return '';
+	if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
+	const date = value instanceof Date ? value : new Date(value);
+	if (Number.isNaN(date.getTime())) return '';
+	const pad = (part: number) => String(part).padStart(2, '0');
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export function formatLongDate(value: Date | string) {
 	return new Intl.DateTimeFormat('en-US', {
 		weekday: 'long',

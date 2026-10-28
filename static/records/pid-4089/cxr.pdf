@@ -1,0 +1,78 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Count 1 /Kids [3 0 R] >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 986 >>
+stream
+BT
+/F1 15 Tf
+1 0 0 1 48 748.0 Tm
+(2-View PA & Lateral Chest Radiograph) Tj
+/F1 10.5 Tf
+1 0 0 1 48 726.0 Tm
+() Tj
+/F1 10.5 Tf
+1 0 0 1 48 712.0 Tm
+(Patient: Noor Yadallee PID-4089 DOB 12 Apr 1956) Tj
+/F1 10.5 Tf
+1 0 0 1 48 698.0 Tm
+(Modality: X-Ray) Tj
+/F1 10.5 Tf
+1 0 0 1 48 684.0 Tm
+(Performed: Wed Jun 12 2024 04:00:00 GMT+0400 \(Mauritius Standard Time\)) Tj
+/F1 10.5 Tf
+1 0 0 1 48 670.0 Tm
+(Facility: Metropolitan Health Radiology) Tj
+/F1 10.5 Tf
+1 0 0 1 48 656.0 Tm
+(Acquisition: 2 high-resolution views \(PA / lateral\)) Tj
+/F1 10.5 Tf
+1 0 0 1 48 642.0 Tm
+() Tj
+/F1 15 Tf
+1 0 0 1 48 628.0 Tm
+(Summary) Tj
+/F1 10.5 Tf
+1 0 0 1 48 606.0 Tm
+(Clear lung fields, normal cardiothoracic ratio, no active cardiopulmonary disease.) Tj
+/F1 10.5 Tf
+1 0 0 1 48 592.0 Tm
+() Tj
+/F1 15 Tf
+1 0 0 1 48 578.0 Tm
+(Impression) Tj
+/F1 10.5 Tf
+1 0 0 1 48 556.0 Tm
+(No acute cardiopulmonary process.) Tj
+/F1 10.5 Tf
+1 0 0 1 48 542.0 Tm
+() Tj
+/F1 10.5 Tf
+1 0 0 1 48 528.0 Tm
+(CareOS clinical record.) Tj
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000001278 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1348
+%%EOF

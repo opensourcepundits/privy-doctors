@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
+	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -19,10 +20,11 @@
 <section class="space-y-3 px-4 py-4">
 	<article class="card text-sm">
 		<p>{formatDate(order.ordered_at)}</p>
-		<p class="mt-2 font-semibold">{order.prescriber}</p>
+		{#if order.completes_on}<p>Completes {formatDate(order.completes_on)}</p>{/if}
+		<p class="mt-2 font-semibold"><Mention text={order.prescriber} /></p>
 		<p>{order.specialty} · NPI on file for e-sign</p>
 		<p class="mt-2">{order.facility}</p>
-		<p>{order.pharmacy}</p>
+		{#if order.pharmacy}<p>{order.pharmacy}</p>{/if}
 		{#if order.course_label}<p class="mt-2 text-[#64748B]">{order.course_label}</p>{/if}
 	</article>
 	{#each order.items as item}
@@ -32,6 +34,7 @@
 			<p class="mt-2 text-sm">{item.sig}</p>
 			<p class="mt-2 text-sm">{item.indication}</p>
 			<p class="mt-2 text-xs text-[#64748B]">Dispense {item.quantity ?? '—'} · {item.supply_label} · {item.refills}</p>
+			{#if item.completes_on}<p class="mt-1 text-xs text-[#64748B]">Completes {formatDate(item.completes_on)}</p>{/if}
 		</article>
 	{/each}
 	{#if form?.sent}

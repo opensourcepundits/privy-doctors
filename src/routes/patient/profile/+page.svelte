@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ageOn, formatDate, initials } from '#lib/format';
+	import { ageOn, formatDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -138,9 +138,43 @@
 			<p class="text-sm text-[#64748B]">{ageOn(patient.dob)} years · {patient.sex} · {patient.pid}</p>
 		</div>
 	</div>
+	<div class="mt-4 flex flex-wrap gap-2">
+		<a class="btn" href="/patient/prescriptions">
+			<span class="material-symbols-outlined text-lg">medication</span>
+			Prescriptions
+		</a>
+		<a class="btn" href="/patient/billing">
+			<span class="material-symbols-outlined text-lg">receipt_long</span>
+			Billing
+		</a>
+		<a class="btn" href="/patient/physicians">
+			<span class="material-symbols-outlined text-lg">stethoscope</span>
+			My physicians
+		</a>
+	</div>
 </header>
 
 <section class="cards-2 px-4 py-4 text-sm lg:px-0">
+	{#if data.qr}
+		<article class="card span-2">
+			<p class="kicker">Record access</p>
+			<p class="mt-2">Show this code to a clinician. Scanning it adds them to My physicians and opens your full history. You are notified when that happens.</p>
+			<img class="mx-auto mt-4 w-52 rounded-xl bg-white p-2" src={data.qr} width="208" height="208" alt="QR code for {patient.first_name} {patient.last_name}'s medical record" />
+			{#if data.code}
+				<p class="mt-4 text-[#64748B]">Access code</p>
+				<p class="nums font-mono text-2xl tracking-widest">{data.code.code}</p>
+				<p class="text-[#64748B]">Expires {formatDate(data.code.expires_at)} · {formatTime(data.code.expires_at)}. It works once.</p>
+			{:else}
+				<p class="mt-4 text-[#64748B]">If a camera is not available, create a code the clinician can type. It works once and expires in 24 hours.</p>
+			{/if}
+			<form class="mt-4" method="POST" action="?/code">
+				<button class="btn" type="submit">{data.code ? 'Create a new access code' : 'Create access code'}</button>
+			</form>
+			{#if data.code}
+				<p class="mt-2 text-[#64748B]">Creating a new code replaces the one above.</p>
+			{/if}
+		</article>
+	{/if}
 	<article class="card space-y-3">
 		<p class="kicker">Identity</p>
 		{@render editor('first_name', 'First name', 'text')}

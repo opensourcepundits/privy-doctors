@@ -8,7 +8,7 @@
 	<div class="w-full max-w-[480px] rounded-3xl border border-[#E2E8F0] bg-white px-6 py-8 shadow-xl lg:px-10 lg:py-10">
 		<p class="kicker">Private practice</p>
 		<h1 class="display mt-2 text-3xl font-bold text-[#0F172A]">CareOS</h1>
-		<p class="mt-2 text-sm text-[#64748B]">Cardiology EHR for the clinic day of 17 November 2024. Doctor workspace and Eleanor Vance’s patient portal share one record.</p>
+		<p class="mt-2 text-sm text-[#64748B]">Clinic day of 17 November 2024. Sign in as the general practitioner, the patient, or the cardiologist used for referrals.</p>
 
 		<form method="POST" class="mt-8 space-y-3">
 			<label class="block text-sm font-semibold" for="email">Email</label>
@@ -21,14 +21,19 @@
 
 		<div class="mt-6 grid gap-3">
 			<form method="POST">
-				<input type="hidden" name="email" value="sarah.jensen@clinica.privata" />
+				<input type="hidden" name="email" value="irfan.ameerudden@clinica.privata" />
 				<input type="hidden" name="password" value="clinic-demo" />
-				<button class="btn-line btn-block scheme-doctor" type="submit">Continue as Dr. Sarah Jensen</button>
+				<button class="btn-line btn-block scheme-doctor" type="submit">Continue as Dr. Irfan Ameerudden</button>
 			</form>
 			<form method="POST">
-				<input type="hidden" name="email" value="eleanor.vance@clinica.privata" />
+				<input type="hidden" name="email" value="noor.yadallee@clinica.privata" />
 				<input type="hidden" name="password" value="clinic-demo" />
-				<button class="btn-line btn-block scheme-patient" type="submit">Continue as Eleanor Vance</button>
+				<button class="btn-line btn-block scheme-patient" type="submit">Continue as Noor Yadallee</button>
+			</form>
+			<form method="POST">
+				<input type="hidden" name="email" value="sarah.jensen@clinica.privata" />
+				<input type="hidden" name="password" value="clinic-demo" />
+				<button class="btn-line btn-block scheme-doctor" type="submit">Continue as Dr. Sarah Jensen, cardiologist</button>
 			</form>
 		</div>
 	</div>

@@ -24,6 +24,7 @@ CREATE TABLE patients (
   user_id int UNIQUE REFERENCES users(id),
   primary_doctor_id int REFERENCES doctors(id),
   pid text UNIQUE NOT NULL,
+  record_token text UNIQUE,
   first_name text NOT NULL,
   last_name text NOT NULL,
   dob date NOT NULL,
@@ -104,7 +105,8 @@ CREATE TABLE prescriptions (
   ordered_at timestamp NOT NULL,
   status text NOT NULL,
   auth_through text,
-  course_label text
+  course_label text,
+  completes_on date
 );
 
 CREATE TABLE prescription_items (
@@ -124,7 +126,8 @@ CREATE TABLE prescription_items (
   schedule_detail text,
   remaining_label text,
   due_label text,
-  sort_order int NOT NULL DEFAULT 0
+  sort_order int NOT NULL DEFAULT 0,
+  completes_on date
 );
 
 CREATE TABLE dose_logs (
@@ -150,7 +153,8 @@ CREATE TABLE labs (
   specimen text,
   panel_id text,
   note text,
-  acknowledged boolean NOT NULL DEFAULT false
+  acknowledged boolean NOT NULL DEFAULT false,
+  report_path text
 );
 
 CREATE TABLE lab_results (
@@ -184,7 +188,9 @@ CREATE TABLE imaging_studies (
   patient_quote text,
   outlook text,
   vessels jsonb NOT NULL DEFAULT '[]'::jsonb,
-  status text NOT NULL
+  status text NOT NULL,
+  image_path text,
+  report_path text
 );
 
 CREATE TABLE care_orders (
@@ -229,6 +235,7 @@ CREATE TABLE consultations (
   modality text NOT NULL,
   narrative text,
   pharmacy text,
+  completes_on date,
   started_at timestamptz NOT NULL
 );
 
@@ -246,7 +253,22 @@ CREATE TABLE consultation_orders (
   kind text NOT NULL,
   title text NOT NULL,
   detail text,
-  note text
+  note text,
+  completes_on date
+);
+
+CREATE TABLE patient_tasks (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  consultation_id int NOT NULL REFERENCES consultations(id) ON DELETE CASCADE,
+  order_id int REFERENCES consultation_orders(id) ON DELETE SET NULL,
+  title text NOT NULL,
+  detail text,
+  note text,
+  status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'received')),
+  file_name text,
+  stored_name text,
+  uploaded_at timestamp
 );
 
 CREATE TABLE refill_requests (
@@ -294,6 +316,52 @@ CREATE TABLE referral_sources (
 CREATE TABLE practice_notes (
   id serial PRIMARY KEY,
   body text NOT NULL
+);
+
+CREATE TABLE referrals (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  from_doctor_id int NOT NULL REFERENCES doctors(id),
+  to_doctor_id int NOT NULL REFERENCES doctors(id),
+  source_consult_id int REFERENCES consultations(id) ON DELETE SET NULL,
+  order_id int REFERENCES consultation_orders(id) ON DELETE SET NULL,
+  follow_consult_id int REFERENCES consultations(id) ON DELETE SET NULL,
+  note text,
+  status text NOT NULL DEFAULT 'incoming' CHECK (status IN ('incoming', 'in_session', 'completed')),
+  created_at timestamp NOT NULL
+);
+
+CREATE TABLE patient_access (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  doctor_id int NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  status text NOT NULL CHECK (status IN ('pending', 'granted', 'denied')),
+  source text NOT NULL CHECK (source IN ('primary', 'appointment', 'referral', 'qr', 'code', 'request', 'registered')),
+  created_at timestamp NOT NULL,
+  UNIQUE (patient_id, doctor_id)
+);
+
+CREATE TABLE access_codes (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  code text NOT NULL UNIQUE,
+  created_at timestamp NOT NULL,
+  expires_at timestamp NOT NULL,
+  used_at timestamp,
+  used_by int REFERENCES doctors(id)
+);
+
+CREATE TABLE self_reports (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  occurred_on date NOT NULL,
+  title text NOT NULL,
+  detail text,
+  duration text,
+  severity text,
+  meds_taken text,
+  ongoing boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL
 );
 
 CREATE TABLE notifications (

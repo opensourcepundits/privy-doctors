@@ -1,10 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { actingPatient, bookAppointment, bookingBoard, futureAppointments } from '#lib/server/clinic';
 
-export async function load({ parent }) {
+export async function load({ parent, url }) {
 	const { patient } = await parent();
 	const [doctors, upcoming] = await Promise.all([bookingBoard(), futureAppointments(patient.id)]);
-	return { doctors, upcoming };
+	const focus = Number(url.searchParams.get('doctor'));
+	return { doctors, upcoming, focusId: Number.isInteger(focus) ? focus : null };
 }
 
 export const actions = {

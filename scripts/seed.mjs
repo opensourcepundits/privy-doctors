@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { scryptSync, randomBytes } from 'node:crypto';
 import postgres from 'postgres';
+import { writeCcta, writeCxr, writeEcho, writeReport } from './records.mjs';
 
 const env = Object.fromEntries(
 	readFileSync(new URL('../.env', import.meta.url), 'utf8')
@@ -35,27 +36,48 @@ const password = hashPassword('clinic-demo');
 await sql.unsafe('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
 await sql.unsafe(readFileSync(new URL('../src/lib/server/schema.sql', import.meta.url), 'utf8'));
 
-const [doctorUser] = await sql`
+const [gpUser] = await sql`
+	INSERT INTO users (email, password_hash, role, name)
+	VALUES ('irfan.ameerudden@clinica.privata', ${password}, 'doctor', 'Dr. Irfan Ameerudden')
+	RETURNING id
+`;
+const [cardioUser] = await sql`
 	INSERT INTO users (email, password_hash, role, name)
 	VALUES ('sarah.jensen@clinica.privata', ${password}, 'doctor', 'Dr. Sarah Jensen')
 	RETURNING id
 `;
 const [patientUser] = await sql`
 	INSERT INTO users (email, password_hash, role, name)
-	VALUES ('eleanor.vance@clinica.privata', ${password}, 'patient', 'Eleanor Vance')
+	VALUES ('noor.yadallee@clinica.privata', ${password}, 'patient', 'Noor Yadallee')
 	RETURNING id
 `;
 
 const [doctor] = await sql`
 	INSERT INTO doctors (user_id, name, credentials, specialty, gender, npi, practice, location, phone)
 	VALUES (
-		${doctorUser.id}, 'Dr. Sarah Jensen', 'MD, FACC', 'Cardiology', 'Female', '1982049182',
+		${gpUser.id}, 'Dr. Irfan Ameerudden', 'MBBS', 'General Practice', 'Male', '1740293816',
+		'Private Practice • General Practice',
+		'Suite 210, St. Jude Family Clinic',
+		'(555) 234-8800'
+	)
+	RETURNING id
+`;
+const [cardio] = await sql`
+	INSERT INTO doctors (user_id, name, credentials, specialty, gender, npi, practice, location, phone)
+	VALUES (
+		${cardioUser.id}, 'Dr. Sarah Jensen', 'MD, FACC', 'Cardiology', 'Female', '1982049182',
 		'Private Practice • Cardiology Specialist',
 		'Suite 410, St. Jude Heart Pavilion',
 		'(555) 234-8990'
 	)
 	RETURNING id
 `;
+for (const weekday of [1, 3, 5]) {
+	await sql`
+		INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+		VALUES (${cardio.id}, 'clinic', ${weekday}, '09:00', '13:00')
+	`;
+}
 
 for (const weekday of [1, 2, 3, 4, 5]) {
 	await sql`
@@ -114,6 +136,83 @@ const roster = [
 		phone: '(555) 234-8998',
 		clinic: [[5, '08:00', '12:00']],
 		home: []
+	},
+	{
+		name: 'Dr. Emily Watson',
+		credentials: 'MD',
+		specialty: 'Primary Care',
+		gender: 'Female',
+		practice: 'Comprehensive Family & Preventive Health',
+		location: 'West End Primary Care',
+		phone: '(555) 410-2201',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. Marcus Vance',
+		credentials: 'MD',
+		specialty: 'Gastroenterology',
+		gender: 'Male',
+		practice: 'Digestive Health & Endoscopy Associates',
+		location: 'GI Endoscopy Registry',
+		phone: '(555) 410-2210',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. Arthur Pendelton',
+		credentials: 'MD',
+		specialty: 'Cardiovascular Imaging',
+		gender: 'Male',
+		practice: 'St. Jude Cardiovascular Imaging Center',
+		location: 'St. Jude Heart Pavilion',
+		phone: '(555) 410-2220',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. Ronald Hayes',
+		credentials: 'MD',
+		specialty: 'Echocardiography',
+		gender: 'Male',
+		practice: 'West End Diagnostic Imaging',
+		location: 'West End Diagnostic Imaging',
+		phone: '(555) 410-2230',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. K. Miller',
+		credentials: 'MD',
+		specialty: 'Internal Medicine',
+		gender: 'Female',
+		practice: 'Internal Medicine Specialists',
+		location: 'Internal Medicine Specialists',
+		phone: '(555) 410-2240',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. Aris Thorne',
+		credentials: 'MD',
+		specialty: 'Interventional Endocrinology',
+		gender: 'Male',
+		practice: 'Thorne Interventional Endocrine',
+		location: 'Thorne Interventional Endocrine',
+		phone: '(555) 410-2250',
+		clinic: [],
+		home: []
+	},
+	{
+		name: 'Dr. Julian Vance',
+		credentials: 'MD',
+		specialty: 'Sports Physiology',
+		gender: 'Male',
+		practice: 'Sports Physiology & Geriatrics',
+		location: 'Sports Physiology & Geriatrics',
+		phone: '(555) 410-2260',
+		clinic: [],
+		home: []
 	}
 ];
 
@@ -144,8 +243,8 @@ const people = [
 	{
 		userId: patientUser.id,
 		pid: 'PID-4089',
-		first: 'Eleanor',
-		last: 'Vance',
+		first: 'Noor',
+		last: 'Yadallee',
 		dob: '1956-04-12',
 		sex: 'Female',
 		blood: 'A+',
@@ -156,6 +255,7 @@ const people = [
 			{ year: '1998', name: 'Appendectomy' }
 		],
 		phone: '(555) 014-4089',
+		nic: 'V560412891',
 		note: 'Concierge Primary',
 		insurance: ['BlueCross BlueShield Premier Care PPO', 'BC-88902', 'EV-940283'],
 		pharmacy: ['CVS Pharmacy #4120', '4th St & Broadway', '(555) 234-8901']
@@ -170,6 +270,7 @@ const people = [
 		allergies: [],
 		conditions: ['Hyperlipidemia'],
 		surgeries: [],
+		nic: 'P700302118',
 		note: 'Established',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -184,6 +285,7 @@ const people = [
 		allergies: [],
 		conditions: [],
 		surgeries: [],
+		passport: 'GB820601442',
 		note: 'New patient',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -198,6 +300,7 @@ const people = [
 		allergies: [],
 		conditions: ['Hypertension'],
 		surgeries: [],
+		nic: 'B790115220',
 		note: 'Home BP log',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -212,6 +315,7 @@ const people = [
 		allergies: [],
 		conditions: ['Elevated ApoB'],
 		surgeries: [],
+		passport: 'E850909331',
 		note: 'Preventive',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -226,6 +330,7 @@ const people = [
 		allergies: ['Contrast dye'],
 		conditions: ['CAD s/p angioplasty'],
 		surgeries: [{ year: '2024', name: 'Angioplasty' }],
+		nic: 'M630220614',
 		note: 'Post-procedure',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -240,6 +345,7 @@ const people = [
 		allergies: [],
 		conditions: ['ICD follow-up'],
 		surgeries: [],
+		passport: 'H670808902',
 		note: 'Device clinic',
 		insurance: [null, null, null],
 		pharmacy: [null, null, null]
@@ -251,13 +357,14 @@ for (const person of people) {
 	const [row] = await sql`
 		INSERT INTO patients (
 			user_id, primary_doctor_id, pid, first_name, last_name, dob, sex, blood_type,
-			allergies, conditions, surgeries, phone, concierge_note,
+			allergies, conditions, surgeries, phone, nic, passport, concierge_note,
 			insurance_name, insurance_group, insurance_member,
 			pharmacy_name, pharmacy_address, pharmacy_phone
 		) VALUES (
 			${person.userId ?? null}, ${doctor.id}, ${person.pid}, ${person.first}, ${person.last},
 			${person.dob}, ${person.sex}, ${person.blood}, ${sql.json(person.allergies)},
 			${sql.json(person.conditions)}, ${sql.json(person.surgeries)}, ${person.phone ?? null},
+			${person.nic ?? null}, ${person.passport ?? null},
 			${person.note}, ${person.insurance[0]}, ${person.insurance[1]}, ${person.insurance[2]},
 			${person.pharmacy[0]}, ${person.pharmacy[1]}, ${person.pharmacy[2]}
 		)
@@ -266,29 +373,37 @@ for (const person of people) {
 	ids[person.pid] = row.id;
 }
 
+for (const id of Object.values(ids)) {
+	await sql`UPDATE patients SET record_token = ${randomBytes(24).toString('hex')} WHERE id = ${id}`;
+}
+
 const visits = [
 	['PID-4089', '2024-11-17 14:15:00', 45, 'Arrhythmia Review', 'Atrial fibrillation follow-up & Holter monitor review', 'scheduled', 'Last visit: 3 weeks ago'],
 	['PID-3921', '2024-11-17 15:00:00', 30, 'Routine Check', 'Lipid panel review & statin refill', 'scheduled', 'Last visit: 3 months ago'],
-	['PID-5104', '2024-11-17 15:45:00', 45, 'New Patient', 'Palpitations & ECG evaluation', 'scheduled', 'First appointment'],
+	['PID-5104', '2024-11-17 15:45:00', 45, 'Cardiology referral', 'Referred by Dr. Irfan Ameerudden for palpitations and an ECG', 'scheduled', 'Referred today', 'cardio'],
 	['PID-6204', '2024-11-17 16:30:00', 30, 'Hypertension Check', 'ACE inhibitor titration & BP log review', 'scheduled', 'Last visit: 1 month ago'],
 	['PID-7891', '2024-11-17 17:15:00', 30, 'Lab Review', 'ApoB & Lp(a) risk stratification follow-up', 'scheduled', 'Last visit: 2 weeks ago'],
 	['PID-3312', '2024-11-17 17:45:00', 30, 'Post-Procedure', 'Post-angioplasty 30-day assessment & dual antiplatelet check', 'scheduled', 'Last visit: 1 month ago'],
 	['PID-4410', '2024-11-17 18:30:00', 20, 'Device Check', 'ICD interrogation & battery review', 'scheduled', 'Last visit: 6 months ago'],
-	['PID-4089', '2024-11-21 14:15:00', 45, 'Arrhythmia Follow-up & 12-Lead ECG Review', 'Holter placement and rhythm review', 'scheduled', null]
+	['PID-4089', '2024-11-21 14:15:00', 45, 'Arrhythmia Follow-up & 12-Lead ECG Review', 'Holter placement and rhythm review', 'scheduled', 'Referred by Dr. Irfan Ameerudden', 'cardio']
 ];
 
 for (const visit of visits) {
+	const clinician = visit[7] === 'cardio' ? cardio : doctor;
+	const location = visit[7] === 'cardio'
+		? 'Suite 410, St. Jude Heart Pavilion (Valet parking at West Gate)'
+		: 'Suite 210, St. Jude Family Clinic';
 	await sql`
 		INSERT INTO appointments (patient_id, doctor_id, starts_at, duration_min, title, reason, status, location, last_visit_label)
 		VALUES (
-			${ids[visit[0]]}, ${doctor.id}, ${visit[1]}, ${visit[2]}, ${visit[3]}, ${visit[4]}, ${visit[5]},
-			'Suite 410, St. Jude Heart Pavilion (Valet parking at West Gate)', ${visit[6]}
+			${ids[visit[0]]}, ${clinician.id}, ${visit[1]}, ${visit[2]}, ${visit[3]}, ${visit[4]}, ${visit[5]},
+			${location}, ${visit[6]}
 		)
 	`;
 }
 
 const encounters = [
-	['2024-11-14', 'Dr. Sarah Jensen, MD', 'General Visit', 'Solo Practice Follow-up • Cardiology & Wellness', 'Routine health maintenance', 'Blood pressure 124/80 mmHg. Patient reports reduced palpitations and stable recovery. General status excellent.', 'Continue current medication plan; routine metabolic panel reassessment in 6 months.', 'Cardiology Pavilion'],
+	['2024-11-14', 'Dr. Irfan Ameerudden, MBBS', 'General Practice', 'St. Jude Family Clinic', 'Routine health maintenance', 'Blood pressure 124/80 mmHg. Patient reports reduced palpitations and stable recovery. General status excellent.', 'Continue current medication plan; routine metabolic panel reassessment in 6 months. Referred to Dr. Sarah Jensen for cardiology review.', 'Suite 210, St. Jude Family Clinic'],
 	['2024-10-24', 'Dr. Sarah Jensen, MD', 'Cardiology Consult', 'Cardiology & Concierge Solo Practice', 'Palpitation evaluation & EKG', 'Sinus rhythm with premature atrial contractions (PACs).', 'Initiated metoprolol succinate 25 mg daily for palpitation suppression. Ordered 12-lead Holter monitoring (48-hr).', 'Cardiology Suite #4'],
 	['2024-09-28', 'Dr. Emily Watson, MD', 'Primary Care / PCP', 'Comprehensive Family & Preventive Health', 'Annual comprehensive wellness & lipid evaluation', 'Mild hyperlipidemia, elevated LDL (142 mg/dL).', 'Prescribed atorvastatin 20 mg daily at bedtime. Structured dietary counseling and cardiovascular lifestyle guidelines provided.', 'Wellness Clinic'],
 	['2024-08-15', 'Dr. Marcus Vance, MD', 'Gastroenterology', 'Digestive Health & Endoscopy Associates', 'GI consult: atypical epigastric burning & dyspepsia', 'Mild GERD, negative for H. pylori antigen.', 'Prescribed pantoprazole 40 mg once daily before breakfast for 4 weeks. Avoid late-evening meals and triggers.', 'GI Endoscopy Registry'],
@@ -423,7 +538,7 @@ await sql`
 		'Mild non-obstructive calcified plaque in the proximal LAD (Agatston score: 42).',
 		'1. Mild non-obstructive coronary artery disease (CAD-RADS 1): limited to the proximal LAD with mild calcification and minimal luminal compromise. 2. Stable myocardial morphology: normal LV chamber dimensions and preserved wall thickness. No gross ischemia or pericardial abnormalities.',
 		'320 slices • 3D recon', 42,
-		'Eleanor, your CT scan shows that your major coronary arteries are open and healthy. There is a very mild area of plaque (15–20%) in one small section, which is typical for your age and completely stable. Your medication regimen provides great protection.',
+		'Noor, your CT scan shows that your major coronary arteries are open and healthy. There is a very mild area of plaque (15–20%) in one small section, which is typical for your age and completely stable. Your medication regimen provides great protection.',
 		'Scores under 100 reflect a low cardiovascular event probability over the next decade.',
 		${sql.json(vessels)}, 'final'
 	)
@@ -486,34 +601,6 @@ await sql`
 	(${ids['PID-4089']}, 'INV-2024-0701', 'Annual Lab Panel Copay', DATE '2024-06-10', 'paid', 'Direct account settlement', 15, 'Direct account', DATE '2024-06-12')
 `;
 
-const [consult] = await sql`
-	INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at)
-	VALUES (
-		${ids['PID-4089']}, ${doctor.id}, 'ENC-2024-884', 'in_session', 'in_person',
-		'Patient presents with episodic post-exertional chest awareness and palpitations for 3 weeks. No syncopal events, orthopnea, or ankle edema. Resting hemodynamics remain stable. Recommended baseline cardiac assessment.',
-		'CVS Pharmacy #4120 • 4th St & Broadway',
-		TIMESTAMP '2024-11-17 14:15:00'
-	)
-	RETURNING id
-`;
-await sql`
-	INSERT INTO consultation_entries (consultation_id, kind, label, detail) VALUES
-	(${consult.id}, 'Vital Sign', 'Blood Pressure — 128/82 mmHg', 'Normal sitting resting'),
-	(${consult.id}, 'Vital Sign', 'Heart Rate — 78 bpm', 'Regular rhythm'),
-	(${consult.id}, 'Symptom', 'Episodic Palpitations', 'Grade 2, onset 3 weeks ago, post-exertion'),
-	(${consult.id}, 'Observation', 'S1/S2 Normal', 'No murmurs detected')
-`;
-await sql`
-	INSERT INTO consultation_orders (consultation_id, kind, title, detail, note) VALUES
-	(${consult.id}, 'medication', 'Metoprolol Tartrate', '25 mg BID • 30-day supply (60 tabs)', 'Rate control'),
-	(${consult.id}, 'medication', 'Rosuvastatin Calcium', '10 mg daily • 90-day supply (90 caps)', 'Lipid therapy'),
-	(${consult.id}, 'referral', 'Dr. Marcus Vance, MD', 'Gastroenterology & Hepatology • West End Medical', 'Rule out GERD-induced atypical chest discomfort vs esophageal spasm.'),
-	(${consult.id}, 'referral', 'Dr. Elena Rostova, MD, FACC', 'Cardiac Electrophysiology • St. Jude Heart Clinic', 'Routine second opinion'),
-	(${consult.id}, 'test', '12-Lead Ambulatory ECG / Holter', 'High priority', 'Palpitation and nocturnal arrhythmia surveillance'),
-	(${consult.id}, 'test', 'CMP + hs-CRP (Venous Blood)', 'Fasting required 12h • turnaround 4–6h', 'Fast overnight; avoid caffeine and stressors'),
-	(${consult.id}, 'test', 'Transthoracic Echocardiogram (TTE)', 'Standard outpatient', 'LVEF and wall motion')
-`;
-
 const metrics = [
 	[1, 'Monthly Encounters', '164', 'Pacing 108% of target', '+14%'],
 	[2, 'Avg Consultation', '21 min', 'Benchmark ≤ 25 min', 'Optimal'],
@@ -561,11 +648,144 @@ await sql`
 	INSERT INTO practice_notes (body)
 	VALUES ('Elevated post-PCI diagnostic conversions triggered 18 Holter telemetry dispatches this cycle.')
 `;
+const studies = await sql`
+	SELECT * FROM imaging_studies WHERE patient_id = ${ids['PID-4089']} ORDER BY performed_on DESC
+`;
+for (const study of studies) {
+	const slug = study.modality === 'Cardiac CT' ? 'ccta' : study.modality.startsWith('Echo') ? 'echo' : 'cxr';
+	if (slug === 'ccta') writeCcta(`pid-4089/${slug}.png`);
+	else if (slug === 'echo') writeEcho(`pid-4089/${slug}.png`);
+	else writeCxr(`pid-4089/${slug}.png`);
+	const vessels = Array.isArray(study.vessels) ? study.vessels : [];
+	writeReport(`pid-4089/${slug}.pdf`, {
+		title: study.title,
+		meta: [
+			'Patient: Noor Yadallee  PID-4089  DOB 12 Apr 1956',
+			`Modality: ${study.modality}`,
+			`Performed: ${study.performed_on ?? 'Pending'}`,
+			`Facility: ${study.facility ?? ''}`,
+			study.equipment ? `Equipment: ${study.equipment}` : '',
+			study.radiologist ? `Interpreting physician: ${study.radiologist}` : '',
+			study.protocol ? `Protocol: ${study.protocol}` : '',
+			study.meta ? `Acquisition: ${study.meta}` : ''
+		].filter(Boolean),
+		sections: [
+			{ heading: 'Summary', paragraphs: [study.summary ?? ''] },
+			study.calcium_score != null
+				? { heading: 'Calcium score', paragraphs: [`Agatston score ${study.calcium_score}. ${study.outlook ?? ''}`] }
+				: null,
+			vessels.length
+				? {
+						heading: 'Vessels',
+						rows: vessels.map((vessel) => `${vessel.name}: ${vessel.status}. ${vessel.note}`)
+					}
+				: null,
+			{ heading: 'Impression', paragraphs: [study.impression ?? ''] },
+			study.patient_quote ? { heading: 'Patient explanation', paragraphs: [study.patient_quote] } : null
+		].filter(Boolean)
+	});
+	await sql`
+		UPDATE imaging_studies
+		SET image_path = ${`/records/pid-4089/${slug}.png`}, report_path = ${`/records/pid-4089/${slug}.pdf`}
+		WHERE id = ${study.id}
+	`;
+}
+
+const labRows = await sql`SELECT * FROM labs WHERE patient_id = ${ids['PID-4089']} ORDER BY id`;
+const labValues = await sql`
+	SELECT r.* FROM lab_results r
+	JOIN labs l ON l.id = r.lab_id
+	WHERE l.patient_id = ${ids['PID-4089']}
+	ORDER BY r.sort_order, r.id
+`;
+const labSlug = {
+	'CBC-99201-AUTO': 'cbc',
+	'LIP-4410': 'lipid',
+	'CMP-14': 'cmp',
+	'TNT-HS': 'troponin'
+};
+for (const lab of labRows) {
+	const slug = labSlug[lab.panel_id] ?? `lab-${lab.id}`;
+	const values = labValues.filter((result) => result.lab_id === lab.id);
+	writeReport(`pid-4089/${slug}.pdf`, {
+		title: lab.name,
+		meta: [
+			'Patient: Noor Yadallee  PID-4089  DOB 12 Apr 1956',
+			`Category: ${lab.category}`,
+			`Collected: ${lab.collected_on ?? 'Pending'}`,
+			`Facility: ${lab.facility ?? ''}`,
+			lab.ordering_md ? `Ordering physician: ${lab.ordering_md}` : '',
+			lab.specimen ? `Specimen: ${lab.specimen}` : '',
+			lab.panel_id ? `Panel: ${lab.panel_id}` : ''
+		].filter(Boolean),
+		sections: [
+			{ heading: 'Comment', paragraphs: [lab.note ?? ''] },
+			{
+				heading: 'Results',
+				rows: values.map((result) => {
+					const value = result.value_text ?? result.value_num ?? '';
+					const range = result.ref_low != null || result.ref_high != null ? `Ref ${result.ref_low ?? ''} - ${result.ref_high ?? ''}` : '';
+					return [result.name, value, result.unit ?? '', range, result.flag ?? ''].filter(Boolean).join('  ');
+				})
+			}
+		]
+	});
+	await sql`UPDATE labs SET report_path = ${`/records/pid-4089/${slug}.pdf`} WHERE id = ${lab.id}`;
+}
+
+await sql`
+	INSERT INTO patient_tasks (patient_id, consultation_id, order_id, title, detail, note, status)
+	SELECT c.patient_id, o.consultation_id, o.id, o.title, o.detail, o.note, 'open'
+	FROM consultation_orders o
+	JOIN consultations c ON c.id = o.consultation_id
+	WHERE o.kind = 'test'
+`;
+
+await sql`
+	INSERT INTO referrals (patient_id, from_doctor_id, to_doctor_id, note, status, created_at)
+	VALUES (
+		${ids['PID-4089']}, ${doctor.id}, ${cardio.id},
+		'Palpitations and chest awareness for cardiology review on Nov 21.',
+		'incoming',
+		TIMESTAMP '2024-11-17 13:40:00'
+	)
+`;
+
+await sql`
+	INSERT INTO patient_access (patient_id, doctor_id, status, source, created_at)
+	SELECT id, primary_doctor_id, 'granted', 'primary', TIMESTAMP '2024-11-17 08:00:00'
+	FROM patients
+	WHERE primary_doctor_id IS NOT NULL
+	ON CONFLICT (patient_id, doctor_id) DO NOTHING
+`;
+
+await sql`
+	INSERT INTO patient_access (patient_id, doctor_id, status, source, created_at)
+	SELECT DISTINCT patient_id, doctor_id, 'granted', 'appointment', TIMESTAMP '2024-11-17 08:00:00'
+	FROM appointments
+	ON CONFLICT (patient_id, doctor_id) DO NOTHING
+`;
+
+await sql`
+	INSERT INTO patient_access (patient_id, doctor_id, status, source, created_at)
+	SELECT patient_id, from_doctor_id, 'granted', 'referral', TIMESTAMP '2024-11-17 08:00:00'
+	FROM referrals
+	ON CONFLICT (patient_id, doctor_id) DO NOTHING
+`;
+
+await sql`
+	INSERT INTO patient_access (patient_id, doctor_id, status, source, created_at)
+	SELECT patient_id, to_doctor_id, 'granted', 'referral', created_at
+	FROM referrals
+	ON CONFLICT (patient_id, doctor_id) DO NOTHING
+`;
+
 await sql`
 	INSERT INTO notifications (user_id, title, body, created_at) VALUES
 	(${patientUser.id}, 'Evening dose due', 'Apixaban 5 mg is due at 8:00 PM.', TIMESTAMP '2024-11-17 12:00:00'),
-	(${patientUser.id}, 'Holter visit', 'Your monitor is placed during the Nov 21 visit with Dr. Jensen.', TIMESTAMP '2024-11-16 09:00:00'),
-	(${doctorUser.id}, 'Chart ready', 'Eleanor Vance is checked in for the 2:15 PM arrhythmia review.', TIMESTAMP '2024-11-17 13:50:00')
+	(${patientUser.id}, 'Holter visit', 'Your monitor is placed during the Nov 21 visit with Dr. Sarah Jensen.', TIMESTAMP '2024-11-16 09:00:00'),
+	(${gpUser.id}, 'Chart ready', 'Noor Yadallee is checked in for the 2:15 PM review.', TIMESTAMP '2024-11-17 13:50:00'),
+	(${cardioUser.id}, 'Referral received', 'Dr. Irfan Ameerudden referred Noor Yadallee for a cardiology review on Nov 21.', TIMESTAMP '2024-11-17 13:40:00')
 `;
 
 await sql.end();

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Mention from '#lib/components/Mention.svelte';
 	import { formatLongDate, formatTime } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
 	import type { PageProps } from './$types';
@@ -8,6 +9,7 @@
 	let specialty = $state('All');
 	let gender = $state('All');
 	let chosenId = $state<number | null>(null);
+	let focused = false;
 	let bookingsOpen = $state(false);
 	let kindByDoctor = $state<Record<number, 'clinic' | 'home'>>({});
 	let slotByDoctor = $state<Record<number, string>>({});
@@ -67,6 +69,12 @@
 		return slot ? `${slot.dateLabel} · ${slot.timeLabel}` : 'No open times in the next three weeks';
 	}
 
+	$effect.pre(() => {
+		if (focused || !data.focusId) return;
+		focused = true;
+		chosenId = data.focusId;
+	});
+
 	$effect(() => {
 		if (!chosen) return;
 		detail?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -102,7 +110,7 @@
 				<article class="card !py-3">
 					<p class="kicker">{visit.title}</p>
 					<p class="mt-1 font-semibold">{formatLongDate(visit.starts_at)}</p>
-					<p class="text-sm">{formatTime(visit.starts_at)} · {visit.duration_min} min · {visit.doctor_name}</p>
+					<p class="text-sm">{formatTime(visit.starts_at)} · {visit.duration_min} min · <Mention text={visit.doctor_name} /></p>
 					<p class="text-sm text-[#64748B]">{visit.location}</p>
 				</article>
 			{/each}
@@ -160,12 +168,10 @@
 			<div class={chosen ? 'grid gap-2' : 'grid gap-3 sm:grid-cols-2 xl:grid-cols-3'}>
 				{#each filtered as doctor}
 					{@const picked = chosen?.id === doctor.id}
-					<button
-						class="text-left {chosen
+					<div
+						class="cursor-pointer text-left {chosen
 							? `rounded-xl border px-3 py-2.5 ${picked ? 'border-brand bg-brand-soft' : 'border-[#E2E8F0] bg-white'}`
 							: `card ${picked ? 'border-brand ring-2 ring-brand/15' : ''}`}"
-						type="button"
-						aria-pressed={picked}
 						onclick={() => choose(doctor.id)}
 					>
 						<div class="flex items-center gap-3">
@@ -173,7 +179,7 @@
 								{monogram(doctor.name)}
 							</div>
 							<div class="min-w-0">
-								<p class="display truncate text-base font-bold">{doctor.name}</p>
+								<a class="display block truncate text-base font-bold text-[#0F172A] underline decoration-brand/30 underline-offset-2 hover:text-brand" href="/patient/doctors/{doctor.id}" onclick={(event) => event.stopPropagation()}>{doctor.name}</a>
 								<p class="truncate text-sm text-[#64748B]">{chosen ? doctor.specialty : doctor.credentials}</p>
 							</div>
 						</div>
@@ -182,7 +188,7 @@
 							<p class="text-sm text-[#64748B]">{doctor.gender}</p>
 							<p class="mt-2 text-sm">{nextOpen(doctor.slots)}</p>
 						{/if}
-					</button>
+					</div>
 				{/each}
 			</div>
 		{:else}
@@ -207,7 +213,7 @@
 							</div>
 							<div class="min-w-0">
 								<p class="kicker">{chosen.specialty} · {chosen.gender}</p>
-								<h2 class="display mt-1 text-2xl font-bold">{chosen.name}</h2>
+								<h2 class="display mt-1 text-2xl font-bold"><a class="underline decoration-brand/30 underline-offset-2" href="/patient/doctors/{chosen.id}">{chosen.name}</a></h2>
 								<p class="text-sm">{chosen.credentials}</p>
 								<p class="mt-1 text-sm text-[#64748B]">{chosen.practice}</p>
 								<p class="text-sm text-[#64748B]">{chosen.location}</p>

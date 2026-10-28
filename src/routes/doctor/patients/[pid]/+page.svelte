@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
+	import Mention from '#lib/components/Mention.svelte';
+	import TaskChecklist from '#lib/components/TaskChecklist.svelte';
 	import { ageOn, formatDate, formatTime } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -8,7 +10,8 @@
 		['checkups', 'Checkups'],
 		['prescriptions', 'Prescriptions'],
 		['images', 'Images'],
-		['labs', 'Labs']
+		['labs', 'Labs'],
+		['tasks', 'Tasks']
 	] as const;
 	const tone = (status: string) =>
 		status === 'active' ? 'brand' : status === 'completed' ? 'success' : status === 'ceased' ? 'muted' : 'warning';
@@ -43,15 +46,28 @@
 
 <section class="cards-2 px-4 py-4 lg:px-0">
 	{#if data.tab === 'checkups'}
+		{#if data.reports.length}
+			<p class="kicker">Self reports</p>
+			{#each data.reports as report}
+				<article class="card">
+					<p class="text-[11px] font-semibold tracking-wide text-[#64748B] uppercase">Self report</p>
+					<p class="text-xs text-[#64748B]">{formatDate(report.occurred_on)}</p>
+					<h2 class="font-semibold">{report.title}</h2>
+					<p class="text-sm text-[#64748B]">{[report.severity === 'mild' ? 'Mild' : report.severity === 'moderate' ? 'Moderate' : report.severity === 'severe' ? 'Severe' : '', report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ')}</p>
+					{#if report.detail}<p class="mt-2 text-sm">{report.detail}</p>{/if}
+					{#if report.meds_taken}<p class="mt-2 text-sm">Medicines taken: {report.meds_taken}</p>{/if}
+				</article>
+			{/each}
+		{/if}
 		<p class="kicker">{data.encounters.length} visits recorded</p>
 		{#each data.encounters as visit}
 			<article class="card">
 				<p class="text-xs text-[#64748B]">{formatDate(visit.occurred_on)}</p>
-				<h2 class="font-semibold">{visit.doctor_name}</h2>
+				<h2 class="font-semibold"><Mention text={visit.doctor_name} /></h2>
 				<p class="text-sm text-brand">{visit.kind}</p>
 				<p class="mt-2 text-sm"><span class="font-semibold">Focus:</span> {visit.focus}</p>
-				<p class="mt-1 text-sm">{visit.findings}</p>
-				<p class="mt-2 text-sm text-[#334155]">{visit.plan}</p>
+				<p class="mt-1 text-sm"><Mention text={visit.findings} /></p>
+				<p class="mt-2 text-sm text-[#334155]"><Mention text={visit.plan} /></p>
 				<p class="mt-2 text-xs text-[#64748B]">{visit.location}</p>
 			</article>
 		{:else}
@@ -66,8 +82,8 @@
 					<h2 class="font-semibold">Order #{order.code}</h2>
 					<Badge tone={tone(order.status)}>{order.status}</Badge>
 				</div>
-				<p class="text-xs text-[#64748B]">{formatDate(order.ordered_at)} · {formatTime(order.ordered_at)}</p>
-				<p class="mt-2 text-sm">{order.prescriber} · {order.specialty}</p>
+				<p class="text-xs text-[#64748B]">{formatDate(order.ordered_at)} · {formatTime(order.ordered_at)}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
+				<p class="mt-2 text-sm"><Mention text={order.prescriber} /> · {order.specialty}</p>
 				<p class="mt-2 text-sm">{order.items.map((item) => item.name).join(' · ')}</p>
 				<p class="text-xs text-[#64748B]">{order.facility}</p>
 				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/prescriptions/{order.id}">View prescription details</a>
@@ -81,13 +97,16 @@
 				<p class="text-xs font-semibold text-brand">{study.modality} · {formatDate(study.performed_on)}</p>
 				<h2 class="font-semibold">{study.title}</h2>
 				<p class="text-sm text-[#64748B]">{study.facility}</p>
-				{#if study.radiologist}<p class="text-sm">Radiologist: {study.radiologist}</p>{/if}
+				{#if study.radiologist}<p class="text-sm">Radiologist: <Mention text={study.radiologist} /></p>{/if}
+				{#if study.image_path}
+					<img class="mt-3 h-40 w-full rounded-xl bg-[#020617] object-contain" src={study.image_path} alt="" />
+				{/if}
 				<p class="mt-2 text-sm">{study.summary}</p>
 				<p class="text-xs text-[#64748B]">{study.meta}</p>
 				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/imaging/{study.id}">View scan</a>
 			</article>
 		{/each}
-	{:else}
+	{:else if data.tab === 'labs'}
 		<form class="card space-y-2" method="POST" action="?/orderLab">
 			<p class="font-semibold">Order a laboratory panel</p>
 			<input class="field" name="name" placeholder="Panel name" required />
@@ -102,6 +121,7 @@
 				</div>
 				<h2 class="font-semibold">{lab.name}</h2>
 				<p class="text-xs text-[#64748B]">{formatDate(lab.collected_on)} · {lab.facility}</p>
+				{#if lab.ordering_md}<p class="text-sm">Ordered by <Mention text={lab.ordering_md} /></p>{/if}
 				<ul class="mt-2 space-y-1 text-sm">
 					{#each lab.results.slice(0, 4) as result}
 						<li class="flex justify-between gap-3">
@@ -113,5 +133,10 @@
 				<a class="mt-3 inline-flex text-sm font-semibold text-brand" href="/doctor/patients/{data.patient.pid}/labs/{lab.id}">View lab detail</a>
 			</article>
 		{/each}
+	{:else if data.tab === 'tasks'}
+		<div class="span-2">
+			<p class="mb-3 max-w-2xl text-sm text-[#64748B]">Tests ordered during a consultation. Each uploaded PDF stays with the consultation that created the checklist.</p>
+			<TaskChecklist tasks={data.tasks} />
+		</div>
 	{/if}
 </section>
