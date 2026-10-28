@@ -8,9 +8,10 @@ async function context(locals: App.Locals, pid: string) {
 	return { doctor, patient, consult };
 }
 
-export async function load({ params, locals }) {
-	const ctx = await context(locals, params.pid);
-	return { ...ctx, referral: await referralForFollowUp(ctx.consult.id) };
+export async function load({ parent }) {
+	const { doctor, patient } = await parent();
+	const consult = await draftConsult(patient.id, doctor.id);
+	return { doctor, patient, consult, referral: await referralForFollowUp(consult.id) };
 }
 
 export const actions = {

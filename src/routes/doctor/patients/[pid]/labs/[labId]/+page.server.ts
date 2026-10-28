@@ -2,8 +2,8 @@ import { error } from '@sveltejs/kit';
 import { acknowledgeLab, labById } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
-export async function load({ params, locals }) {
-	const { patient } = await requireChart(locals, params.pid);
+export async function load({ params, parent }) {
+	const { patient } = await parent();
 	const lab = await labById(patient.id, Number(params.labId));
 	if (!lab) error(404, 'Lab not found');
 	return { patient, lab };

@@ -181,8 +181,8 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			if ('error' in parsed) return parsed;
 			const current = field === 'conditions' ? patient.conditions : patient.allergies;
 			if (parsed.items.join('\n') === current.join('\n')) return { error: 'That is already on file.' };
-			if (field === 'conditions') await client`UPDATE patients SET conditions = ${client.json(parsed.items)} WHERE id = ${patientId}`;
-			else await client`UPDATE patients SET allergies = ${client.json(parsed.items)} WHERE id = ${patientId}`;
+			if (field === 'conditions') await client`UPDATE patients SET conditions = ${JSON.stringify(parsed.items)}::jsonb WHERE id = ${patientId}`;
+			else await client`UPDATE patients SET allergies = ${JSON.stringify(parsed.items)}::jsonb WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -201,7 +201,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			const current = patient.surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
 			const next = surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
 			if (next === current) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET surgeries = ${client.json(surgeries)} WHERE id = ${patientId}`;
+			await client`UPDATE patients SET surgeries = ${JSON.stringify(surgeries)}::jsonb WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -572,7 +572,7 @@ async function prescriptionsOnVisit(patientId: number, day: string, doctorName: 
 	const ids = rows.map((row) => row.id);
 	const items = await client`
 		SELECT * FROM prescription_items
-		WHERE prescription_id IN ${client(ids)}
+		WHERE prescription_id = ANY(${ids})
 		ORDER BY sort_order, id
 	`;
 	return rows.map((row) => ({
@@ -723,7 +723,7 @@ export async function selfReportsFor(patientId: number) {
 	const edits = await client<{ report_id: number; changed_at: Date | string; changes: SelfReportEdit['changes'] }[]>`
 		SELECT report_id, changed_at, changes
 		FROM self_report_edits
-		WHERE report_id IN ${client(rows.map((row) => row.id))}
+		WHERE report_id = ANY(${rows.map((row) => row.id)})
 		ORDER BY changed_at DESC
 	`;
 	return rows.map((row) => ({

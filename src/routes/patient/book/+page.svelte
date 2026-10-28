@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatLongDate, formatTime } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
@@ -70,9 +71,11 @@
 	}
 
 	$effect.pre(() => {
-		if (focused || !data.focusId) return;
+		if (focused) return;
+		const focus = Number(page.url.searchParams.get('doctor'));
+		if (!Number.isInteger(focus) || focus < 1) return;
 		focused = true;
-		chosenId = data.focusId;
+		chosenId = focus;
 	});
 
 	$effect(() => {

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { setContext } from 'svelte';
 	import Frame from '#lib/components/Frame.svelte';
 	import type { LayoutProps } from './$types';
@@ -11,6 +12,9 @@
 		portal: 'patient' as const,
 		selfId: null
 	});
+	const path = $derived(page.url.pathname);
+	const query = $derived(page.url.search);
+	const notice = $derived(page.url.searchParams.get('notice'));
 	const nav = [
 		{ href: '/patient', label: 'Home', icon: 'home' },
 		{ href: '/patient/book', label: 'Book', icon: 'calendar_month' },
@@ -22,9 +26,9 @@
 
 <Frame
 	scheme="patient"
-	path={data.path}
-	query={data.query}
-	notice={data.notice}
+	{path}
+	{query}
+	{notice}
 	{nav}
 	who="{data.patient.first_name} {data.patient.last_name}"
 	role="Patient portal"

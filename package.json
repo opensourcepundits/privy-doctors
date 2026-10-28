@@ -38,6 +38,7 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
+		"@neondatabase/serverless": "^1.2.0",
 		"jsqr": "^1.4.0",
 		"qrcode": "^1.5.4"
 	}

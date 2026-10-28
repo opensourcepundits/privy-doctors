@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { setContext } from 'svelte';
 	import Frame from '#lib/components/Frame.svelte';
 	import type { LayoutProps } from './$types';
@@ -13,9 +14,12 @@
 			return data.doctor.id;
 		}
 	});
+	const path = $derived(page.url.pathname);
+	const query = $derived(page.url.search);
+	const notice = $derived(page.url.searchParams.get('notice'));
 	const waiting = $derived(data.incoming.filter((item) => item.status !== 'completed').length);
 	const sessions = $derived(
-		data.openConsults.filter((item) => data.path !== `/doctor/patients/${item.pid}/consult`)
+		data.openConsults.filter((item) => path !== `/doctor/patients/${item.pid}/consult`)
 	);
 	const nav = $derived([
 		{ href: '/doctor', label: 'Home', icon: 'home' },
@@ -28,9 +32,9 @@
 
 <Frame
 	scheme="doctor"
-	path={data.path}
-	query={data.query}
-	notice={data.notice}
+	{path}
+	{query}
+	{notice}
 	{nav}
 	who={data.doctor.name}
 	role={data.doctor.specialty}
@@ -43,7 +47,7 @@
 			<a class="font-semibold text-brand" href="/doctor/patients/{session.pid}/consult">Resume</a>
 			<form method="POST" action="/doctor/session?/cancel" onsubmit={(event) => { if (!confirm(`Cancel the consultation with ${session.first_name} ${session.last_name}? Notes from this session will be discarded.`)) event.preventDefault(); }}>
 				<input type="hidden" name="id" value={session.id} />
-				<input type="hidden" name="return" value={data.path} />
+				<input type="hidden" name="return" value={path} />
 				<button class="font-semibold text-red-700" type="submit">Cancel</button>
 			</form>
 		</div>

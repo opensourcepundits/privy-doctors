@@ -1,10 +1,12 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import { ageOn } from '#lib/format';
 	import { historyEvents, type HistorySlice } from '#lib/history';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	const view = $derived(page.url.searchParams.get('view') ?? 'all');
 	const views = [
 		['all', 'All history'],
 		['consultations', 'Consultations'],
@@ -16,7 +18,7 @@
 	] as const;
 
 	const events = $derived(
-		data.view === 'hospital'
+		view === 'hospital'
 			? []
 			: historyEvents(
 					{
@@ -26,7 +28,7 @@
 						imaging: data.imaging,
 						surgeries: data.patient.surgeries
 					},
-					data.view as HistorySlice,
+					view as HistorySlice,
 					{
 						lab: (id) => `/patient/labs/${id}`,
 						image: (id) => `/patient/imaging/${id}`,
@@ -46,10 +48,10 @@
 
 <nav class="mt-4 flex gap-2 overflow-x-auto px-4 lg:px-0">
 	{#each views as [id, label]}
-		<a class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {data.view === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}" href="?view={id}">{label}</a>
+		<a class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {view === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}" href="?view={id}">{label}</a>
 	{/each}
 </nav>
 
 <section class="px-3 py-6 sm:px-4 lg:px-0">
-	<Timeline {events} emptyHref={data.view !== 'all' ? '?view=all' : ''} />
+	<Timeline {events} emptyHref={view !== 'all' ? '?view=all' : ''} />
 </section>

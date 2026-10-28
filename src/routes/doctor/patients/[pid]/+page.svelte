@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import TaskChecklist from '#lib/components/TaskChecklist.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import { ageOn, formatDate } from '#lib/format';
@@ -6,6 +7,10 @@
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	const tab = $derived.by(() => {
+		const requested = page.url.searchParams.get('tab');
+		return requested === 'checkups' ? 'consults' : (requested ?? 'timeline');
+	});
 	const tabs = [
 		['timeline', 'Timeline'],
 		['consults', 'Consults'],
@@ -53,7 +58,7 @@
 	});
 	const chartEvents = $derived.by(() => {
 		const slice: HistorySlice | '' =
-			data.tab === 'timeline' ? 'all' : data.tab === 'consults' ? 'consultations' : data.tab === 'images' ? 'images' : data.tab === 'labs' ? 'diagnostics' : '';
+			tab === 'timeline' ? 'all' : tab === 'consults' ? 'consultations' : tab === 'images' ? 'images' : tab === 'labs' ? 'diagnostics' : '';
 		if (!slice) return [];
 		const events = historyEvents(source, slice, links);
 		if (slice === 'all' || slice === 'consultations') {
@@ -109,15 +114,15 @@
 <nav class="mt-4 flex gap-2 overflow-x-auto px-4 lg:px-0">
 	{#each tabs as [id, label]}
 		<a
-			class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {data.tab === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}"
+			class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {tab === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}"
 			href="?tab={id}">{label}</a>
 	{/each}
 </nav>
 
 <section class="px-3 py-4 sm:px-4 lg:px-0">
-	{#if data.tab === 'timeline' || data.tab === 'consults' || data.tab === 'images'}
+	{#if tab === 'timeline' || tab === 'consults' || tab === 'images'}
 		<Timeline events={chartEvents} />
-	{:else if data.tab === 'labs'}
+	{:else if tab === 'labs'}
 		<form class="card mb-6 max-w-3xl space-y-2" method="POST" action="?/orderLab">
 			<p class="font-semibold">Order a laboratory panel</p>
 			<input class="field" name="name" placeholder="Panel name" required />
@@ -125,10 +130,10 @@
 			<button class="btn" type="submit">Save order</button>
 		</form>
 		<Timeline events={chartEvents} />
-	{:else if data.tab === 'prescriptions'}
+	{:else if tab === 'prescriptions'}
 		<Timeline events={prescriptionEvents} />
 		<a class="btn mt-2 max-w-3xl" href="/doctor/patients/{data.patient.pid}/consult/orders">Create prescription order</a>
-	{:else if data.tab === 'tasks'}
+	{:else if tab === 'tasks'}
 		<div class="span-2">
 			<p class="mb-3 max-w-2xl text-sm text-[#64748B]">Tests ordered during a consultation. Each uploaded PDF stays with the consultation that created the checklist.</p>
 			<TaskChecklist tasks={data.tasks} />

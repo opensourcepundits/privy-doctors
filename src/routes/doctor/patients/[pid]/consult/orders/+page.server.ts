@@ -15,10 +15,11 @@ async function context(locals: App.Locals, pid: string) {
 	return { doctor, patient, consult };
 }
 
-export async function load({ params, locals }) {
-	const ctx = await context(locals, params.pid);
-	const doctors = (await referralDoctors()).filter((item) => item.id !== ctx.doctor.id);
-	return { ...ctx, doctors };
+export async function load({ parent }) {
+	const { doctor, patient } = await parent();
+	const consult = await draftConsult(patient.id, doctor.id);
+	const doctors = (await referralDoctors()).filter((item) => item.id !== doctor.id);
+	return { doctor, patient, consult, doctors };
 }
 
 export const actions = {
