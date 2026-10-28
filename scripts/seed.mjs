@@ -781,11 +781,11 @@ await sql`
 `;
 
 await sql`
-	INSERT INTO notifications (user_id, title, body, created_at) VALUES
-	(${patientUser.id}, 'Evening dose due', 'Apixaban 5 mg is due at 8:00 PM.', TIMESTAMP '2024-11-17 12:00:00'),
-	(${patientUser.id}, 'Holter visit', 'Your monitor is placed during the Nov 21 visit with Dr. Sarah Jensen.', TIMESTAMP '2024-11-16 09:00:00'),
-	(${gpUser.id}, 'Chart ready', 'Noor Yadallee is checked in for the 2:15 PM review.', TIMESTAMP '2024-11-17 13:50:00'),
-	(${cardioUser.id}, 'Referral received', 'Dr. Irfan Ameerudden referred Noor Yadallee for a cardiology review on Nov 21.', TIMESTAMP '2024-11-17 13:40:00')
+	INSERT INTO notifications (user_id, title, body, created_at, seen_at) VALUES
+	(${patientUser.id}, 'Evening dose due', 'Apixaban 5 mg is due at 8:00 PM.', TIMESTAMP '2024-11-17 12:00:00', NULL),
+	(${patientUser.id}, 'Holter visit', 'Your monitor is placed during the Nov 21 visit with Dr. Sarah Jensen.', TIMESTAMP '2024-11-16 09:00:00', TIMESTAMP '2024-11-16 18:10:00'),
+	(${gpUser.id}, 'Chart ready', 'Noor Yadallee is checked in for the 2:15 PM review.', TIMESTAMP '2024-11-17 13:50:00', NULL),
+	(${cardioUser.id}, 'Referral received', 'Dr. Irfan Ameerudden referred Noor Yadallee for a cardiology review on Nov 21.', TIMESTAMP '2024-11-17 13:40:00', NULL)
 `;
 
 await sql.end();

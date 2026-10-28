@@ -22,9 +22,6 @@
 			<h1 class="display text-2xl font-bold lg:text-3xl">Good afternoon, {data.patient.first_name}</h1>
 			<p class="text-sm text-[#64748B]">Patient portal · {data.patient.pid}</p>
 		</div>
-		<a class="ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-full border border-[#E2E8F0] bg-white text-brand" href="/patient/notifications" aria-label="Notifications">
-			<span class="material-symbols-outlined">notifications</span>
-		</a>
 	</div>
 </header>
 

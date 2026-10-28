@@ -1,7 +1,7 @@
 <script lang="ts">
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Mention from '#lib/components/Mention.svelte';
-	import { ageOn, formatDate, formatLongDate, formatTime, initials } from '#lib/format';
+	import { ageOn, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -41,21 +41,6 @@
 		<button class="absolute top-1/2 right-1.5 h-8 -translate-y-1/2 rounded-lg bg-brand px-3.5 text-xs font-semibold text-white" type="submit">Find</button>
 	</label>
 </form>
-
-{#if data.notifications.length}
-	<section class="px-4 pt-6 lg:px-0">
-		<h2 class="display text-lg font-semibold lg:text-xl">Notifications</h2>
-		<div class="mt-3 grid gap-3 lg:grid-cols-2">
-			{#each data.notifications.slice(0, 4) as note}
-				<article class="card">
-					<p class="font-semibold">{note.title}</p>
-					<p class="text-sm"><Mention text={note.body} /></p>
-					<p class="text-xs text-[#64748B]">{formatDate(note.created_at)} · {formatTime(note.created_at)}</p>
-				</article>
-			{/each}
-		</div>
-	</section>
-{/if}
 
 <section class="px-4 pt-6 lg:px-0">
 	<div class="mb-3 flex items-end justify-between">

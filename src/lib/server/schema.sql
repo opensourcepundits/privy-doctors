@@ -376,7 +376,8 @@ CREATE TABLE notifications (
   user_id int NOT NULL REFERENCES users(id),
   title text NOT NULL,
   body text NOT NULL,
-  created_at timestamp NOT NULL
+  created_at timestamp NOT NULL,
+  seen_at timestamp
 );
 
 CREATE TABLE sessions (
@@ -386,3 +387,5 @@ CREATE TABLE sessions (
 );
 
 ALTER TABLE encounters ADD COLUMN IF NOT EXISTS consultation_id int REFERENCES consultations(id) ON DELETE SET NULL;
+
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS seen_at timestamp;

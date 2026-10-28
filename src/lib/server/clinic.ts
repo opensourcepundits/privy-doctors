@@ -903,6 +903,14 @@ export async function notificationsFor(userId: number) {
 	return client`SELECT * FROM notifications WHERE user_id = ${userId} ORDER BY created_at DESC`;
 }
 
+export async function markNotificationsSeen(userId: number) {
+	await client`
+		UPDATE notifications
+		SET seen_at = ${nowLocal().stamp}
+		WHERE user_id = ${userId} AND seen_at IS NULL
+	`;
+}
+
 export async function analytics() {
 	const metrics = await client`SELECT * FROM practice_metrics ORDER BY sort_order`;
 	const modalities = await client`SELECT * FROM modality_volumes ORDER BY sort_order`;
@@ -1466,7 +1474,7 @@ export async function requestChartAccess(patientId: number, doctorId: number) {
 	await notify(
 		patient.user_id,
 		'Record access request',
-		`${doctor?.name ?? 'A clinician'} is asking to open your medical record. Allow or deny this from your home page, Notifications, or My physicians.`
+		`${doctor?.name ?? 'A clinician'} is asking to open your medical record. Allow or deny this from your home page or My physicians.`
 	);
 	return 'requested' as const;
 }

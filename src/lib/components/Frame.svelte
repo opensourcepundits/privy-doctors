@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import Bell from '#lib/components/Bell.svelte';
 
 	let {
 		path,
@@ -9,6 +10,8 @@
 		who = '',
 		role = '',
 		scheme,
+		notifications = [],
+		markSeen = '',
 		children
 	}: {
 		path: string;
@@ -18,6 +21,14 @@
 		role?: string;
 		scheme: 'doctor' | 'patient';
 		nav: { href: string; label: string; icon: string; fab?: boolean; badge?: number }[];
+		notifications?: {
+			id: number;
+			title: string;
+			body: string;
+			created_at: Date | string;
+			seen_at: Date | string | null;
+		}[];
+		markSeen?: string;
 		children: Snippet;
 	} = $props();
 
@@ -98,6 +109,9 @@
 			<div class="relative pb-24 lg:min-h-dvh lg:pb-12">
 				<div class="h-1 bg-brand lg:hidden"></div>
 				<div class="lg:mx-auto lg:max-w-6xl lg:px-8 lg:pt-4">
+					<div class="sticky top-0 z-30 flex justify-end bg-canvas/95 px-4 py-2 backdrop-blur lg:bg-shell-desk/95 lg:px-0">
+						<Bell notes={notifications} {markSeen} />
+					</div>
 					{#if shown}
 						<p class="mx-4 mt-4 rounded-xl bg-brand px-4 py-3 text-sm text-white lg:mx-0">{shown}</p>
 					{/if}

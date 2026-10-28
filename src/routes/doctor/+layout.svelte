@@ -26,7 +26,17 @@
 	]);
 </script>
 
-<Frame scheme="doctor" path={data.path} query={data.query} notice={data.notice} {nav} who={data.doctor.name} role={data.doctor.specialty}>
+<Frame
+	scheme="doctor"
+	path={data.path}
+	query={data.query}
+	notice={data.notice}
+	{nav}
+	who={data.doctor.name}
+	role={data.doctor.specialty}
+	notifications={data.notifications}
+	markSeen="/doctor/notifications?/seen"
+>
 	{#each sessions as session}
 		<div class="mx-4 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm lg:mx-0">
 			<p class="min-w-0 flex-1">Consultation in progress with <span class="font-semibold">{session.first_name} {session.last_name}</span>.</p>

@@ -341,6 +341,15 @@ export const selfReportEdits = pgTable('self_report_edits', {
 	changes: jsonb('changes').notNull()
 });
 
+export const notifications = pgTable('notifications', {
+	id: serial('id').primaryKey(),
+	userId: integer('user_id').notNull(),
+	title: text('title').notNull(),
+	body: text('body').notNull(),
+	createdAt: timestamp('created_at').notNull(),
+	seenAt: timestamp('seen_at')
+});
+
 export const sessions = pgTable('sessions', {
 	id: text('id').primaryKey(),
 	userId: integer('user_id').notNull(),
