@@ -13,7 +13,13 @@ const env = Object.fromEntries(
 		})
 );
 
-const sql = postgres(env.DATABASE_URL, {
+const databaseUrl = process.env.DATABASE_URL || env.DATABASE_URL;
+if (!databaseUrl) throw new Error('Set DATABASE_URL for the local database.');
+if (!/@(localhost|127\.0\.0\.1)(:|\/)/.test(databaseUrl)) {
+	throw new Error('Refusing to reset a remote database. Run neon/populate.sql in the Neon SQL editor.');
+}
+
+const sql = postgres(databaseUrl, {
 	onnotice: () => {},
 	types: {
 		timestamp: {
@@ -686,7 +692,7 @@ for (const study of studies) {
 	});
 	await sql`
 		UPDATE imaging_studies
-		SET image_path = ${`/records/pid-4089/${slug}.png`}, report_path = ${`/records/pid-4089/${slug}.pdf`}
+		SET image_path = ${`PID-4089/${slug}.png`}, report_path = ${`/records/pid-4089/${slug}.pdf`}
 		WHERE id = ${study.id}
 	`;
 }

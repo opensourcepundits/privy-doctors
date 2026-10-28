@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { CLINIC_DAY, formatDate, isoDate } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
+import { resolveImagePaths } from './storage';
 
 export type PatientRow = {
 	id: number;
@@ -850,16 +851,19 @@ export async function labById(patientId: number, id: number) {
 }
 
 export async function imagingFor(patientId: number) {
-	return client`
+	const rows = await client`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} ORDER BY performed_on DESC NULLS LAST
 	`;
+	return resolveImagePaths(rows);
 }
 
 export async function imagingById(patientId: number, id: number) {
 	const [row] = await client`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} AND id = ${id}
 	`;
-	return row ?? null;
+	if (!row) return null;
+	const [resolved] = await resolveImagePaths([row]);
+	return resolved;
 }
 
 export async function vitalsFor(patientId: number) {

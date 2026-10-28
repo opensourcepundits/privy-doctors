@@ -147,7 +147,7 @@ npm run build
 npm run preview
 ```
 
-The preview server still needs the database from the install steps. Deployment uses `@sveltejs/adapter-auto`. For a specific host, switch the adapter as described in the [SvelteKit adapter docs](https://svelte.dev/docs/kit/adapters).
+The preview server still needs the database from the install steps. Deployment uses `@sveltejs/adapter-vercel`. The Vercel Neon integration sets `DATABASE_URL` to the pooled connection. Drizzle migrations use `DATABASE_URL_UNPOOLED`.
 
 ## Troubleshooting
 
