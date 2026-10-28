@@ -93,7 +93,8 @@ export const encounters = pgTable('encounters', {
 	findings: text('findings'),
 	plan: text('plan'),
 	location: text('location'),
-	status: text('status').notNull()
+	status: text('status').notNull(),
+	consultationId: integer('consultation_id')
 });
 
 export const vitals = pgTable('vitals', {
@@ -331,6 +332,13 @@ export const selfReports = pgTable('self_reports', {
 	medsTaken: text('meds_taken'),
 	ongoing: boolean('ongoing').notNull(),
 	createdAt: timestamp('created_at').notNull()
+});
+
+export const selfReportEdits = pgTable('self_report_edits', {
+	id: serial('id').primaryKey(),
+	reportId: integer('report_id').notNull(),
+	changedAt: timestamp('changed_at').notNull(),
+	changes: jsonb('changes').notNull()
 });
 
 export const sessions = pgTable('sessions', {

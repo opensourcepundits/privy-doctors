@@ -20,7 +20,7 @@
 	<div class="flex items-center gap-3">
 		<div class="grid h-12 w-12 place-items-center rounded-full bg-brand text-sm font-bold text-white">{monogram}</div>
 		<div>
-			<p class="kicker">CareOS</p>
+			<p class="kicker asis">careOS</p>
 			<h1 class="display text-xl font-bold lg:text-3xl">{data.doctor.name}</h1>
 			<p class="text-sm text-[#64748B]">{data.doctor.practice} · {data.doctor.specialty}</p>
 		</div>

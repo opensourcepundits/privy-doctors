@@ -7,7 +7,7 @@
 <main class="flex min-h-dvh items-center justify-center bg-[#E7EEF6] px-4 py-10">
 	<div class="w-full max-w-[480px] rounded-3xl border border-[#E2E8F0] bg-white px-6 py-8 shadow-xl lg:px-10 lg:py-10">
 		<p class="kicker">Private practice</p>
-		<h1 class="display mt-2 text-3xl font-bold text-[#0F172A]">CareOS</h1>
+		<h1 class="display mt-2 text-3xl font-bold text-[#0F172A]">careOS</h1>
 		<p class="mt-2 text-sm text-[#64748B]">Clinic day of 17 November 2024. Sign in as the general practitioner, the patient, or the cardiologist used for referrals.</p>
 
 		<form method="POST" class="mt-8 space-y-3">

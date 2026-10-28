@@ -264,6 +264,6 @@ export function writeReport(rel, { title, meta = [], sections = [] }) {
 		for (const row of section.rows ?? []) lines.push(...wrap(row));
 		if (section.rows?.length) lines.push('');
 	}
-	lines.push('CareOS clinical record.');
+	lines.push('careOS clinical record.');
 	writePdf(rel, lines);
 }

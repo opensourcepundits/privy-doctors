@@ -175,7 +175,7 @@
 							{#if patient.nic || patient.passport}
 								<p class="text-sm text-[#64748B]">{patient.nic ? `NIC ${patient.nic}` : ''}{patient.nic && patient.passport ? ' · ' : ''}{patient.passport ? `Passport ${patient.passport}` : ''}</p>
 							{/if}
-							<p class="text-sm">{patient.conditions[0] ?? patient.concierge_note}</p>
+							{#if patient.conditions[0]}<p class="text-sm">{patient.conditions[0]}</p>{/if}
 						{:else if patient.access === 'pending'}
 							<p class="text-sm text-[#64748B]">Waiting for the patient to allow access</p>
 						{:else}

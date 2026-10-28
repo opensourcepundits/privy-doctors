@@ -16,7 +16,7 @@
 {#if mentions}
 	{#each parts as part}
 		{#if part.id}
-			<a class="font-semibold text-brand underline decoration-brand/30 underline-offset-2" href={href(part.id)}>{part.text}</a>
+			<a class="pointer-events-auto relative z-10 font-semibold text-brand underline decoration-brand/30 underline-offset-2" href={href(part.id)}>{part.text}</a>
 		{:else}{part.text}{/if}
 	{/each}
 {:else}

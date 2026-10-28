@@ -497,8 +497,213 @@ export async function encountersFor(patientId: number) {
 	`;
 }
 
+export async function consultationsFor(patientId: number) {
+	return client`
+		SELECT c.id, c.status, c.modality, c.narrative, c.code, c.started_at, c.doctor_id,
+			d.name AS doctor_name, d.credentials, d.specialty
+		FROM consultations c
+		JOIN doctors d ON d.id = c.doctor_id
+		WHERE c.patient_id = ${patientId}
+		ORDER BY c.started_at DESC
+	`;
+}
+
+type VisitEntry = { id: number; kind: string; label: string; detail: string | null };
+type VisitOrder = {
+	id: number;
+	kind: string;
+	title: string;
+	detail: string | null;
+	note: string | null;
+	completes_on: Date | string | null;
+};
+type VisitTask = { id: number; title: string; detail: string | null; note: string | null; status: string };
+type VisitReferral = {
+	id: number;
+	note: string | null;
+	status: string;
+	created_at: Date | string;
+	from_name: string;
+	from_credentials: string;
+	from_specialty: string;
+	to_name: string;
+	to_credentials: string;
+	to_specialty: string;
+};
+
+export type VisitRecord = {
+	when: Date | string;
+	status: string;
+	code: string;
+	modality: string;
+	doctor: string;
+	role: string;
+	practice: string;
+	location: string;
+	kind: string;
+	focus: string;
+	findings: string;
+	plan: string;
+	narrative: string;
+	continueHref: string;
+	entries: VisitEntry[];
+	orders: VisitOrder[];
+	tasks: VisitTask[];
+	prescriptions: Awaited<ReturnType<typeof prescriptionsFor>>;
+	referrals: VisitReferral[];
+};
+
+async function prescriptionsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
+	const code = consultId ? `RX-${consultId}` : '';
+	const rows = await client`
+		SELECT * FROM prescriptions
+		WHERE patient_id = ${patientId}
+		  AND (
+			(${consultId}::int IS NOT NULL AND code = ${code})
+			OR (
+				ordered_at::date = ${day}::date
+				AND (${doctorName} ILIKE prescriber || '%' OR prescriber ILIKE ${doctorName} || '%')
+			)
+		  )
+		ORDER BY ordered_at DESC
+	`;
+	if (!rows.length) return [];
+	const ids = rows.map((row) => row.id);
+	const items = await client`
+		SELECT * FROM prescription_items
+		WHERE prescription_id IN ${client(ids)}
+		ORDER BY sort_order, id
+	`;
+	return rows.map((row) => ({
+		...row,
+		items: items.filter((item) => item.prescription_id === row.id)
+	}));
+}
+
+async function referralsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
+	return client<VisitReferral[]>`
+		SELECT r.id, r.note, r.status, r.created_at,
+			f.name AS from_name, f.credentials AS from_credentials, f.specialty AS from_specialty,
+			t.name AS to_name, t.credentials AS to_credentials, t.specialty AS to_specialty
+		FROM referrals r
+		JOIN doctors f ON f.id = r.from_doctor_id
+		JOIN doctors t ON t.id = r.to_doctor_id
+		WHERE r.patient_id = ${patientId}
+		  AND (
+			(${consultId}::int IS NOT NULL AND (r.source_consult_id = ${consultId} OR r.follow_consult_id = ${consultId}))
+			OR (
+				r.created_at::date >= ${day}::date
+				AND r.created_at::date <= (${day}::date + 21)
+				AND (${doctorName} ILIKE f.name || '%' OR f.name ILIKE ${doctorName} || '%')
+			)
+		  )
+		ORDER BY r.created_at DESC
+	`;
+}
+
+async function consultParts(patientId: number, consultId: number) {
+	const [consult] = await client`
+		SELECT c.*, d.name AS doctor_name, d.credentials, d.specialty, d.practice, d.location
+		FROM consultations c
+		JOIN doctors d ON d.id = c.doctor_id
+		WHERE c.id = ${consultId} AND c.patient_id = ${patientId}
+	`;
+	if (!consult) return null;
+	const [entries, orders, tasks] = await Promise.all([
+		client<VisitEntry[]>`SELECT id, kind, label, detail FROM consultation_entries WHERE consultation_id = ${consultId} ORDER BY id`,
+		client<VisitOrder[]>`SELECT id, kind, title, detail, note, completes_on FROM consultation_orders WHERE consultation_id = ${consultId} ORDER BY id`,
+		client<VisitTask[]>`SELECT id, title, detail, note, status FROM patient_tasks WHERE consultation_id = ${consultId} ORDER BY id`
+	]);
+	return { consult, entries, orders, tasks };
+}
+
+function visitShape(
+	when: Date | string,
+	fields: Omit<VisitRecord, 'when' | 'prescriptions' | 'referrals' | 'entries' | 'orders' | 'tasks'>,
+	parts: { entries: VisitEntry[]; orders: VisitOrder[]; tasks: VisitTask[] },
+	prescriptions: VisitRecord['prescriptions'],
+	referrals: VisitReferral[]
+): VisitRecord {
+	return { when, ...fields, ...parts, prescriptions, referrals };
+}
+
+export async function visitByEncounter(patientId: number, encounterId: number, doctorId: number, pid: string) {
+	const [visit] = await client`
+		SELECT * FROM encounters WHERE id = ${encounterId} AND patient_id = ${patientId}
+	`;
+	if (!visit) return null;
+	const linked = visit.consultation_id ? await consultParts(patientId, visit.consultation_id) : null;
+	const day = isoDate(visit.occurred_on);
+	const consultId = linked?.consult.id ?? null;
+	const [prescriptions, referrals] = await Promise.all([
+		prescriptionsOnVisit(patientId, day, visit.doctor_name, consultId),
+		referralsOnVisit(patientId, day, visit.doctor_name, consultId)
+	]);
+	const open = linked?.consult.status === 'in_session' && linked.consult.doctor_id === doctorId;
+	return visitShape(
+		visit.occurred_on,
+		{
+			status: visit.status,
+			code: linked?.consult.code ?? '',
+			modality: linked?.consult.modality ?? '',
+			doctor: visit.doctor_name,
+			role: visit.doctor_role,
+			practice: visit.practice ?? '',
+			location: visit.location ?? '',
+			kind: visit.kind,
+			focus: visit.focus,
+			findings: visit.findings ?? '',
+			plan: visit.plan ?? '',
+			narrative: linked && linked.consult.narrative !== visit.findings ? (linked.consult.narrative ?? '') : '',
+			continueHref: open ? `/doctor/patients/${pid}/consult` : ''
+		},
+		linked ?? { entries: [], orders: [], tasks: [] },
+		prescriptions,
+		referrals
+	);
+}
+
+export async function visitByConsult(patientId: number, consultId: number, doctorId: number, pid: string) {
+	const linked = await consultParts(patientId, consultId);
+	if (!linked) return null;
+	const { consult, entries, orders, tasks } = linked;
+	const doctor = [consult.doctor_name, consult.credentials].filter(Boolean).join(', ');
+	const day = isoDate(consult.started_at);
+	const [prescriptions, referrals] = await Promise.all([
+		prescriptionsOnVisit(patientId, day, doctor, consult.id),
+		referralsOnVisit(patientId, day, consult.doctor_name, consult.id)
+	]);
+	const open = consult.status === 'in_session' && consult.doctor_id === doctorId;
+	return visitShape(
+		consult.started_at,
+		{
+			status: consult.status,
+			code: consult.code,
+			modality: consult.modality ?? '',
+			doctor,
+			role: consult.specialty ?? '',
+			practice: consult.practice ?? '',
+			location: consult.location ?? '',
+			kind: consult.specialty ? `${consult.specialty} Consult` : 'Consultation',
+			focus: consult.narrative?.trim() ? consult.narrative.trim().split('\n')[0] : 'Consultation in progress',
+			findings: '',
+			plan: '',
+			narrative: consult.narrative ?? '',
+			continueHref: open ? `/doctor/patients/${pid}/consult` : ''
+		},
+		{ entries, orders, tasks },
+		prescriptions,
+		referrals
+	);
+}
+
+export type SelfReportEdit = {
+	changed_at: Date | string;
+	changes: { field: string; from: string; to: string }[];
+};
+
 export async function selfReportsFor(patientId: number) {
-	return client<
+	const rows = await client<
 		{
 			id: number;
 			occurred_on: Date | string;
@@ -513,6 +718,22 @@ export async function selfReportsFor(patientId: number) {
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
 	`;
+	if (!rows.length) return rows.map((row) => ({ ...row, edits: [] as SelfReportEdit[] }));
+	const edits = await client<{ report_id: number; changed_at: Date | string; changes: SelfReportEdit['changes'] }[]>`
+		SELECT report_id, changed_at, changes
+		FROM self_report_edits
+		WHERE report_id IN ${client(rows.map((row) => row.id))}
+		ORDER BY changed_at DESC
+	`;
+	return rows.map((row) => ({
+		...row,
+		edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes }))
+	}));
+}
+
+export async function selfReportById(patientId: number, id: number) {
+	const rows = await selfReportsFor(patientId);
+	return rows.find((row) => row.id === id) ?? null;
 }
 
 export async function addSelfReport(
@@ -535,6 +756,57 @@ export async function addSelfReport(
 			${input.severity || null}, ${input.meds || null}, ${input.ongoing}, ${nowLocal().stamp}
 		)
 	`;
+}
+
+export async function updateSelfReport(
+	patientId: number,
+	id: number,
+	input: {
+		title: string;
+		occurredOn: string;
+		detail: string;
+		duration: string;
+		severity: string;
+		meds: string;
+		ongoing: boolean;
+	}
+) {
+	const current = await selfReportById(patientId, id);
+	if (!current) return { error: 'That self report is not on this record.' };
+	const before = {
+		title: current.title,
+		occurred_on: isoDate(current.occurred_on),
+		detail: current.detail ?? '',
+		duration: current.duration ?? '',
+		severity: current.severity ?? '',
+		meds_taken: current.meds_taken ?? '',
+		ongoing: current.ongoing ? 'true' : 'false'
+	};
+	const after = {
+		title: input.title,
+		occurred_on: input.occurredOn,
+		detail: input.detail,
+		duration: input.duration,
+		severity: input.severity,
+		meds_taken: input.meds,
+		ongoing: input.ongoing ? 'true' : 'false'
+	};
+	const changes = (Object.keys(before) as (keyof typeof before)[])
+		.filter((field) => before[field] !== after[field])
+		.map((field) => ({ field, from: before[field], to: after[field] }));
+	if (!changes.length) return { unchanged: true as const };
+	await client`
+		UPDATE self_reports
+		SET occurred_on = ${input.occurredOn}, title = ${input.title}, detail = ${input.detail || null},
+			duration = ${input.duration || null}, severity = ${input.severity || null},
+			meds_taken = ${input.meds || null}, ongoing = ${input.ongoing}
+		WHERE id = ${id} AND patient_id = ${patientId}
+	`;
+	await client`
+		INSERT INTO self_report_edits (report_id, changed_at, changes)
+		VALUES (${id}, ${nowLocal().stamp}, ${JSON.stringify(changes)}::jsonb)
+	`;
+	return { saved: true as const };
 }
 
 export async function prescriptionsFor(patientId: number) {
@@ -641,6 +913,47 @@ export async function analytics() {
 	const referralTotal = referrals.reduce((sum, row) => sum + Number(row.patients), 0);
 	const panel = cohorts.reduce((sum, row) => sum + Number(row.patients), 0);
 	return { metrics, modalities, cohorts, referrals, note: note?.body ?? '', modalityTotal, referralTotal, panel };
+}
+
+export async function openConsultsForDoctor(doctorId: number) {
+	return client<{ id: number; started_at: Date | string; pid: string; first_name: string; last_name: string }[]>`
+		SELECT c.id, c.started_at, p.pid, p.first_name, p.last_name
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE c.doctor_id = ${doctorId} AND c.status = 'in_session'
+		ORDER BY c.started_at DESC
+	`;
+}
+
+export async function cancelConsult(consultId: number, doctorId: number) {
+	const [consult] = await client`
+		SELECT c.id, p.pid
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE c.id = ${consultId} AND c.doctor_id = ${doctorId} AND c.status = 'in_session'
+	`;
+	if (!consult) return { error: 'That consultation is not open.' };
+	await client`
+		UPDATE referrals SET status = 'incoming', follow_consult_id = NULL
+		WHERE follow_consult_id = ${consultId} AND status = 'in_session'
+	`;
+	const sourced = await client<
+		{ id: number; user_id: number; first_name: string; last_name: string; pid: string; from_name: string }[]
+	>`
+		SELECT r.id, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
+		FROM referrals r
+		JOIN doctors d ON d.id = r.to_doctor_id
+		JOIN doctors f ON f.id = r.from_doctor_id
+		JOIN patients p ON p.id = r.patient_id
+		WHERE r.source_consult_id = ${consultId} AND r.status = 'incoming'
+	`;
+	for (const referral of sourced) {
+		await client`DELETE FROM referrals WHERE id = ${referral.id}`;
+		const who = `${referral.first_name} ${referral.last_name} (${referral.pid})`;
+		await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`);
+	}
+	await client`DELETE FROM consultations WHERE id = ${consultId} AND doctor_id = ${doctorId} AND status = 'in_session'`;
+	return { pid: consult.pid as string };
 }
 
 export async function draftConsult(patientId: number, doctorId: number) {
@@ -957,11 +1270,11 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 	const [doctor] = await client`SELECT * FROM doctors WHERE id = ${consult.doctor_id}`;
 	const { date, stamp } = nowLocal();
 	await client`
-		INSERT INTO encounters (patient_id, doctor_name, doctor_role, practice, occurred_on, kind, focus, findings, plan, location, status)
+		INSERT INTO encounters (patient_id, doctor_name, doctor_role, practice, occurred_on, kind, focus, findings, plan, location, status, consultation_id)
 		VALUES (
 			${consult.patient_id}, ${doctor.name}, ${doctor.specialty}, ${doctor.practice},
 			${date}, ${`${doctor.specialty} Consult`}, 'Signed consultation',
-			${consult.narrative}, 'Orders authorized and transmitted.', ${doctor.location}, 'finalized'
+			${consult.narrative}, 'Orders authorized and transmitted.', ${doctor.location}, 'finalized', ${consult.id}
 		)
 	`;
 	if (meds.length) {
@@ -1270,11 +1583,11 @@ export async function redeemAccessCode(doctorId: number, raw: string) {
 
 export async function redeemRecordToken(doctorId: number, payload: string) {
 	const token = tokenFromPayload(payload);
-	if (!token) return { error: 'That QR code is not a CareOS record.' };
+	if (!token) return { error: 'That QR code is not a careOS record.' };
 	const [patient] = await client<{ id: number; pid: string; user_id: number | null }[]>`
 		SELECT id, pid, user_id FROM patients WHERE record_token = ${token}
 	`;
-	if (!patient) return { error: 'That QR code is not a CareOS record.' };
+	if (!patient) return { error: 'That QR code is not a careOS record.' };
 	const current = await accessStatus(patient.id, doctorId);
 	await grantAccess(patient.id, doctorId, 'qr');
 	if (current !== 'granted') {

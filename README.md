@@ -1,6 +1,6 @@
-# CareOS
+# careOS
 
-CareOS is a cardiology practice app with two portals that share one record:
+careOS is a cardiology practice app with two portals that share one record:
 
 - **Doctor portal** for Dr. Irfan Ameerudden, general practitioner: schedule, patient search, charts, consults, orders, and analytics.
 - **Patient portal** for Noor Yadallee: appointments, prescriptions, vitals, history, imaging, and billing.

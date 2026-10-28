@@ -37,6 +37,21 @@
 		return true;
 	}
 
+	let shown = $state('');
+
+	$effect(() => {
+		shown = notice ?? '';
+		if (notice !== 'Consultation cancelled') return;
+		const timer = setTimeout(() => {
+			shown = '';
+			const url = new URL(window.location.href);
+			if (url.searchParams.get('notice') !== 'Consultation cancelled') return;
+			url.searchParams.delete('notice');
+			history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+		}, 4000);
+		return () => clearTimeout(timer);
+	});
+
 	function current(href: string) {
 		if (!itemMatches(href)) return false;
 		if (href.includes('?')) return true;
@@ -54,7 +69,7 @@
 			<aside class="sticky top-0 hidden h-dvh flex-col border-r border-[#E2E8F0] bg-white lg:flex">
 				<div class="h-1 bg-brand"></div>
 				<div class="px-5 pt-5 pb-4">
-					<p class="display text-lg font-bold text-brand">CareOS</p>
+					<p class="display text-lg font-bold text-brand">careOS</p>
 					<p class="text-xs text-[#64748B]">Private practice</p>
 				</div>
 				<nav class="flex flex-1 flex-col gap-1 px-3">
@@ -83,8 +98,8 @@
 			<div class="relative pb-24 lg:min-h-dvh lg:pb-12">
 				<div class="h-1 bg-brand lg:hidden"></div>
 				<div class="lg:mx-auto lg:max-w-6xl lg:px-8 lg:pt-4">
-					{#if notice}
-						<p class="mx-4 mt-4 rounded-xl bg-brand px-4 py-3 text-sm text-white lg:mx-0">{notice}</p>
+					{#if shown}
+						<p class="mx-4 mt-4 rounded-xl bg-brand px-4 py-3 text-sm text-white lg:mx-0">{shown}</p>
 					{/if}
 					{@render children()}
 				</div>

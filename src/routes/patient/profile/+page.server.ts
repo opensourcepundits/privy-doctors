@@ -15,7 +15,6 @@ import {
 export async function load({ parent }) {
 	const { patient, preview } = await parent();
 	const [clinician, email] = await Promise.all([doctorById(patient.primary_doctor_id), accountEmail(patient.user_id)]);
-	if (preview) return { clinician, email, qr: null, code: null };
 	const token = await ensureRecordToken(patient.id);
 	const svg = await QRCode.toString(recordPayload(token), {
 		type: 'svg',
@@ -27,7 +26,7 @@ export async function load({ parent }) {
 		clinician,
 		email,
 		qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-		code: await activeAccessCode(patient.id)
+		code: preview ? null : await activeAccessCode(patient.id)
 	};
 }
 

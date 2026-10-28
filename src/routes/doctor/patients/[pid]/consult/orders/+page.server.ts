@@ -70,6 +70,6 @@ export const actions = {
 		const notice = filed?.medications
 			? 'Consultation, prescriptions, and bill saved to this patient record'
 			: 'Consultation and bill saved to this patient record';
-		redirect(303, `/doctor/patients/${patient.pid}?tab=checkups&notice=${notice}`);
+		redirect(303, `/doctor/patients/${patient.pid}?tab=consults&notice=${notice}`);
 	}
 };

@@ -364,6 +364,13 @@ CREATE TABLE self_reports (
   created_at timestamp NOT NULL
 );
 
+CREATE TABLE self_report_edits (
+  id serial PRIMARY KEY,
+  report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,
+  changed_at timestamp NOT NULL,
+  changes jsonb NOT NULL
+);
+
 CREATE TABLE notifications (
   id serial PRIMARY KEY,
   user_id int NOT NULL REFERENCES users(id),
@@ -377,3 +384,5 @@ CREATE TABLE sessions (
   user_id int NOT NULL REFERENCES users(id),
   expires_at timestamp NOT NULL
 );
+
+ALTER TABLE encounters ADD COLUMN IF NOT EXISTS consultation_id int REFERENCES consultations(id) ON DELETE SET NULL;

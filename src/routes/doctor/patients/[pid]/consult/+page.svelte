@@ -165,4 +165,9 @@
 			<span class="material-symbols-outlined text-xl">arrow_forward</span>
 		</button>
 	</form>
+	<form method="POST" action="/doctor/session?/cancel" onsubmit={(event) => { if (!confirm(`Cancel this consultation with ${data.patient.first_name} ${data.patient.last_name}? Notes from this session will be discarded.`)) event.preventDefault(); }}>
+		<input type="hidden" name="id" value={data.consult.id} />
+		<input type="hidden" name="return" value="/doctor/patients/{data.patient.pid}/consult" />
+		<button class="btn-line" type="submit">Cancel consultation</button>
+	</form>
 </section>

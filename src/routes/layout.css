@@ -231,6 +231,11 @@ textarea.field {
 	color: var(--color-muted);
 }
 
+.kicker.asis {
+	letter-spacing: 0.02em;
+	text-transform: none;
+}
+
 .nums { font-variant-numeric: tabular-nums; }
 
 .action-row {

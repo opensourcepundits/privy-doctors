@@ -256,7 +256,7 @@ const people = [
 		],
 		phone: '(555) 014-4089',
 		nic: 'V560412891',
-		note: 'Concierge Primary',
+		note: '',
 		insurance: ['BlueCross BlueShield Premier Care PPO', 'BC-88902', 'EV-940283'],
 		pharmacy: ['CVS Pharmacy #4120', '4th St & Broadway', '(555) 234-8901']
 	},
@@ -789,4 +789,4 @@ await sql`
 `;
 
 await sql.end();
-console.log('Seeded CareOS on the 17 Nov 2024 clinic day.');
+console.log('Seeded careOS on the 17 Nov 2024 clinic day.');

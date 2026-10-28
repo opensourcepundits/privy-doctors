@@ -1,17 +1,19 @@
 import { redirect } from '@sveltejs/kit';
-import { encountersFor, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient } from '#lib/server/clinic';
+import { consultationsFor, encountersFor, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
 export async function load({ params, url, locals }) {
 	const { doctor, patient } = await requireChart(locals, params.pid);
-	const [encounters, prescriptions, imaging, labs, tasks, reports] = await Promise.all([
+	const [encounters, prescriptions, imaging, labs, tasks, reports, consultations] = await Promise.all([
 		encountersFor(patient.id),
 		prescriptionsFor(patient.id),
 		imagingFor(patient.id),
 		labsFor(patient.id),
 		tasksForPatient(patient.id),
-		selfReportsFor(patient.id)
+		selfReportsFor(patient.id),
+		consultationsFor(patient.id)
 	]);
+	const requested = url.searchParams.get('tab');
 	return {
 		patient,
 		doctor,
@@ -21,7 +23,8 @@ export async function load({ params, url, locals }) {
 		labs,
 		tasks,
 		reports,
-		tab: url.searchParams.get('tab') ?? 'checkups'
+		consultations,
+		tab: requested === 'checkups' ? 'consults' : (requested ?? 'timeline')
 	};
 }
 
