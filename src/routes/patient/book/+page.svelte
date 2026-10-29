@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { dayRelation, formatLongDate, formatTime } from '#lib/format';
+	import { dayRelation, formatLongDate, formatTime, isoDate, toLive } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
 	import type { PageProps } from './$types';
 
@@ -16,8 +16,9 @@
 	let focused = false;
 	let bookingsOpen = $state(false);
 	let kindByDoctor = $state<Record<number, 'clinic' | 'home'>>({});
+	let dateByDoctor = $state<Record<number, string>>({});
+	let monthByDoctor = $state<Record<number, string>>({});
 	let slotByDoctor = $state<Record<number, string>>({});
-	let moreByDoctor = $state<Record<number, boolean>>({});
 	let detail = $state<HTMLElement | null>(null);
 
 	const specialties = $derived([...new Set((board?.doctors ?? []).map((doctor) => doctor.specialty))].sort());
@@ -45,6 +46,7 @@
 
 	function setKind(doctorId: number, kind: 'clinic' | 'home') {
 		kindByDoctor[doctorId] = kind;
+		dateByDoctor[doctorId] = '';
 		slotByDoctor[doctorId] = '';
 	}
 
@@ -58,14 +60,46 @@
 		gender = 'All';
 	}
 
-	function byDate(slots: OpenSlot[]) {
-		const groups: { date: string; label: string; slots: OpenSlot[] }[] = [];
-		for (const slot of slots) {
-			const last = groups.at(-1);
-			if (last?.date === slot.date) last.slots.push(slot);
-			else groups.push({ date: slot.date, label: slot.dateLabel, slots: [slot] });
-		}
-		return groups;
+	function liveIso(seed: string) {
+		return isoDate(toLive(seed));
+	}
+
+	function monthTitle(month: string) {
+		const [year, index] = month.split('-').map(Number);
+		return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(new Date(year, index - 1, 1));
+	}
+
+	function calendarCells(month: string) {
+		const [year, index] = month.split('-').map(Number);
+		const first = new Date(year, index - 1, 1).getDay();
+		const count = new Date(year, index, 0).getDate();
+		const cells: (string | null)[] = Array.from({ length: first }, () => null);
+		const pad = (part: number) => String(part).padStart(2, '0');
+		for (let day = 1; day <= count; day += 1) cells.push(`${year}-${pad(index)}-${pad(day)}`);
+		return cells;
+	}
+
+	function viewedMonth(doctorId: number, slots: OpenSlot[]) {
+		const keys = slots.map((slot) => liveIso(slot.date)).sort();
+		const first = keys[0]?.slice(0, 7) ?? '';
+		const last = keys.at(-1)?.slice(0, 7) ?? first;
+		const stored = monthByDoctor[doctorId];
+		const month = stored && stored >= first && stored <= last ? stored : first;
+		return { month, first, last };
+	}
+
+	function moveMonth(doctorId: number, month: string, delta: number, first: string, last: string) {
+		const [year, index] = month.split('-').map(Number);
+		const date = new Date(year, index - 1 + delta, 1);
+		const pad = (part: number) => String(part).padStart(2, '0');
+		const next = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+		if (next < first || next > last) return;
+		monthByDoctor[doctorId] = next;
+	}
+
+	function pickDate(doctorId: number, seed: string) {
+		dateByDoctor[doctorId] = seed;
+		slotByDoctor[doctorId] = '';
 	}
 
 	function nextOpen(slots: OpenSlot[]) {
@@ -107,7 +141,7 @@
 <header class="px-4 pt-5 lg:px-0">
 	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
 	<h1 class="display mt-2 text-2xl font-bold lg:text-3xl">Book an appointment</h1>
-	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">Search the clinicians, then open one schedule. Visits are 30 minutes.</p>
+	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">Search the clinicians, choose a date, then a time. Visits are 30 minutes.</p>
 </header>
 
 {#if form?.message}
@@ -228,9 +262,11 @@
 			{@const home = chosen.hours.filter((row) => row.kind === 'home')}
 			{@const kind = kindFor(chosen.id, clinic.length > 0)}
 			{@const slots = chosen.slots.filter((slot) => slot.kind === kind)}
-			{@const days = byDate(slots)}
-			{@const visibleDays = moreByDoctor[chosen.id] ? days : days.slice(0, 2)}
-			{@const selected = slots.find((slot) => slot.startsAt === slotByDoctor[chosen.id])}
+			{@const openDays = new Map(slots.map((slot) => [liveIso(slot.date), slot.date]))}
+			{@const calendar = viewedMonth(chosen.id, slots)}
+			{@const pickedDate = dateByDoctor[chosen.id] ?? ''}
+			{@const daySlots = slots.filter((slot) => slot.date === pickedDate)}
+			{@const selected = daySlots.find((slot) => slot.startsAt === slotByDoctor[chosen.id])}
 			<aside class="mt-4 lg:sticky lg:top-4 lg:mt-0" bind:this={detail}>
 				<article class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white shadow-sm">
 					<div class="h-1 bg-brand"></div>
@@ -297,38 +333,84 @@
 								<p class="font-semibold">{kind === 'home' ? 'At-home times' : 'Clinic times'}</p>
 							{/if}
 
-							{#if visibleDays.length}
-								<div class="grid gap-4">
-									{#each visibleDays as day}
-										<div>
-											<p class="text-sm font-semibold">{day.label}</p>
-											<div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
-												{#each day.slots as slot}
-													<button
-														class="h-10 rounded-lg text-sm font-semibold {slotByDoctor[chosen.id] === slot.startsAt
-															? 'bg-brand text-white'
-															: 'bg-[#F1F5F9] text-[#0F172A] hover:bg-brand-soft'}"
-														type="button"
-														onclick={() => (slotByDoctor[chosen.id] = slot.startsAt)}
-													>
-														{slot.timeLabel}
-													</button>
-												{/each}
-											</div>
-										</div>
-									{/each}
+							{#if calendar.month}
+								<div>
+									<div class="mb-3 flex items-center justify-between">
+										<button
+											class="grid h-9 w-9 place-items-center rounded-lg text-brand disabled:text-[#CBD5E1]"
+											type="button"
+											aria-label="Previous month"
+											disabled={calendar.month <= calendar.first}
+											onclick={() => moveMonth(chosen.id, calendar.month, -1, calendar.first, calendar.last)}
+										>
+											<span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+										</button>
+										<p class="text-sm font-semibold">{monthTitle(calendar.month)}</p>
+										<button
+											class="grid h-9 w-9 place-items-center rounded-lg text-brand disabled:text-[#CBD5E1]"
+											type="button"
+											aria-label="Next month"
+											disabled={calendar.month >= calendar.last}
+											onclick={() => moveMonth(chosen.id, calendar.month, 1, calendar.first, calendar.last)}
+										>
+											<span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>
+										</button>
+									</div>
+									<div class="grid grid-cols-7 gap-1 text-center text-[0.68rem] font-bold tracking-wide text-[#64748B] uppercase">
+										{#each WEEKDAYS as weekday}
+											<span>{weekday.slice(0, 2)}</span>
+										{/each}
+									</div>
+									<div class="mt-1 grid grid-cols-7 gap-1">
+										{#each calendarCells(calendar.month) as cell}
+											{#if cell}
+												{@const seed = openDays.get(cell)}
+												<button
+													class="h-10 rounded-lg text-sm font-semibold {seed && pickedDate === seed
+														? 'bg-brand text-white'
+														: seed
+															? 'bg-brand-soft text-brand hover:bg-brand hover:text-white'
+															: 'text-[#CBD5E1]'}"
+													type="button"
+													disabled={!seed}
+													aria-pressed={pickedDate === seed}
+													aria-label={seed ? formatLongDate(seed) : undefined}
+													onclick={() => seed && pickDate(chosen.id, seed)}
+												>
+													{Number(cell.slice(8))}
+												</button>
+											{:else}
+												<span></span>
+											{/if}
+										{/each}
+									</div>
 								</div>
-								{#if days.length > 2 && !moreByDoctor[chosen.id]}
-									<button class="text-left text-sm font-semibold text-brand" type="button" onclick={() => (moreByDoctor[chosen.id] = true)}>
-										Show more days
-									</button>
+								{#if daySlots.length}
+									<div>
+										<p class="text-sm font-semibold">{formatLongDate(pickedDate)}</p>
+										<div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
+											{#each daySlots as slot}
+												<button
+													class="h-10 rounded-lg text-sm font-semibold {slotByDoctor[chosen.id] === slot.startsAt
+														? 'bg-brand text-white'
+														: 'bg-[#F1F5F9] text-[#0F172A] hover:bg-brand-soft'}"
+													type="button"
+													onclick={() => (slotByDoctor[chosen.id] = slot.startsAt)}
+												>
+													{slot.timeLabel}
+												</button>
+											{/each}
+										</div>
+									</div>
+								{:else}
+									<p class="text-sm text-[#64748B]">Choose a highlighted date. Open days are shown for the next three weeks.</p>
 								{/if}
 								<label class="block text-sm font-semibold" for="reason-{chosen.id}">
 									A note for your doctor
 									<textarea class="field mt-1 !min-h-24" id="reason-{chosen.id}" name="reason" placeholder="Share how you’ve been feeling, or what you’d like to talk about."></textarea>
 								</label>
 								<div class="flex flex-col gap-3 border-t border-[#E2E8F0] pt-4 lg:flex-row lg:items-center lg:justify-between">
-									<p class="text-sm text-[#64748B]">{selected ? `${selected.dateLabel} · ${selected.timeLabel}` : 'Choose a time to continue'}</p>
+									<p class="text-sm text-[#64748B]">{selected ? `${selected.dateLabel} · ${selected.timeLabel}` : pickedDate ? 'Choose a time to continue' : 'Choose a date to continue'}</p>
 									<button class="btn disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={!selected}>
 										Book this time
 									</button>
