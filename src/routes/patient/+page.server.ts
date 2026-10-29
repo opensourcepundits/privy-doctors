@@ -1,4 +1,4 @@
-import { actingPatient, careOrdersFor, latestVital, patientAppointments, pendingChartRequests, prescriptionsFor, tasksForPatient } from '#lib/server/clinic';
+import { actingPatient, careOrdersFor, latestVital, patientAppointments, pendingChartRequests, prescriptionsFor, tasksForPatient, taskVisits } from '#lib/server/clinic';
 import { answerChartRequest } from '#lib/server/answers';
 
 export function load({ locals }: { locals: App.Locals }) {
@@ -6,20 +6,21 @@ export function load({ locals }: { locals: App.Locals }) {
 }
 
 async function homeFor(locals: App.Locals) {
-	const empty = { today: [], upcoming: [], active: [], orders: [], vital: null, tasks: [], requests: [] };
+	const empty = { today: [], upcoming: [], active: [], orders: [], vital: null, tasks: [], requests: [], visitTasks: [] };
 	if (!locals.user) return empty;
 	const patient = await actingPatient(locals.user);
 	if (!patient) return empty;
-	const [visits, prescriptions, orders, vital, tasks, requests] = await Promise.all([
+	const [visits, prescriptions, orders, vital, tasks, requests, visitTasks] = await Promise.all([
 		patientAppointments(patient.id),
 		prescriptionsFor(patient.id),
 		careOrdersFor(patient.id),
 		latestVital(patient.id),
 		tasksForPatient(patient.id),
-		pendingChartRequests(patient.id)
+		pendingChartRequests(patient.id),
+		taskVisits(patient.id)
 	]);
 	const active = prescriptions.filter((item) => item.status === 'active');
-	return { today: visits.today, upcoming: visits.upcoming, active, orders, vital, tasks, requests };
+	return { today: visits.today, upcoming: visits.upcoming, active, orders, vital, tasks, requests, visitTasks };
 }
 
 export const actions = {

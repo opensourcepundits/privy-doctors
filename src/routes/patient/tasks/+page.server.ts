@@ -1,9 +1,16 @@
-import { fail } from '@sveltejs/kit';
-import { actingPatient, saveTaskResult, taskOwned, tasksForPatient } from '#lib/server/clinic';
+import { fail, redirect } from '@sveltejs/kit';
+import { actingPatient, rescheduleOwnAppointment, saveTaskResult, taskOwned, tasksForPatient, taskVisits } from '#lib/server/clinic';
 import { saveTaskPdf } from '#lib/server/uploads';
 
 export function load({ locals }: { locals: App.Locals }) {
-	return { tasks: tasksFor(locals) };
+	return { tasks: tasksFor(locals), visits: visitsFor(locals) };
+}
+
+async function visitsFor(locals: App.Locals) {
+	if (!locals.user) return [];
+	const patient = await actingPatient(locals.user);
+	if (!patient) return [];
+	return taskVisits(patient.id);
 }
 
 async function tasksFor(locals: App.Locals) {
@@ -30,5 +37,14 @@ export const actions = {
 		const name = file.name.replace(/[/\\]/g, '').slice(0, 120) || 'result.pdf';
 		await saveTaskResult(task.id, patient.id, name, stored);
 		return { uploaded: task.id };
+	},
+	reschedule: async ({ request, locals }) => {
+		if (!locals.user) return fail(401, { message: 'Sign in required.' });
+		const patient = await actingPatient(locals.user);
+		if (!patient || locals.user.role !== 'patient') return fail(401, { message: 'Sign in required.' });
+		const data = await request.formData();
+		const result = await rescheduleOwnAppointment(patient.id, Number(data.get('id')), String(data.get('starts_at') ?? ''));
+		if ('error' in result) return fail(400, { message: result.error });
+		redirect(303, '/patient/tasks?notice=Appointment rescheduled');
 	}
 };

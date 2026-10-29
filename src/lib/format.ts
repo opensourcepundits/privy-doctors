@@ -150,9 +150,8 @@ export function appointmentStatus(status: string): { label: string; tone: 'brand
 		case 'requested':
 			return { label: 'Requested', tone: 'warning' };
 		case 'accepted':
-			return { label: 'Accepted', tone: 'success' };
 		case 'confirmed':
-			return { label: 'Confirmed', tone: 'success' };
+			return { label: 'Approved', tone: 'success' };
 		case 'declined':
 			return { label: 'Declined', tone: 'urgent' };
 		case 'rescheduled':

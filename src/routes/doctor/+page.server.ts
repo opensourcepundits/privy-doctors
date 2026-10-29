@@ -27,7 +27,7 @@ async function reply(request: Request, locals: App.Locals, action: 'accept' | 'd
 		startsAt: String(data.get('starts_at') ?? '')
 	});
 	if ('error' in result) return fail(400, { message: result.error });
-	const notice = action === 'accept' ? 'Appointment accepted' : action === 'decline' ? 'Appointment declined' : 'Appointment rescheduled';
+	const notice = action === 'accept' ? 'Appointment approved' : action === 'decline' ? 'Appointment declined' : 'Appointment rescheduled';
 	redirect(303, `/doctor?notice=${encodeURIComponent(notice)}`);
 }
 

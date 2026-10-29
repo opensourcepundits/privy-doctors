@@ -255,7 +255,7 @@ export async function todayAppointments(doctorId: number) {
 		JOIN patients p ON p.id = a.patient_id
 		WHERE a.doctor_id = ${doctorId}
 		  AND a.starts_at::date = ${CLINIC_DAY}
-		  AND a.status <> 'cancelled'
+		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
 }
@@ -268,7 +268,7 @@ export async function patientAppointments(patientId: number) {
 		JOIN doctors d ON d.id = a.doctor_id
 		WHERE a.patient_id = ${patientId}
 		  AND a.starts_at::date >= ${CLINIC_DAY}::date
-		  AND a.status <> 'cancelled'
+		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
 	const onClinicDay = (row: { on_clinic_day?: unknown }) => row.on_clinic_day === true || row.on_clinic_day === 't';
@@ -285,7 +285,7 @@ export async function upcomingForDoctor(doctorId: number) {
 		JOIN patients p ON p.id = a.patient_id
 		WHERE a.doctor_id = ${doctorId}
 		  AND a.starts_at::date > ${CLINIC_DAY}
-		  AND a.status <> 'cancelled'
+		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
 }
@@ -459,7 +459,7 @@ export async function respondToAppointment(
 			UPDATE appointments SET status = 'accepted', responded_at = ${nowLocal().stamp}
 			WHERE id = ${id}
 		`;
-		await notify(row.user_id, 'Appointment accepted', `${row.doctor_name} accepted your visit on ${when}.`);
+		await notify(row.user_id, 'Appointment approved', `${row.doctor_name} approved your visit on ${when}.`);
 		return { ok: true as const };
 	}
 	if (action === 'decline') {
@@ -492,6 +492,84 @@ export async function respondToAppointment(
 	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
 	await notify(row.user_id, 'Appointment rescheduled', `${row.doctor_name} moved your visit from ${when} to ${next}.`);
 	return { ok: true as const };
+}
+
+export async function rescheduleOwnAppointment(patientId: number, id: number, startsAt: string) {
+	const [row] = await client<
+		{
+			id: number;
+			starts_at: Date | string;
+			location: string | null;
+			status: string;
+			doctor_id: number;
+			doctor_user_id: number | null;
+			first_name: string;
+			last_name: string;
+		}[]
+	>`
+		SELECT a.id, a.starts_at, a.location, a.status, a.doctor_id, d.user_id AS doctor_user_id,
+			p.first_name, p.last_name
+		FROM appointments a
+		JOIN doctors d ON d.id = a.doctor_id
+		JOIN patients p ON p.id = a.patient_id
+		WHERE a.id = ${id} AND a.patient_id = ${patientId}
+	`;
+	if (!row) return { error: 'That visit is not on your list.' };
+	if (row.status !== 'rescheduled') return { error: 'Only a rescheduled visit can be moved from tasks.' };
+	if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(startsAt)) return { error: 'Choose a new time.' };
+	if (localStamp(row.starts_at).slice(0, 19) === startsAt) return { error: 'Choose a different time.' };
+	const kind = String(row.location ?? '').startsWith('At the patient') ? 'home' : 'clinic';
+	const slots = await rescheduleSlots(row.doctor_id);
+	if (!slots.some((slot) => slot.kind === kind && slot.startsAt === startsAt)) {
+		return { error: 'That time is not open.' };
+	}
+	await client`
+		UPDATE appointments
+		SET starts_at = ${startsAt}, status = 'rescheduled', responded_at = ${nowLocal().stamp}
+		WHERE id = ${id}
+	`;
+	const when = `${formatLongDate(row.starts_at)} at ${formatTime(row.starts_at)}`;
+	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
+	await notify(
+		row.doctor_user_id,
+		'Appointment rescheduled',
+		`${row.first_name} ${row.last_name} moved a visit from ${when} to ${next}.`
+	);
+	return { ok: true as const };
+}
+
+export async function taskVisits(patientId: number) {
+	const rows = await client<
+		{
+			id: number;
+			starts_at: Date | string;
+			duration_min: number;
+			title: string;
+			reason: string | null;
+			status: string;
+			location: string | null;
+			response_note: string | null;
+			doctor_id: number;
+			doctor_name: string;
+			credentials: string | null;
+		}[]
+	>`
+		SELECT a.id, a.starts_at, a.duration_min, a.title, a.reason, a.status, a.location, a.response_note,
+			a.doctor_id, d.name AS doctor_name, d.credentials
+		FROM appointments a
+		JOIN doctors d ON d.id = a.doctor_id
+		WHERE a.patient_id = ${patientId}
+		  AND a.starts_at::date >= ${CLINIC_DAY}::date
+		  AND a.status IN ('accepted', 'confirmed', 'rescheduled')
+		ORDER BY a.starts_at
+	`;
+	const doctorIds = [...new Set(rows.filter((row) => row.status === 'rescheduled').map((row) => row.doctor_id))];
+	const slots = new Map<number, Awaited<ReturnType<typeof rescheduleSlots>>>();
+	await Promise.all(doctorIds.map(async (doctorId) => slots.set(doctorId, await rescheduleSlots(doctorId))));
+	return rows.map((row) => ({
+		...row,
+		slots: row.status === 'rescheduled' ? (slots.get(row.doctor_id) ?? []) : []
+	}));
 }
 
 export async function createWalkInPatient(
