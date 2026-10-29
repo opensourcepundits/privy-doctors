@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
 	import Bell from '#lib/components/Bell.svelte';
 
@@ -48,18 +50,28 @@
 		return true;
 	}
 
-	let shown = $state('');
+	let hidden = $state('');
+	const shown = $derived(notice && notice !== hidden ? notice : '');
+
+	function clearNotice() {
+		const url = new URL(page.url);
+		if (!url.searchParams.has('notice')) return;
+		url.searchParams.delete('notice');
+		goto(`${url.pathname}${url.search}${url.hash}`, { replace: true, shallow: true, state: page.state });
+	}
+
+	function dismiss() {
+		hidden = notice ?? ' ';
+		clearNotice();
+	}
 
 	$effect(() => {
-		shown = notice ?? '';
-		if (notice !== 'Consultation cancelled') return;
+		const current = notice ?? '';
+		if (!current) return;
 		const timer = setTimeout(() => {
-			shown = '';
-			const url = new URL(window.location.href);
-			if (url.searchParams.get('notice') !== 'Consultation cancelled') return;
-			url.searchParams.delete('notice');
-			history.replaceState(history.state, '', url.pathname + url.search + url.hash);
-		}, 4000);
+			hidden = current;
+			clearNotice();
+		}, 6000);
 		return () => clearTimeout(timer);
 	});
 
@@ -109,12 +121,17 @@
 			<div class="relative pb-24 lg:min-h-dvh lg:pb-12">
 				<div class="h-1 bg-brand lg:hidden"></div>
 				<div class="lg:mx-auto lg:max-w-6xl lg:px-8 lg:pt-4">
-					<div class="sticky top-0 z-30 flex justify-end bg-canvas/95 px-4 py-2 backdrop-blur lg:bg-shell-desk/95 lg:px-0">
+					<div class="sticky top-0 z-30 flex items-center justify-end gap-2 bg-canvas/95 px-4 py-2 backdrop-blur lg:bg-shell-desk/95 lg:px-0">
+						{#if shown}
+							<p class="flex min-w-0 max-w-[min(100%,18rem)] items-center gap-2 rounded-full bg-[#0F172A] py-1 pl-3 pr-1 text-sm text-white shadow-md">
+								<span class="truncate">{shown}</span>
+								<button class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white/80 hover:bg-white/15" type="button" aria-label="Dismiss notice" onclick={dismiss}>
+									<span class="material-symbols-outlined text-[16px]">close</span>
+								</button>
+							</p>
+						{/if}
 						<Bell notes={notifications} {markSeen} />
 					</div>
-					{#if shown}
-						<p class="mx-4 mt-4 rounded-xl bg-brand px-4 py-3 text-sm text-white lg:mx-0">{shown}</p>
-					{/if}
 					{@render children()}
 				</div>
 			</div>

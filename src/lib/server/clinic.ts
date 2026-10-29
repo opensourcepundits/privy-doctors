@@ -515,7 +515,9 @@ export async function rescheduleOwnAppointment(patientId: number, id: number, st
 		WHERE a.id = ${id} AND a.patient_id = ${patientId}
 	`;
 	if (!row) return { error: 'That visit is not on your list.' };
-	if (row.status !== 'rescheduled') return { error: 'Only a rescheduled visit can be moved from tasks.' };
+	if (row.status !== 'accepted' && row.status !== 'confirmed' && row.status !== 'rescheduled') {
+		return { error: 'Only an approved or rescheduled visit can be moved from tasks.' };
+	}
 	if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(startsAt)) return { error: 'Choose a new time.' };
 	if (localStamp(row.starts_at).slice(0, 19) === startsAt) return { error: 'Choose a different time.' };
 	const kind = String(row.location ?? '').startsWith('At the patient') ? 'home' : 'clinic';
@@ -530,10 +532,11 @@ export async function rescheduleOwnAppointment(patientId: number, id: number, st
 	`;
 	const when = `${formatLongDate(row.starts_at)} at ${formatTime(row.starts_at)}`;
 	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
+	const approved = row.status === 'accepted' || row.status === 'confirmed';
 	await notify(
 		row.doctor_user_id,
 		'Appointment rescheduled',
-		`${row.first_name} ${row.last_name} moved a visit from ${when} to ${next}.`
+		`${row.first_name} ${row.last_name} moved ${approved ? 'an approved visit' : 'a visit'} from ${when} to ${next}.`
 	);
 	return { ok: true as const };
 }
@@ -563,12 +566,13 @@ export async function taskVisits(patientId: number) {
 		  AND a.status IN ('accepted', 'confirmed', 'rescheduled')
 		ORDER BY a.starts_at
 	`;
-	const doctorIds = [...new Set(rows.filter((row) => row.status === 'rescheduled').map((row) => row.doctor_id))];
+	const movable = new Set(['accepted', 'confirmed', 'rescheduled']);
+	const doctorIds = [...new Set(rows.filter((row) => movable.has(row.status)).map((row) => row.doctor_id))];
 	const slots = new Map<number, Awaited<ReturnType<typeof rescheduleSlots>>>();
 	await Promise.all(doctorIds.map(async (doctorId) => slots.set(doctorId, await rescheduleSlots(doctorId))));
 	return rows.map((row) => ({
 		...row,
-		slots: row.status === 'rescheduled' ? (slots.get(row.doctor_id) ?? []) : []
+		slots: movable.has(row.status) ? (slots.get(row.doctor_id) ?? []) : []
 	}));
 }
 
@@ -1067,6 +1071,7 @@ export async function prescriptionById(patientId: number, id: number) {
 }
 
 export async function labsFor(patientId: number) {
+	await ensureChartLinks(patientId);
 	const rows = await client`SELECT * FROM labs WHERE patient_id = ${patientId} ORDER BY collected_on DESC NULLS LAST`;
 	const results = await client`
 		SELECT r.* FROM lab_results r
@@ -1115,6 +1120,7 @@ export async function latestVital(patientId: number) {
 }
 
 export async function careOrdersFor(patientId: number) {
+	await ensureChartLinks(patientId);
 	return client`SELECT * FROM care_orders WHERE patient_id = ${patientId} ORDER BY id`;
 }
 
@@ -1204,6 +1210,7 @@ export async function cancelConsult(consultId: number, doctorId: number) {
 }
 
 export async function draftConsult(patientId: number, doctorId: number) {
+	await ensureChartLinks(patientId);
 	let [consult] = await client`
 		SELECT * FROM consultations
 		WHERE patient_id = ${patientId} AND doctor_id = ${doctorId} AND status = 'in_session'
@@ -1221,9 +1228,9 @@ export async function draftConsult(patientId: number, doctorId: number) {
 	}
 	if (!consult) {
 		[consult] = await client`
-			INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at)
+			INSERT INTO consultations (patient_id, doctor_id, code, uid, status, modality, narrative, pharmacy, started_at)
 			VALUES (
-				${patientId}, ${doctorId}, ${'ENC-' + patientId}, 'in_session', 'in_person', '',
+				${patientId}, ${doctorId}, ${'ENC-' + patientId}, ${recordUid('CON')}, 'in_session', 'in_person', '',
 				NULL, NOW()
 			)
 			RETURNING *
@@ -1289,9 +1296,154 @@ export async function clinicianById(id: number) {
 	return { ...doctor, hours, bookable: hours.length > 0 };
 }
 
+function recordUid(prefix: string) {
+	return `${prefix}-${randomBytes(3).toString('hex').toUpperCase()}`;
+}
+
+function linkWords(value: string) {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.split(' ')
+		.filter((word) => word.length > 3);
+}
+
+function linkScore(left: string, right: string) {
+	const words = new Set(linkWords(left));
+	if (!words.size) return 0;
+	return linkWords(right).filter((word) => words.has(word)).length;
+}
+
+function doctorNamed(orderedBy: string, doctorName: string) {
+	const last = doctorName
+		.toLowerCase()
+		.replace(/^dr\.?\s+/, '')
+		.split(' ')
+		.filter(Boolean)
+		.at(-1);
+	return Boolean(last && last.length > 2 && orderedBy.toLowerCase().includes(last));
+}
+
+async function fillRecordUids() {
+	await client`UPDATE consultations SET uid = 'CON-' || upper(substr(md5('CON' || id::text), 1, 6)) WHERE uid IS NULL`;
+	await client`UPDATE consultation_orders SET uid = 'ORD-' || upper(substr(md5('ORD' || id::text), 1, 6)) WHERE uid IS NULL`;
+	await client`UPDATE patient_tasks SET uid = 'TSK-' || upper(substr(md5('TSK' || id::text), 1, 6)) WHERE uid IS NULL`;
+	await client`UPDATE care_orders SET uid = 'CRD-' || upper(substr(md5('CRD' || id::text), 1, 6)) WHERE uid IS NULL`;
+	await client`UPDATE labs SET uid = 'LAB-' || upper(substr(md5('LAB' || id::text), 1, 6)) WHERE uid IS NULL`;
+}
+
+export async function ensureChartLinks(patientId: number, taskId?: number, fileName?: string) {
+	await fillRecordUids();
+	await client`
+		UPDATE patient_tasks t
+		SET order_uid = o.uid
+		FROM consultation_orders o
+		WHERE t.order_id = o.id AND t.patient_id = ${patientId} AND t.order_uid IS NULL
+	`;
+	const tasks = await client<
+		{ id: number; consultation_id: number; title: string; order_id: number | null; file_name: string | null }[]
+	>`
+		SELECT id, consultation_id, title, order_id, file_name
+		FROM patient_tasks
+		WHERE patient_id = ${patientId} AND order_id IS NULL
+	`;
+	const orders = await client<{ id: number; uid: string; title: string; consultation_id: number }[]>`
+		SELECT o.id, o.uid, o.title, o.consultation_id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		WHERE c.patient_id = ${patientId} AND o.kind = 'test'
+	`;
+	const taken = new Set(
+		(
+			await client<{ order_id: number }[]>`
+				SELECT order_id FROM patient_tasks
+				WHERE patient_id = ${patientId} AND order_id IS NOT NULL
+			`
+		).map((row) => row.order_id)
+	);
+	for (const task of tasks) {
+		const focus = task.id === taskId;
+		const haystack = `${task.title} ${focus ? (fileName ?? task.file_name ?? '') : ''}`;
+		const open = orders.filter((order) => !taken.has(order.id));
+		const sameConsult = open.filter((order) => order.consultation_id === task.consultation_id);
+		const pool = sameConsult.length ? sameConsult : open;
+		let best = pool[0];
+		let bestScore = -1;
+		for (const order of pool) {
+			const score = linkScore(haystack, order.title);
+			if (score > bestScore) {
+				best = order;
+				bestScore = score;
+			}
+		}
+		if (!best) continue;
+		if (bestScore < 1 && !(sameConsult.length === 1)) continue;
+		await client`
+			UPDATE patient_tasks
+			SET order_id = ${best.id}, order_uid = ${best.uid}
+			WHERE id = ${task.id} AND order_id IS NULL
+		`;
+		taken.add(best.id);
+	}
+	for (const order of orders) {
+		if (taken.has(order.id)) continue;
+		await client`
+			INSERT INTO patient_tasks (patient_id, consultation_id, uid, order_id, order_uid, title, status)
+			VALUES (${patientId}, ${order.consultation_id}, ${recordUid('TSK')}, ${order.id}, ${order.uid}, ${order.title}, 'open')
+		`;
+		taken.add(order.id);
+	}
+	const consults = await client<{ id: number; uid: string; name: string }[]>`
+		SELECT c.id, c.uid, d.name
+		FROM consultations c
+		JOIN doctors d ON d.id = c.doctor_id
+		WHERE c.patient_id = ${patientId} AND c.uid IS NOT NULL
+		ORDER BY c.id DESC
+	`;
+	const linkedOrders = await client<{ uid: string; title: string; consultation_uid: string }[]>`
+		SELECT o.uid, o.title, c.uid AS consultation_uid
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		WHERE c.patient_id = ${patientId} AND o.kind = 'test' AND o.uid IS NOT NULL
+	`;
+	const pending = await client<{ id: number; title: string; ordered_by: string }[]>`
+		SELECT id, title, ordered_by FROM care_orders
+		WHERE patient_id = ${patientId} AND consultation_uid IS NULL
+	`;
+	for (const order of pending) {
+		const titled = linkedOrders.find((item) => linkScore(order.title, item.title) > 0);
+		const consult = titled
+			? consults.find((item) => item.uid === titled.consultation_uid)
+			: consults.find((item) => doctorNamed(order.ordered_by, item.name));
+		if (!consult) continue;
+		await client`
+			UPDATE care_orders
+			SET consultation_uid = ${consult.uid}, order_uid = ${titled?.uid ?? null}
+			WHERE id = ${order.id}
+		`;
+	}
+	const reports = await client<{ id: number; name: string; ordering_md: string | null }[]>`
+		SELECT id, name, ordering_md FROM labs
+		WHERE patient_id = ${patientId} AND consultation_uid IS NULL
+	`;
+	for (const report of reports) {
+		const titled = linkedOrders.find((item) => linkScore(report.name, item.title) > 0);
+		const consult = titled
+			? consults.find((item) => item.uid === titled.consultation_uid)
+			: consults.find((item) => doctorNamed(report.ordering_md ?? '', item.name));
+		if (!consult) continue;
+		await client`
+			UPDATE labs
+			SET consultation_uid = ${consult.uid}, order_uid = ${titled?.uid ?? null}
+			WHERE id = ${report.id}
+		`;
+	}
+}
+
 export async function tasksForPatient(patientId: number) {
+	await ensureChartLinks(patientId);
 	return client`
-		SELECT t.*, c.code AS consultation_code, c.started_at, d.name AS doctor_name, d.id AS doctor_id
+		SELECT t.*, c.code AS consultation_code, c.uid AS consultation_uid, c.started_at, d.name AS doctor_name, d.id AS doctor_id
 		FROM patient_tasks t
 		JOIN consultations c ON c.id = t.consultation_id
 		JOIN doctors d ON d.id = c.doctor_id
@@ -1312,7 +1464,9 @@ export async function saveTaskResult(id: number, patientId: number, fileName: st
 		WHERE id = ${id} AND patient_id = ${patientId}
 		RETURNING id
 	`;
-	return task ?? null;
+	if (!task) return null;
+	await ensureChartLinks(patientId, id, fileName);
+	return task;
 }
 
 export async function taskFile(id: number) {
@@ -1330,19 +1484,29 @@ export async function addConsultOrder(
 	note: string,
 	completesOn: string | null = null
 ) {
+	const orderUid = recordUid('ORD');
 	const [order] = await client`
-		INSERT INTO consultation_orders (consultation_id, kind, title, detail, note, completes_on)
-		VALUES (${consultId}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn})
+		INSERT INTO consultation_orders (consultation_id, uid, kind, title, detail, note, completes_on)
+		VALUES (${consultId}, ${orderUid}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn})
 		RETURNING id
 	`;
 	const label = title.trim();
 	if (kind === 'test' && label) {
-		const [consult] = await client`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+		const [consult] = await client`SELECT patient_id, uid FROM consultations WHERE id = ${consultId}`;
 		if (consult) {
 			await client`
-				INSERT INTO patient_tasks (patient_id, consultation_id, order_id, title, detail, note, status)
-				VALUES (${consult.patient_id}, ${consultId}, ${order.id}, ${label}, ${detail}, ${note}, 'open')
+				INSERT INTO patient_tasks (patient_id, consultation_id, uid, order_id, order_uid, title, detail, note, status)
+				VALUES (${consult.patient_id}, ${consultId}, ${recordUid('TSK')}, ${order.id}, ${orderUid}, ${label}, ${detail}, ${note}, 'open')
 			`;
+			if (consult.uid) {
+				await client`
+					UPDATE care_orders
+					SET consultation_uid = ${consult.uid}, order_uid = ${orderUid}
+					WHERE patient_id = ${consult.patient_id}
+					  AND consultation_uid IS NULL
+					  AND title = ${label}
+				`;
+			}
 		}
 	}
 }
@@ -1507,6 +1671,9 @@ function nowLocal() {
 export async function finalizeConsult(consultId: number, completesOn: string | null) {
 	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId}`;
 	if (!consult || consult.status !== 'in_session') return;
+	await ensureChartLinks(consult.patient_id);
+	const [linked] = await client<{ uid: string | null }[]>`SELECT uid FROM consultations WHERE id = ${consultId}`;
+	consult.uid = linked?.uid ?? consult.uid;
 	const orders = await client`SELECT * FROM consultation_orders WHERE consultation_id = ${consultId}`;
 	const meds = orders.filter((order) => order.kind === 'medication');
 	const completion = completesOn || isoDate(consult.completes_on) || null;
@@ -1548,9 +1715,9 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 	}
 	for (const order of orders.filter((item) => item.kind === 'test')) {
 		await client`
-			INSERT INTO care_orders (patient_id, kind, title, ordered_by, status, schedule_label, instructions)
+			INSERT INTO care_orders (patient_id, uid, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
 			VALUES (
-				${consult.patient_id}, 'diagnostic', ${order.title}, ${doctor.name}, ${order.detail},
+				${consult.patient_id}, ${recordUid('CRD')}, ${consult.uid}, ${order.uid}, 'diagnostic', ${order.title}, ${doctor.name}, ${order.detail},
 				${'Ordered ' + formatDate(date)}, ${order.note}
 			)
 		`;
@@ -1638,9 +1805,10 @@ export async function acknowledgeLab(id: number, patientId: number) {
 
 export async function orderLab(patientId: number, name: string, facility: string, orderingMd: string) {
 	await client`
-		INSERT INTO labs (patient_id, name, category, status, facility, ordering_md, acknowledged)
-		VALUES (${patientId}, ${name}, 'Ordered', 'pending', ${facility}, ${orderingMd}, false)
+		INSERT INTO labs (patient_id, uid, name, category, status, facility, ordering_md, acknowledged)
+		VALUES (${patientId}, ${recordUid('LAB')}, ${name}, 'Ordered', 'pending', ${facility}, ${orderingMd}, false)
 	`;
+	await ensureChartLinks(patientId);
 }
 
 type AccessSource = 'primary' | 'appointment' | 'referral' | 'qr' | 'code' | 'request' | 'registered';

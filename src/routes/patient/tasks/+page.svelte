@@ -13,7 +13,7 @@
 	<p class="kicker">From your consultations</p>
 	<h1 class="display text-2xl font-bold">Tasks</h1>
 	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
-		Approved and rescheduled visits are listed here. A rescheduled visit can be moved to another open time. Test orders from a consultation stay on the checklist below.
+		Approved and rescheduled visits are listed here. You can move an approved visit to another open time, and the physician is notified. Test orders stay linked to the consultation that requested them.
 	</p>
 </header>
 
@@ -31,14 +31,7 @@
 					<p class="text-sm">{visit.duration_min} min · <Mention text={visit.doctor_name} />{#if visit.credentials}, {visit.credentials}{/if}</p>
 					{#if visit.location}<p class="text-sm text-[#64748B]">{visit.location}</p>{/if}
 					{#if visit.reason}<p class="mt-1 text-sm">{visit.reason}</p>{/if}
-					<BookingActions
-						id={visit.id}
-						status={visit.status}
-						location={visit.location}
-						note={visit.response_note}
-						slots={visit.slots}
-						mode="patient"
-					/>
+					<BookingActions id={visit.id} status={visit.status} note={visit.response_note} slots={visit.slots} mode="patient" />
 				</article>
 			{:else}
 				<p class="text-sm text-[#64748B]">No approved or rescheduled visits.</p>

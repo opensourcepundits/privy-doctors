@@ -601,4 +601,21 @@ SELECT setval(pg_get_serial_sequence('self_reports', 'id'), GREATEST(COALESCE((S
 SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM users), 1), 1));
 SELECT setval(pg_get_serial_sequence('vitals', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM vitals), 1), 1));
 
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS order_uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS consultation_uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS order_uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS consultation_uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS order_uid text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS consultations_uid_key ON consultations (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS consultation_orders_uid_key ON consultation_orders (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_tasks_uid_key ON patient_tasks (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS care_orders_uid_key ON care_orders (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS labs_uid_key ON labs (uid);
+
 COMMIT;

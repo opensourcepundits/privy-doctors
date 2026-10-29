@@ -393,6 +393,23 @@ ALTER TABLE notifications ADD COLUMN IF NOT EXISTS seen_at timestamp;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS response_note text;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS responded_at timestamp;
 
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS order_uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS consultation_uid text;
+ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS order_uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS consultation_uid text;
+ALTER TABLE labs ADD COLUMN IF NOT EXISTS order_uid text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS consultations_uid_key ON consultations (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS consultation_orders_uid_key ON consultation_orders (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_tasks_uid_key ON patient_tasks (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS care_orders_uid_key ON care_orders (uid);
+CREATE UNIQUE INDEX IF NOT EXISTS labs_uid_key ON labs (uid);
+
 CREATE TABLE IF NOT EXISTS self_report_files (
   id serial PRIMARY KEY,
   report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,

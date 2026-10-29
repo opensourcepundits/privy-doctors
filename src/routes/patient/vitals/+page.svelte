@@ -46,6 +46,7 @@
 		<article class="card">
 			<p class="text-xs text-[#64748B]">{formatDate(lab.collected_on)} · {lab.facility}</p>
 			<p class="font-semibold">{lab.name}</p>
+			{#if lab.consultation_uid}<p class="text-xs text-[#64748B]">Consultation {lab.consultation_uid}{#if lab.order_uid} · Order {lab.order_uid}{/if}</p>{/if}
 			<p class="text-sm">{lab.results.map((result) => `${result.name} ${result.value_text ?? result.value_num}`).slice(0, 3).join(' · ')}</p>
 		</article>
 	{/each}

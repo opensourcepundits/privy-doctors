@@ -156,7 +156,7 @@
 				<p class="text-sm">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)} · {formatTime(visit.starts_at)}</p>
 				<p class="text-sm text-[#64748B]"><Mention text={visit.doctor_name} /></p>
 				<p class="mt-2"><Badge tone={marker.tone}>{marker.label}</Badge></p>
-				{#if visit.status === 'rescheduled'}
+				{#if visit.status === 'accepted' || visit.status === 'confirmed' || visit.status === 'rescheduled'}
 					<a class="mt-2 inline-flex text-sm font-semibold text-brand" href="/patient/tasks#visits">Reschedule</a>
 				{/if}
 			</article>
@@ -164,7 +164,8 @@
 		{#each home.tasks as task}
 			<article class="card">
 				<p class="font-semibold">{task.title}</p>
-				<p class="text-sm text-[#64748B]">Consultation {task.consultation_code} · <Mention text={task.doctor_name} /></p>
+				<p class="text-sm text-[#64748B]">Consultation {task.consultation_uid ?? task.consultation_code} · <Mention text={task.doctor_name} /></p>
+				{#if task.order_uid}<p class="text-xs text-[#64748B]">Order {task.order_uid}</p>{/if}
 				<p class="text-sm {task.stored_name ? 'text-emerald-700' : ''}">{task.stored_name ? 'Result PDF received' : 'Upload the result PDF'}</p>
 			</article>
 		{:else}
@@ -180,6 +181,7 @@
 			<article class="card">
 				<p class="font-semibold">{order.title}</p>
 				<p class="text-sm text-[#64748B]">Ordered by <Mention text={order.ordered_by} /></p>
+				{#if order.consultation_uid}<p class="text-xs text-[#64748B]">Consultation {order.consultation_uid}{#if order.order_uid} · Order {order.order_uid}{/if}</p>{/if}
 				<p class="text-sm">{order.status}</p>
 				<p class="text-sm">{liveCopy(order.schedule_label)}</p>
 				<p class="mt-1 text-sm">{order.instructions}</p>

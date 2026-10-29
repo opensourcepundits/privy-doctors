@@ -6,6 +6,9 @@
 		id: number;
 		consultation_id: number;
 		consultation_code: string;
+		consultation_uid?: string | null;
+		uid?: string | null;
+		order_uid?: string | null;
 		doctor_name: string;
 		started_at: Date | string;
 		title: string;
@@ -30,6 +33,7 @@
 		const rows: {
 			consultation_id: number;
 			code: string;
+			uid: string | null;
 			doctor_name: string;
 			started_at: Date | string;
 			tasks: Task[];
@@ -41,6 +45,7 @@
 				rows.push({
 					consultation_id: task.consultation_id,
 					code: task.consultation_code,
+					uid: task.consultation_uid ?? null,
 					doctor_name: task.doctor_name,
 					started_at: task.started_at,
 					tasks: [task]
@@ -59,7 +64,7 @@
 	<div class="space-y-3">
 		{#each groups as group}
 			<article class="card">
-				<p class="kicker">Consultation {group.code}</p>
+				<p class="kicker">Consultation {group.uid ?? group.code}</p>
 				<p class="mt-1 text-sm text-[#64748B]">
 					<Mention text={group.doctor_name} /> · {formatDate(group.started_at)}
 				</p>
@@ -78,6 +83,9 @@
 							</span>
 							<div class="min-w-0 flex-1">
 								<p class="font-semibold">{task.title}</p>
+								{#if task.uid || task.order_uid}
+									<p class="text-xs text-[#64748B]">{task.uid ? `Task ${task.uid}` : ''}{task.uid && task.order_uid ? ' · ' : ''}{task.order_uid ? `Order ${task.order_uid}` : ''}</p>
+								{/if}
 								{#if task.detail}<p class="text-sm text-brand">{task.detail}</p>{/if}
 								{#if task.note}<p class="text-sm text-[#64748B]">{task.note}</p>{/if}
 								{#if task.stored_name}

@@ -76,7 +76,7 @@
 							<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
 								Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
 							</a>
-							<BookingActions id={visit.id} status={visit.status} location={visit.location} note={visit.response_note} slots={schedule.slots} />
+							<BookingActions id={visit.id} status={visit.status} note={visit.response_note} slots={schedule.slots} />
 						</div>
 					</div>
 				</article>
@@ -103,7 +103,7 @@
 							<p class="mt-2 text-sm">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
 							<p class="text-sm text-[#64748B]">{visit.location}</p>
 							<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
-							<BookingActions id={visit.id} status={visit.status} location={visit.location} note={visit.response_note} slots={schedule.slots} />
+							<BookingActions id={visit.id} status={visit.status} note={visit.response_note} slots={schedule.slots} />
 						</article>
 					{/each}
 				</div>

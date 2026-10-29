@@ -248,6 +248,7 @@
 					<div class="flex items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 						<div class="min-w-0">
 							<p class="text-sm font-bold">{order.title}</p>
+							{#if order.uid}<p class="text-[11px] text-[#64748B]">Order {order.uid}{#if data.consult.uid} · Consultation {data.consult.uid}{/if}</p>{/if}
 							{#if order.detail}<p class="text-[11px] text-brand">{order.detail}</p>{/if}
 							{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 							{#if task?.stored_name}
