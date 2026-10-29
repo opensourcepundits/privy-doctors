@@ -1,4 +1,4 @@
-import { asDate, formatDate, formatTime } from '#lib/format';
+import { formatDate, formatTime, liveProcedureYear, toLive } from '#lib/format';
 
 export type TimelineEvent = {
 	at: number;
@@ -111,7 +111,7 @@ const parts: Record<HistorySlice, Array<'consultations' | 'reports' | 'diagnosti
 };
 
 function stamped(value: Date | string) {
-	const date = asDate(value);
+	const date = toLive(value);
 	return {
 		at: date.getTime(),
 		day: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
@@ -198,10 +198,10 @@ export function historyEvents(
 	}
 	if (include.has('procedures')) {
 		for (const item of source.surgeries ?? []) {
-			const year = Number(item.year);
+			const shifted = liveProcedureYear(item.year);
 			items.push({
-				at: Number.isFinite(year) ? Date.UTC(year, 0, 1) : 0,
-				day: item.year,
+				at: shifted.at,
+				day: shifted.label,
 				year: '',
 				kind: 'Procedure',
 				tone: 'bg-amber-600',

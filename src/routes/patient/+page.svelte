@@ -2,7 +2,7 @@
 	import AccessRequests from '#lib/components/AccessRequests.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { daysUntil, formatDate, formatLongDate, formatTime, initials } from '#lib/format';
+	import { dayRelation, formatDate, formatLongDate, formatTime, initials, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -69,16 +69,33 @@
 	</a>
 </section>
 
-{#if home.appointment}
-	<section>
-		<article class="card">
-			<p class="kicker">Next appointment · in {daysUntil(home.appointment.starts_at)} days</p>
-			<h2 class="display mt-1 text-xl font-bold">{formatLongDate(home.appointment.starts_at)}</h2>
-			<p class="text-sm">{formatTime(home.appointment.starts_at)} · {home.appointment.duration_min} min</p>
-			<p class="mt-2 font-semibold"><Mention text={home.appointment.doctor_name} />, {home.appointment.credentials}</p>
-			<p class="text-sm text-[#64748B]">{home.appointment.location}</p>
-			<p class="mt-2 text-sm">{home.appointment.title}</p>
-		</article>
+{#if home.today.length}
+	<section class="space-y-3">
+		<h2 class="display text-lg font-semibold">Today</h2>
+		{#each home.today as visit}
+			<article class="card">
+				<p class="kicker">{formatLongDate(visit.starts_at)}</p>
+				<h2 class="display mt-1 text-xl font-bold">{formatTime(visit.starts_at)}</h2>
+				<p class="text-sm">{visit.duration_min} min · {visit.title}</p>
+				<p class="mt-2 font-semibold"><Mention text={visit.doctor_name} />, {visit.credentials}</p>
+				<p class="text-sm text-[#64748B]">{visit.location}</p>
+			</article>
+		{/each}
+	</section>
+{/if}
+
+{#if home.upcoming.length}
+	<section class="space-y-3">
+		<h2 class="display text-lg font-semibold">Upcoming</h2>
+		{#each home.upcoming as visit}
+			<article class="card">
+				<p class="kicker">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)}</p>
+				<h2 class="display mt-1 text-xl font-bold">{formatTime(visit.starts_at)}</h2>
+				<p class="text-sm">{visit.duration_min} min · {visit.title}</p>
+				<p class="mt-2 font-semibold"><Mention text={visit.doctor_name} />, {visit.credentials}</p>
+				<p class="text-sm text-[#64748B]">{visit.location}</p>
+			</article>
+		{/each}
 	</section>
 {/if}
 
@@ -130,7 +147,7 @@
 				<p class="font-semibold">{order.title}</p>
 				<p class="text-sm text-[#64748B]">Ordered by <Mention text={order.ordered_by} /></p>
 				<p class="text-sm">{order.status}</p>
-				<p class="text-sm">{order.schedule_label}</p>
+				<p class="text-sm">{liveCopy(order.schedule_label)}</p>
 				<p class="mt-1 text-sm">{order.instructions}</p>
 			</article>
 		{/each}

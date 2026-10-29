@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { formatLongDate, formatTime } from '#lib/format';
+	import { dayRelation, formatLongDate, formatTime } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
 	import type { PageProps } from './$types';
 
@@ -119,7 +119,7 @@
 {:else if !board}
 	<div class="px-4 py-4 lg:px-0"><Skeleton count={4} /></div>
 {:else}
-{#if board.upcoming.length}
+{#if board.today.length || board.upcoming.length}
 	<section class="px-4 pt-4 lg:px-0">
 		<button
 			class="flex w-full items-center justify-between rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 text-left lg:hidden"
@@ -129,14 +129,14 @@
 		>
 			<span>
 				<span class="display block text-lg font-semibold">Already booked</span>
-				<span class="text-sm text-[#64748B]">{board.upcoming.length} upcoming {board.upcoming.length === 1 ? 'visit' : 'visits'}</span>
+				<span class="text-sm text-[#64748B]">{board.today.length} today · {board.upcoming.length} upcoming</span>
 			</span>
 			<span class="material-symbols-outlined text-brand" aria-hidden="true">{bookingsOpen ? 'expand_less' : 'expand_more'}</span>
 		</button>
 		<div class="{bookingsOpen ? 'mt-3 grid' : 'hidden'} gap-3 lg:mt-0 lg:grid lg:grid-cols-2">
-			{#each board.upcoming as visit}
+			{#each [...board.today, ...board.upcoming] as visit}
 				<article class="card !py-3">
-					<p class="kicker">{visit.title}</p>
+					<p class="kicker">{dayRelation(visit.starts_at)} · {visit.title}</p>
 					<p class="mt-1 font-semibold">{formatLongDate(visit.starts_at)}</p>
 					<p class="text-sm">{formatTime(visit.starts_at)} · {visit.duration_min} min · <Mention text={visit.doctor_name} /></p>
 					<p class="text-sm text-[#64748B]">{visit.location}</p>

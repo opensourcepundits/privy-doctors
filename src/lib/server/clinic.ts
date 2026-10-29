@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { CLINIC_DAY, formatDate, isoDate } from '#lib/format';
+import { CLINIC_DAY, formatDate, isoDate, liveDay } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
 import { resolveImagePaths } from './storage';
@@ -122,7 +122,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 
 		if (field === 'dob') {
 			if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return { error: 'Enter a valid date of birth.' };
-			if (value < '1900-01-01' || value > CLINIC_DAY) return { error: 'Enter a date of birth on or before the clinic day.' };
+			if (value < '1900-01-01' || value > liveDay()) return { error: 'Enter a date of birth on or before today.' };
 			const current = String(patient.dob).slice(0, 10);
 			if (value === current) return { error: 'That is already on file.' };
 			await client`UPDATE patients SET dob = ${value} WHERE id = ${patientId}`;
@@ -254,33 +254,28 @@ export async function todayAppointments(doctorId: number) {
 		FROM appointments a
 		JOIN patients p ON p.id = a.patient_id
 		WHERE a.doctor_id = ${doctorId}
-		  AND a.starts_at::date = DATE '2024-11-17'
+		  AND a.starts_at::date = ${CLINIC_DAY}
+		  AND a.status <> 'cancelled'
 		ORDER BY a.starts_at
 	`;
 }
 
-export async function upcomingAppointment(patientId: number) {
-	const [row] = await client`
-		SELECT a.*, d.name AS doctor_name, d.credentials, d.specialty
+export async function patientAppointments(patientId: number) {
+	const rows = await client`
+		SELECT a.*, d.name AS doctor_name, d.credentials, d.specialty,
+			(a.starts_at::date = ${CLINIC_DAY}::date) AS on_clinic_day
 		FROM appointments a
 		JOIN doctors d ON d.id = a.doctor_id
 		WHERE a.patient_id = ${patientId}
-		  AND a.starts_at::date > ${CLINIC_DAY}
-		ORDER BY a.starts_at
-		LIMIT 1
-	`;
-	return row ?? null;
-}
-
-export async function futureAppointments(patientId: number) {
-	return client`
-		SELECT a.*, d.name AS doctor_name, d.credentials, d.specialty
-		FROM appointments a
-		JOIN doctors d ON d.id = a.doctor_id
-		WHERE a.patient_id = ${patientId}
-		  AND a.starts_at::date > ${CLINIC_DAY}
+		  AND a.starts_at::date >= ${CLINIC_DAY}::date
+		  AND a.status <> 'cancelled'
 		ORDER BY a.starts_at
 	`;
+	const onClinicDay = (row: { on_clinic_day?: unknown }) => row.on_clinic_day === true || row.on_clinic_day === 't';
+	return {
+		today: rows.filter((row) => onClinicDay(row)),
+		upcoming: rows.filter((row) => !onClinicDay(row))
+	};
 }
 
 export async function upcomingForDoctor(doctorId: number) {
@@ -290,6 +285,7 @@ export async function upcomingForDoctor(doctorId: number) {
 		JOIN patients p ON p.id = a.patient_id
 		WHERE a.doctor_id = ${doctorId}
 		  AND a.starts_at::date > ${CLINIC_DAY}
+		  AND a.status <> 'cancelled'
 		ORDER BY a.starts_at
 	`;
 }
@@ -885,7 +881,7 @@ export async function careOrdersFor(patientId: number) {
 
 export async function doseLogsFor(patientId: number) {
 	return client`
-		SELECT * FROM dose_logs WHERE patient_id = ${patientId} AND log_date = DATE '2024-11-17' ORDER BY id
+		SELECT * FROM dose_logs WHERE patient_id = ${patientId} AND log_date = ${CLINIC_DAY} ORDER BY id
 	`;
 }
 

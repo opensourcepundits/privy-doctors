@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { getContext } from 'svelte';
+	import { liveCopy } from '#lib/format';
 	import { splitMentions, type MentionContext } from '#lib/mentions';
 
 	let { text = '' }: { text?: string | null } = $props();
 	const mentions = getContext<MentionContext>('mentions');
-	const parts = $derived(splitMentions(text ?? '', mentions?.doctors ?? []));
+	const parts = $derived(splitMentions(liveCopy(text ?? ''), mentions?.doctors ?? []));
 
 	function href(id: number) {
 		if (!mentions || mentions.portal === 'patient') return `/patient/doctors/${id}`;
@@ -20,5 +21,5 @@
 		{:else}{part.text}{/if}
 	{/each}
 {:else}
-	{text ?? ''}
+	{liveCopy(text ?? '')}
 {/if}

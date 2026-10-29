@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatDate, money } from '#lib/format';
+	import { formatDate, liveCopy, money } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -27,7 +27,7 @@
 				{/each}
 			</ul>
 			{#if invoice.insurance_note && !invoice.insurance_note.startsWith('Paid via')}
-				<p class="mt-2 text-sm">{invoice.insurance_note}</p>
+				<p class="mt-2 text-sm">{liveCopy(invoice.insurance_note)}</p>
 			{/if}
 			<p class="font-semibold">Patient responsibility {money(invoice.patient_due)}</p>
 		</article>
@@ -37,7 +37,7 @@
 		<article class="card">
 			<p class="font-semibold">{invoice.code} · Paid</p>
 			<p>{invoice.title}</p>
-			<p class="text-sm text-[#64748B]">{formatDate(invoice.issued_on)}{#if invoice.insurance_note && !invoice.insurance_note.startsWith('Paid via')} · {invoice.insurance_note}{/if}</p>
+			<p class="text-sm text-[#64748B]">{formatDate(invoice.issued_on)}{#if invoice.insurance_note && !invoice.insurance_note.startsWith('Paid via')} · {liveCopy(invoice.insurance_note)}{/if}</p>
 			<p class="nums font-semibold">{money(invoice.patient_due)}</p>
 		</article>
 	{/each}

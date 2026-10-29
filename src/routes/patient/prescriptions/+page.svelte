@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
 	import Mention from '#lib/components/Mention.svelte';
-	import { formatDate } from '#lib/format';
+	import { formatDate, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -31,7 +31,7 @@
 			</span>
 		</summary>
 		<div class="space-y-3 border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
-			<p class="text-xs text-[#64748B]">{order.code}{#if order.course_label} · {order.course_label}{/if}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
+			<p class="text-xs text-[#64748B]">{order.code}{#if order.course_label} · {liveCopy(order.course_label)}{/if}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
 			{#each order.items as item}
 				<div class="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
 					<p class="font-semibold">{item.name}</p>

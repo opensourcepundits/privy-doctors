@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
 	import Mention from '#lib/components/Mention.svelte';
-	import { formatDate } from '#lib/format';
+	import { formatDate, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -25,7 +25,7 @@
 		<p>{order.specialty} · NPI on file for e-sign</p>
 		<p class="mt-2">{order.facility}</p>
 		{#if order.pharmacy}<p>{order.pharmacy}</p>{/if}
-		{#if order.course_label}<p class="mt-2 text-[#64748B]">{order.course_label}</p>{/if}
+		{#if order.course_label}<p class="mt-2 text-[#64748B]">{liveCopy(order.course_label)}</p>{/if}
 	</article>
 	{#each order.items as item}
 		<article class="card">

@@ -2,7 +2,7 @@
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { ageOn, formatLongDate, formatTime, initials } from '#lib/format';
+	import { CLINIC_DAY, ageOn, dayRelation, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -53,7 +53,8 @@
 	{#await data.schedule}
 		<Skeleton count={3} />
 	{:then schedule}
-		<p class="mb-3 text-sm text-[#64748B]">{schedule.appointments.length} upcoming</p>
+		<p class="mb-3 text-sm text-[#64748B]">{formatLongDate(CLINIC_DAY)} · {schedule.appointments.length} {schedule.appointments.length === 1 ? 'visit' : 'visits'}</p>
+		{#if schedule.appointments.length}
 		<div class="grid gap-3 lg:grid-cols-2">
 			{#each schedule.appointments as visit}
 				<article class="card">
@@ -78,10 +79,13 @@
 				</article>
 			{/each}
 		</div>
+		{:else}
+			<p class="text-sm text-[#64748B]">Nothing is booked for this clinic day.</p>
+		{/if}
 		{#if schedule.upcoming.length}
 			<div class="pt-6 pb-6">
-				<h2 class="display text-lg font-semibold lg:text-xl">Booked ahead</h2>
-				<p class="text-sm text-[#64748B]">{schedule.upcoming.length} after today</p>
+				<h2 class="display text-lg font-semibold lg:text-xl">Upcoming</h2>
+				<p class="text-sm text-[#64748B]">{schedule.upcoming.length} {schedule.upcoming.length === 1 ? 'later visit' : 'later visits'}</p>
 				<div class="mt-3 grid gap-3 lg:grid-cols-2">
 					{#each schedule.upcoming as visit}
 						<article class="card">
@@ -93,7 +97,7 @@
 								</div>
 								<p class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</p>
 							</div>
-							<p class="mt-2 text-sm">{formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
+							<p class="mt-2 text-sm">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
 							<p class="text-sm text-[#64748B]">{visit.location}</p>
 							<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
 						</article>

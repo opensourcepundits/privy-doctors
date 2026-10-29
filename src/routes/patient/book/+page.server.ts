@@ -1,16 +1,16 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { actingPatient, bookAppointment, bookingBoard, futureAppointments } from '#lib/server/clinic';
+import { actingPatient, bookAppointment, bookingBoard, patientAppointments } from '#lib/server/clinic';
 
 export function load({ locals }: { locals: App.Locals }) {
 	return { board: boardFor(locals) };
 }
 
 async function boardFor(locals: App.Locals) {
-	if (!locals.user) return { doctors: [], upcoming: [] };
+	if (!locals.user) return { doctors: [], today: [], upcoming: [] };
 	const patient = await actingPatient(locals.user);
-	if (!patient) return { doctors: [], upcoming: [] };
-	const [doctors, upcoming] = await Promise.all([bookingBoard(), futureAppointments(patient.id)]);
-	return { doctors, upcoming };
+	if (!patient) return { doctors: [], today: [], upcoming: [] };
+	const [doctors, visits] = await Promise.all([bookingBoard(), patientAppointments(patient.id)]);
+	return { doctors, today: visits.today, upcoming: visits.upcoming };
 }
 
 export const actions = {

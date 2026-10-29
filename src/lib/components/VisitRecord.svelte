@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Mention from '#lib/components/Mention.svelte';
-	import { formatDate, formatTime } from '#lib/format';
+	import { formatDate, formatTime, liveCopy } from '#lib/format';
 	import type { VisitRecord } from '#lib/server/clinic';
 
 	let { record, pid }: { record: VisitRecord; pid: string } = $props();
@@ -101,7 +101,7 @@
 						<p class="mt-2 text-sm"><Mention text={order.prescriber} />{#if order.specialty} · {order.specialty}{/if}</p>
 						{#if order.facility}<p class="text-sm text-[#64748B]">{order.facility}</p>{/if}
 						{#if order.pharmacy}<p class="text-sm text-[#64748B]">{order.pharmacy}</p>{/if}
-						{#if order.course_label}<p class="mt-1 text-sm">{order.course_label}</p>{/if}
+						{#if order.course_label}<p class="mt-1 text-sm">{liveCopy(order.course_label)}</p>{/if}
 						<ul class="mt-2 space-y-2">
 							{#each order.items as item}
 								<li class="text-sm">

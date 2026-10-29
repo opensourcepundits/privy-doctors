@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ageOn, formatDate, formatTime, initials } from '#lib/format';
+	import { ageOn, formatDate, formatTime, initials, liveProcedureYear } from '#lib/format';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
 
@@ -84,7 +84,7 @@
 			<div class="min-w-0">
 				<p class="text-[#64748B]">{label}</p>
 				{#if editing !== field}
-					<p class="mt-0.5">{shown(field)}</p>
+					<p class="mt-0.5">{field === 'surgeries' ? shown(field).replace(/\b(20\d{2})\b/g, (year) => liveProcedureYear(year).label) : shown(field)}</p>
 				{/if}
 			</div>
 			{#if editing !== field}
