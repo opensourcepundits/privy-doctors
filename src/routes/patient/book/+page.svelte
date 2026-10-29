@@ -2,7 +2,8 @@
 	import { page } from '$app/state';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { dayRelation, formatLongDate, formatTime, isoDate, toLive } from '#lib/format';
+	import Badge from '#lib/components/Badge.svelte';
+	import { appointmentStatus, dayRelation, formatLongDate, formatTime, isoDate, toLive } from '#lib/format';
 	import { WEEKDAYS, formatClock, groupByWeekday, type OpenSlot } from '#lib/schedule';
 	import type { PageProps } from './$types';
 
@@ -169,11 +170,14 @@
 		</button>
 		<div class="{bookingsOpen ? 'mt-3 grid' : 'hidden'} gap-3 lg:mt-0 lg:grid lg:grid-cols-2">
 			{#each [...board.today, ...board.upcoming] as visit}
+				{@const marker = appointmentStatus(visit.status)}
 				<article class="card !py-3">
 					<p class="kicker">{dayRelation(visit.starts_at)} · {visit.title}</p>
 					<p class="mt-1 font-semibold">{formatLongDate(visit.starts_at)}</p>
 					<p class="text-sm">{formatTime(visit.starts_at)} · {visit.duration_min} min · <Mention text={visit.doctor_name} /></p>
+					<p class="mt-2"><Badge tone={marker.tone}>{marker.label}</Badge></p>
 					<p class="text-sm text-[#64748B]">{visit.location}</p>
+					{#if visit.response_note}<p class="mt-1 text-sm text-[#64748B]">{visit.response_note}</p>{/if}
 				</article>
 			{/each}
 		</div>

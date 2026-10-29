@@ -389,3 +389,23 @@ CREATE TABLE sessions (
 ALTER TABLE encounters ADD COLUMN IF NOT EXISTS consultation_id int REFERENCES consultations(id) ON DELETE SET NULL;
 
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS seen_at timestamp;
+
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS response_note text;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS responded_at timestamp;
+
+CREATE TABLE IF NOT EXISTS self_report_files (
+  id serial PRIMARY KEY,
+  report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,
+  file_name text NOT NULL,
+  stored_name text NOT NULL,
+  content_type text NOT NULL,
+  created_at timestamp NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS self_report_alerts (
+  id serial PRIMARY KEY,
+  report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,
+  doctor_id int NOT NULL REFERENCES doctors(id),
+  created_at timestamp NOT NULL,
+  UNIQUE (report_id, doctor_id)
+);

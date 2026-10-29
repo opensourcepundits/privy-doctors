@@ -8,14 +8,14 @@
 <header class="px-4 pt-6 lg:px-0">
 	<a class="text-sm font-semibold text-brand" href="/patient">Home</a>
 	<h1 class="display mt-2 text-2xl font-bold lg:text-3xl">Report something</h1>
-	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">File a headache, a fall, nausea, or anything else you noticed. It is saved on your history as a self report.</p>
+	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">File a headache, a fall, nausea, or anything else you noticed. You can attach a lab report or another document, and alert the clinicians you choose.</p>
 </header>
 
 <section class="mx-4 max-w-xl py-4 lg:mx-0">
 	{#if data.preview}
 		<article class="card text-sm">This report is filed when the patient is signed in.</article>
 	{:else}
-		<form class="card space-y-3" method="POST">
+		<form class="card space-y-3" method="POST" enctype="multipart/form-data">
 			{#if form?.message}
 				<p class="text-sm text-red-600">{form.message}</p>
 			{/if}
@@ -52,6 +52,28 @@
 				What you noticed
 				<textarea class="field mt-1 min-h-28" id="detail" name="detail" maxlength="1000" placeholder="Where it is, what set it off, and anything else a clinician should know">{form?.detail ?? ''}</textarea>
 			</label>
+			<label class="block text-sm font-semibold" for="files">
+				Lab report or supporting document
+				<input class="mt-1 block w-full text-sm" id="files" name="files" type="file" multiple accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,.pdf" />
+				<span class="mt-1 block text-xs font-normal text-[#64748B]">Images or PDFs. Up to 4 files, 8 MB each.</span>
+			</label>
+			{#if data.clinicians.length}
+				<fieldset>
+					<legend class="text-sm font-semibold">Alert a clinician</legend>
+					<p class="mt-1 text-xs text-[#64748B]">Optional. Each person you tick gets a notification about this report.</p>
+					<div class="mt-2 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-[#E2E8F0] p-3">
+						{#each data.clinicians as clinician}
+							<label class="flex items-start gap-2 text-sm">
+								<input class="mt-1" type="checkbox" name="doctor_id" value={clinician.id} />
+								<span>
+									<span class="font-semibold">{clinician.name}</span>
+									<span class="block text-xs text-[#64748B]">{clinician.credentials} · {clinician.specialty}</span>
+								</span>
+							</label>
+						{/each}
+					</div>
+				</fieldset>
+			{/if}
 			<button class="btn" type="submit">
 				<span class="material-symbols-outlined text-lg">personal_injury</span>
 				Add to my history

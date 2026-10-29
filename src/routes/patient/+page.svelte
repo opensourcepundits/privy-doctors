@@ -1,8 +1,9 @@
 <script lang="ts">
 	import AccessRequests from '#lib/components/AccessRequests.svelte';
+	import Badge from '#lib/components/Badge.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { dayRelation, formatDate, formatLongDate, formatTime, initials, liveCopy } from '#lib/format';
+	import { appointmentStatus, dayRelation, formatDate, formatLongDate, formatTime, initials, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -73,12 +74,15 @@
 	<section class="space-y-3">
 		<h2 class="display text-lg font-semibold">Today</h2>
 		{#each home.today as visit}
+			{@const marker = appointmentStatus(visit.status)}
 			<article class="card">
 				<p class="kicker">{formatLongDate(visit.starts_at)}</p>
 				<h2 class="display mt-1 text-xl font-bold">{formatTime(visit.starts_at)}</h2>
 				<p class="text-sm">{visit.duration_min} min · {visit.title}</p>
+				<p class="mt-2"><Badge tone={marker.tone}>{marker.label}</Badge></p>
 				<p class="mt-2 font-semibold"><Mention text={visit.doctor_name} />, {visit.credentials}</p>
 				<p class="text-sm text-[#64748B]">{visit.location}</p>
+				{#if visit.response_note}<p class="mt-1 text-sm text-[#64748B]">{visit.response_note}</p>{/if}
 			</article>
 		{/each}
 	</section>
@@ -88,12 +92,15 @@
 	<section class="space-y-3">
 		<h2 class="display text-lg font-semibold">Upcoming</h2>
 		{#each home.upcoming as visit}
+			{@const marker = appointmentStatus(visit.status)}
 			<article class="card">
 				<p class="kicker">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)}</p>
 				<h2 class="display mt-1 text-xl font-bold">{formatTime(visit.starts_at)}</h2>
 				<p class="text-sm">{visit.duration_min} min · {visit.title}</p>
+				<p class="mt-2"><Badge tone={marker.tone}>{marker.label}</Badge></p>
 				<p class="mt-2 font-semibold"><Mention text={visit.doctor_name} />, {visit.credentials}</p>
 				<p class="text-sm text-[#64748B]">{visit.location}</p>
+				{#if visit.response_note}<p class="mt-1 text-sm text-[#64748B]">{visit.response_note}</p>{/if}
 			</article>
 		{/each}
 	</section>

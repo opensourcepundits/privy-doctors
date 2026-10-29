@@ -145,6 +145,25 @@ export function dayRelation(value: Date | string, today = CLINIC_DAY) {
 	return `${Math.abs(days)} days ago`;
 }
 
+export function appointmentStatus(status: string): { label: string; tone: 'brand' | 'warning' | 'success' | 'urgent' | 'muted' } {
+	switch (status) {
+		case 'requested':
+			return { label: 'Requested', tone: 'warning' };
+		case 'accepted':
+			return { label: 'Accepted', tone: 'success' };
+		case 'confirmed':
+			return { label: 'Confirmed', tone: 'success' };
+		case 'declined':
+			return { label: 'Declined', tone: 'urgent' };
+		case 'rescheduled':
+			return { label: 'Rescheduled', tone: 'brand' };
+		case 'cancelled':
+			return { label: 'Cancelled', tone: 'muted' };
+		default:
+			return { label: 'Scheduled', tone: 'brand' };
+	}
+}
+
 export function money(value: string | number) {
 	return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value));
 }

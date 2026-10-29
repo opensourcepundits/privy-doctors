@@ -14,6 +14,7 @@ export type TimelineEvent = {
 	link: string;
 	image: string;
 	log?: string[];
+	files?: { href: string; name: string; image: boolean }[];
 };
 
 type Encounter = {
@@ -43,6 +44,8 @@ type Report = {
 	detail: string | null;
 	meds_taken: string | null;
 	edits?: ReportEdit[];
+	files?: { id: number; file_name: string; content_type: string }[];
+	alerted?: string[];
 };
 
 const reportFields: Record<string, string> = {
@@ -146,6 +149,7 @@ export function historyEvents(
 		for (const report of source.reports ?? []) {
 			const when = stamped(report.occurred_on);
 			const strength = report.severity === 'mild' ? 'Mild' : report.severity === 'moderate' ? 'Moderate' : report.severity === 'severe' ? 'Severe' : '';
+			const alerted = (report.alerted ?? []).join(', ');
 			items.push({
 				...when,
 				at: when.at + report.id,
@@ -154,11 +158,16 @@ export function historyEvents(
 				title: report.title,
 				meta: [strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
 				body: report.detail ?? '',
-				note: report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '',
+				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : ''].filter(Boolean).join(' '),
 				href: links.report ? links.report(report.id) : '',
 				link: links.report ? 'Edit report' : '',
 				image: '',
-				log: reportChangeLines(report.edits)
+				log: reportChangeLines(report.edits),
+				files: (report.files ?? []).map((file) => ({
+					href: `/files/reports/${file.id}`,
+					name: file.file_name,
+					image: file.content_type.startsWith('image/')
+				}))
 			});
 		}
 	}

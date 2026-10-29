@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { CLINIC_DAY, formatDate, isoDate, liveDay } from '#lib/format';
+import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
 import { resolveImagePaths } from './storage';
@@ -373,7 +373,7 @@ export async function bookingBoard() {
 		FROM appointments
 		WHERE starts_at::date > ${CLINIC_DAY}
 		  AND starts_at::date <= ${horizon}
-		  AND status <> 'cancelled'
+		  AND status NOT IN ('cancelled', 'declined')
 	`;
 	return doctors.map((doctor) => {
 		const windows = hours.filter((row) => row.doctor_id === doctor.id);
@@ -406,11 +406,91 @@ export async function bookAppointment(
 		INSERT INTO appointments (
 			patient_id, doctor_id, starts_at, duration_min, title, reason, status, location, last_visit_label
 		) VALUES (
-			${patientId}, ${doctor.id}, ${input.startsAt}, 30, ${title}, ${reason}, 'scheduled',
+			${patientId}, ${doctor.id}, ${input.startsAt}, 30, ${title}, ${reason}, 'requested',
 			${location}, 'Booked from the patient portal'
 		)
 	`;
 	await grantAccess(patientId, doctor.id, 'appointment');
+	return { ok: true as const };
+}
+
+export async function rescheduleSlots(doctorId: number) {
+	const hours = await doctorSchedule(doctorId);
+	const horizon = addDays(CLINIC_DAY, 21);
+	const taken = await client<{ starts_at: Date | string; duration_min: number }[]>`
+		SELECT starts_at, duration_min
+		FROM appointments
+		WHERE doctor_id = ${doctorId}
+		  AND starts_at::date > ${CLINIC_DAY}
+		  AND starts_at::date <= ${horizon}
+		  AND status NOT IN ('cancelled', 'declined')
+	`;
+	const blocks = taken.map((row) => ({ start: localStamp(row.starts_at), duration: Number(row.duration_min) }));
+	return openSlots(hours, blocks);
+}
+
+export async function respondToAppointment(
+	doctorId: number,
+	id: number,
+	action: 'accept' | 'decline' | 'reschedule',
+	input: { note?: string; startsAt?: string }
+) {
+	const [row] = await client<
+		{
+			id: number;
+			starts_at: Date | string;
+			location: string | null;
+			status: string;
+			user_id: number | null;
+			doctor_name: string;
+		}[]
+	>`
+		SELECT a.id, a.starts_at, a.location, a.status, p.user_id, d.name AS doctor_name
+		FROM appointments a
+		JOIN patients p ON p.id = a.patient_id
+		JOIN doctors d ON d.id = a.doctor_id
+		WHERE a.id = ${id} AND a.doctor_id = ${doctorId}
+	`;
+	if (!row) return { error: 'That booking is not on your schedule.' };
+	if (row.status === 'declined' || row.status === 'cancelled') return { error: 'This booking is already closed.' };
+	const when = `${formatLongDate(row.starts_at)} at ${formatTime(row.starts_at)}`;
+	if (action === 'accept') {
+		await client`
+			UPDATE appointments SET status = 'accepted', responded_at = ${nowLocal().stamp}
+			WHERE id = ${id}
+		`;
+		await notify(row.user_id, 'Appointment accepted', `${row.doctor_name} accepted your visit on ${when}.`);
+		return { ok: true as const };
+	}
+	if (action === 'decline') {
+		const note = (input.note ?? '').trim().slice(0, 240);
+		await client`
+			UPDATE appointments
+			SET status = 'declined', response_note = ${note || null}, responded_at = ${nowLocal().stamp}
+			WHERE id = ${id}
+		`;
+		await notify(
+			row.user_id,
+			'Appointment declined',
+			`${row.doctor_name} declined your visit on ${when}.${note ? ` ${note}` : ''}`
+		);
+		return { ok: true as const };
+	}
+	const startsAt = input.startsAt ?? '';
+	if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(startsAt)) return { error: 'Choose a new time.' };
+	if (localStamp(row.starts_at).slice(0, 19) === startsAt) return { error: 'Choose a different time.' };
+	const kind = String(row.location ?? '').startsWith('At the patient') ? 'home' : 'clinic';
+	const slots = await rescheduleSlots(doctorId);
+	if (!slots.some((slot) => slot.kind === kind && slot.startsAt === startsAt)) {
+		return { error: 'That time is not open.' };
+	}
+	await client`
+		UPDATE appointments
+		SET starts_at = ${startsAt}, status = 'rescheduled', responded_at = ${nowLocal().stamp}
+		WHERE id = ${id}
+	`;
+	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
+	await notify(row.user_id, 'Appointment rescheduled', `${row.doctor_name} moved your visit from ${when} to ${next}.`);
 	return { ok: true as const };
 }
 
@@ -715,16 +795,32 @@ export async function selfReportsFor(patientId: number) {
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
 	`;
-	if (!rows.length) return rows.map((row) => ({ ...row, edits: [] as SelfReportEdit[] }));
+	if (!rows.length) return rows.map((row) => ({ ...row, edits: [] as SelfReportEdit[], files: [], alerted: [] as string[] }));
+	const ids = rows.map((row) => row.id);
 	const edits = await client<{ report_id: number; changed_at: Date | string; changes: SelfReportEdit['changes'] }[]>`
 		SELECT report_id, changed_at, changes
 		FROM self_report_edits
-		WHERE report_id = ANY(${rows.map((row) => row.id)})
+		WHERE report_id = ANY(${ids})
 		ORDER BY changed_at DESC
+	`;
+	const files = await client<{ id: number; report_id: number; file_name: string; content_type: string }[]>`
+		SELECT id, report_id, file_name, content_type
+		FROM self_report_files
+		WHERE report_id = ANY(${ids})
+		ORDER BY id
+	`;
+	const alerts = await client<{ report_id: number; name: string }[]>`
+		SELECT a.report_id, d.name
+		FROM self_report_alerts a
+		JOIN doctors d ON d.id = a.doctor_id
+		WHERE a.report_id = ANY(${ids})
+		ORDER BY d.name
 	`;
 	return rows.map((row) => ({
 		...row,
-		edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes }))
+		edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes })),
+		files: files.filter((file) => file.report_id === row.id),
+		alerted: alerts.filter((alert) => alert.report_id === row.id).map((alert) => alert.name)
 	}));
 }
 
@@ -745,14 +841,79 @@ export async function addSelfReport(
 		ongoing: boolean;
 	}
 ) {
-	await client`
+	const [row] = await client<{ id: number }[]>`
 		INSERT INTO self_reports (
 			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at
 		) VALUES (
 			${patientId}, ${input.occurredOn}, ${input.title}, ${input.detail || null}, ${input.duration || null},
 			${input.severity || null}, ${input.meds || null}, ${input.ongoing}, ${nowLocal().stamp}
 		)
+		RETURNING id
 	`;
+	return row.id;
+}
+
+export async function addReportFile(reportId: number, fileName: string, storedName: string, contentType: string) {
+	await client`
+		INSERT INTO self_report_files (report_id, file_name, stored_name, content_type, created_at)
+		VALUES (${reportId}, ${fileName}, ${storedName}, ${contentType}, ${nowLocal().stamp})
+	`;
+}
+
+export async function reportFileFor(id: number) {
+	const [file] = await client<
+		{ id: number; report_id: number; patient_id: number; file_name: string; stored_name: string; content_type: string }[]
+	>`
+		SELECT f.id, f.report_id, r.patient_id, f.file_name, f.stored_name, f.content_type
+		FROM self_report_files f
+		JOIN self_reports r ON r.id = f.report_id
+		WHERE f.id = ${id}
+	`;
+	return file ?? null;
+}
+
+export async function reportAlerted(reportId: number, doctorId: number) {
+	const [row] = await client<{ id: number }[]>`
+		SELECT id FROM self_report_alerts WHERE report_id = ${reportId} AND doctor_id = ${doctorId}
+	`;
+	return Boolean(row);
+}
+
+export async function alertClinicians() {
+	return client<{ id: number; name: string; credentials: string; specialty: string }[]>`
+		SELECT id, name, credentials, specialty
+		FROM doctors
+		WHERE user_id IS NOT NULL
+		ORDER BY name
+	`;
+}
+
+export async function alertReportDoctors(
+	reportId: number,
+	patient: { first_name: string; last_name: string; pid: string },
+	doctorIds: number[],
+	title: string
+) {
+	const ids = [...new Set(doctorIds.filter((id) => Number.isInteger(id) && id > 0))];
+	if (!ids.length) return [] as string[];
+	const doctors = await client<{ id: number; name: string; user_id: number | null }[]>`
+		SELECT id, name, user_id FROM doctors WHERE id = ANY(${ids}) AND user_id IS NOT NULL
+	`;
+	const names: string[] = [];
+	for (const doctor of doctors) {
+		await client`
+			INSERT INTO self_report_alerts (report_id, doctor_id, created_at)
+			VALUES (${reportId}, ${doctor.id}, ${nowLocal().stamp})
+			ON CONFLICT (report_id, doctor_id) DO NOTHING
+		`;
+		await notify(
+			doctor.user_id,
+			'Patient self report',
+			`${patient.first_name} ${patient.last_name} (${patient.pid}) filed “${title}”.`
+		);
+		names.push(doctor.name);
+	}
+	return names;
 }
 
 export async function updateSelfReport(

@@ -17,6 +17,19 @@
 	<p class="mt-1 text-sm text-[#64748B]">Filed {formatDate(report.created_at)} · {formatTime(report.created_at)}</p>
 </header>
 
+{#if report.files.length || report.alerted.length}
+	<section class="mx-4 max-w-xl pt-4 lg:mx-0">
+		<article class="card space-y-2 text-sm">
+			{#if report.alerted.length}
+				<p>Alerted {report.alerted.join(', ')}</p>
+			{/if}
+			{#each report.files as file}
+				<p><a class="font-semibold text-brand" href="/files/reports/{file.id}?download">{file.file_name}</a></p>
+			{/each}
+		</article>
+	</section>
+{/if}
+
 <section class="mx-4 max-w-xl space-y-4 py-4 lg:mx-0">
 	{#if data.preview}
 		<article class="card text-sm">Only the patient who filed this report can change it.</article>

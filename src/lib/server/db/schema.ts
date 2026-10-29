@@ -69,7 +69,9 @@ export const appointments = pgTable('appointments', {
 	reason: text('reason').notNull(),
 	status: text('status').notNull(),
 	location: text('location'),
-	lastVisitLabel: text('last_visit_label')
+	lastVisitLabel: text('last_visit_label'),
+	responseNote: text('response_note'),
+	respondedAt: timestamp('responded_at')
 });
 
 export const availability = pgTable('availability', {
@@ -331,6 +333,22 @@ export const selfReports = pgTable('self_reports', {
 	severity: text('severity'),
 	medsTaken: text('meds_taken'),
 	ongoing: boolean('ongoing').notNull(),
+	createdAt: timestamp('created_at').notNull()
+});
+
+export const selfReportFiles = pgTable('self_report_files', {
+	id: serial('id').primaryKey(),
+	reportId: integer('report_id').notNull(),
+	fileName: text('file_name').notNull(),
+	storedName: text('stored_name').notNull(),
+	contentType: text('content_type').notNull(),
+	createdAt: timestamp('created_at').notNull()
+});
+
+export const selfReportAlerts = pgTable('self_report_alerts', {
+	id: serial('id').primaryKey(),
+	reportId: integer('report_id').notNull(),
+	doctorId: integer('doctor_id').notNull(),
 	createdAt: timestamp('created_at').notNull()
 });
 

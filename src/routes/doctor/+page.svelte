@@ -1,11 +1,12 @@
 <script lang="ts">
+	import BookingActions from '#lib/components/BookingActions.svelte';
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { CLINIC_DAY, ageOn, dayRelation, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
-	let { data }: PageProps = $props();
+	let { data, form }: PageProps = $props();
 	const monogram = $derived(
 		data.doctor.name
 			.replace(/^Dr\.?\s+/i, '')
@@ -53,6 +54,7 @@
 	{#await data.schedule}
 		<Skeleton count={3} />
 	{:then schedule}
+		{#if form?.message}<p class="mb-3 text-sm text-red-600">{form.message}</p>{/if}
 		<p class="mb-3 text-sm text-[#64748B]">{formatLongDate(CLINIC_DAY)} · {schedule.appointments.length} {schedule.appointments.length === 1 ? 'visit' : 'visits'}</p>
 		{#if schedule.appointments.length}
 		<div class="grid gap-3 lg:grid-cols-2">
@@ -74,6 +76,7 @@
 							<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
 								Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
 							</a>
+							<BookingActions id={visit.id} status={visit.status} location={visit.location} note={visit.response_note} slots={schedule.slots} />
 						</div>
 					</div>
 				</article>
@@ -100,6 +103,7 @@
 							<p class="mt-2 text-sm">{dayRelation(visit.starts_at)} · {formatLongDate(visit.starts_at)} · {visit.duration_min} min</p>
 							<p class="text-sm text-[#64748B]">{visit.location}</p>
 							<p class="mt-1 text-sm">Reason: <Mention text={visit.reason} /></p>
+							<BookingActions id={visit.id} status={visit.status} location={visit.location} note={visit.response_note} slots={schedule.slots} />
 						</article>
 					{/each}
 				</div>

@@ -26,6 +26,18 @@
 					{#if event.meta}<p class="text-sm text-[#64748B]"><Mention text={event.meta} /></p>{/if}
 					{#if event.body}<p class="mt-1 text-sm"><Mention text={event.body} /></p>{/if}
 					{#if event.note}<p class="mt-1 text-sm text-[#64748B]"><Mention text={event.note} /></p>{/if}
+					{#if event.files?.length}
+						<ul class="pointer-events-auto relative z-10 mt-2 space-y-2">
+							{#each event.files as file}
+								<li>
+									{#if file.image}
+										<a href={file.href}><img class="h-28 max-w-xs rounded-xl border border-[#E2E8F0] object-contain" src={file.href} alt={file.name} /></a>
+									{/if}
+									<a class="text-sm font-semibold text-brand" href="{file.href}?download">{file.name}</a>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 					{#if event.log?.length}
 						<ul class="mt-2 space-y-1 border-l border-[#E2E8F0] pl-2 text-xs text-[#64748B]">
 							{#each event.log as line}
