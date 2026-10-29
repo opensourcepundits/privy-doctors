@@ -335,7 +335,7 @@ CREATE TABLE patient_access (
   id serial PRIMARY KEY,
   patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   doctor_id int NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
-  status text NOT NULL CHECK (status IN ('pending', 'granted', 'denied')),
+  status text NOT NULL CHECK (status IN ('pending', 'granted', 'denied', 'revoked')),
   source text NOT NULL CHECK (source IN ('primary', 'appointment', 'referral', 'qr', 'code', 'request', 'registered')),
   created_at timestamp NOT NULL,
   UNIQUE (patient_id, doctor_id)

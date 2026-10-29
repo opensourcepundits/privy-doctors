@@ -16,6 +16,8 @@
 	<article class="card">
 		{#if data.status === 'pending'}
 			<p>Waiting for {patient.first_name} to allow access. They have a notification in the patient portal.</p>
+		{:else if data.status === 'revoked'}
+			<p>{patient.first_name} turned off your access to this record. Scan their QR code or enter their access code to open it again. They can also turn the switch back on from My physicians.</p>
 		{:else if patient.has_portal}
 			<p>Searching does not open this chart. Ask {patient.first_name} to allow access, or use the QR code or access code on their profile.</p>
 			<form class="mt-4" method="POST" action="?/request">

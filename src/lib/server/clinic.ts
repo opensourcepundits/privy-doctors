@@ -1697,7 +1697,7 @@ export async function grantAccess(patientId: number, doctorId: number, source: A
 
 export async function requestChartAccess(patientId: number, doctorId: number) {
 	const current = await accessStatus(patientId, doctorId);
-	if (current === 'granted' || current === 'pending') return current;
+	if (current === 'granted' || current === 'pending' || current === 'revoked') return current;
 	const [patient] = await client<{ user_id: number | null }[]>`
 		SELECT user_id FROM patients WHERE id = ${patientId}
 	`;
@@ -1742,13 +1742,38 @@ export async function decideChartAccess(patientId: number, accessId: number, all
 }
 
 export async function physiciansFor(patientId: number) {
-	return client<{ id: number; name: string; credentials: string; specialty: string; practice: string }[]>`
-		SELECT d.id, d.name, d.credentials, d.specialty, d.practice
+	return client<{ id: number; name: string; credentials: string; specialty: string; practice: string; status: string }[]>`
+		SELECT d.id, d.name, d.credentials, d.specialty, d.practice, a.status
 		FROM patient_access a
 		JOIN doctors d ON d.id = a.doctor_id
-		WHERE a.patient_id = ${patientId} AND a.status = 'granted'
+		WHERE a.patient_id = ${patientId} AND a.status IN ('granted', 'revoked')
 		ORDER BY d.name
 	`;
+}
+
+export async function setRecordAccess(patientId: number, doctorId: number, allow: boolean) {
+	const [row] = await client<{ doctor_id: number }[]>`
+		UPDATE patient_access
+		SET status = ${allow ? 'granted' : 'revoked'}
+		WHERE patient_id = ${patientId} AND doctor_id = ${doctorId} AND status IN ('granted', 'revoked')
+		RETURNING doctor_id
+	`;
+	if (!row) return { error: 'That clinician is not on your list.' };
+	const [doctor] = await client<{ user_id: number | null; name: string }[]>`
+		SELECT user_id, name FROM doctors WHERE id = ${doctorId}
+	`;
+	const [patient] = await client<{ first_name: string; last_name: string; pid: string }[]>`
+		SELECT first_name, last_name, pid FROM patients WHERE id = ${patientId}
+	`;
+	const who = `${patient.first_name} ${patient.last_name} (${patient.pid})`;
+	await notify(
+		doctor?.user_id ?? null,
+		allow ? 'Record access turned on' : 'Record access turned off',
+		allow
+			? `${who} turned your access to their medical record back on.`
+			: `${who} turned off your access to their medical record. Scan their QR code or enter their access code to open it again.`
+	);
+	return { ok: true as const, name: doctor?.name ?? 'This clinician' };
 }
 
 export async function pendingChartRequests(patientId: number) {

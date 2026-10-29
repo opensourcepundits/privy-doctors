@@ -85,6 +85,8 @@
 				</button>
 			{:else if patient.access === 'pending'}
 				<p class="mt-3 shrink-0 text-sm text-[#64748B] lg:mt-0 lg:max-w-56">Waiting for the patient to allow access.</p>
+			{:else if patient.access === 'revoked'}
+				<a class="btn mt-3 shrink-0 lg:mt-0" href="/doctor/access/{patient.pid}">Scan QR or enter a code</a>
 			{:else if patient.has_portal}
 				<button class="btn mt-3 shrink-0 lg:mt-0" type="submit" formaction="?intent=consult&/request">Ask the patient for access</button>
 			{:else}
@@ -186,6 +188,8 @@
 							{#if patient.conditions[0]}<p class="text-sm">{patient.conditions[0]}</p>{/if}
 						{:else if patient.access === 'pending'}
 							<p class="text-sm text-[#64748B]">Waiting for the patient to allow access</p>
+						{:else if patient.access === 'revoked'}
+							<p class="text-sm text-[#64748B]">Access revoked. Scan the QR code or enter an access code.</p>
 						{:else}
 							<p class="text-sm text-[#64748B]">Record locked</p>
 						{/if}
