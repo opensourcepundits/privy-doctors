@@ -1,6 +1,9 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
+	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
 	import { formatDate, isoDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -26,6 +29,8 @@
 		if (form && 'referral' in form && form.referral) open = 'referral';
 	});
 	let completesOn = $state('');
+	let frequency = $state('');
+	let meal = $state('');
 	let loadedId = 0;
 
 	function postedCompletion() {
@@ -102,6 +107,10 @@
 						<p class="text-sm font-bold">{order.title}</p>
 						{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
 						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
+						{#if order.tags}
+							{@const marks = tagsFrom(order.tags)}
+							<div class="mt-1"><DoseMarks item={{ name: order.title, frequency: marks.frequency, schedule_detail: marks.meal }} /></div>
+						{/if}
 						{#if order.completes_on}<p class="text-[11px] text-[#64748B]">Completes {formatDate(order.completes_on)}</p>{/if}
 					</div>
 					<form method="POST" action="?/remove">
@@ -115,10 +124,56 @@
 				<p class="text-sm text-[#64748B]">No medications on this order set yet.</p>
 			{/each}
 			{#if open === 'medication'}
-				<form class="space-y-2 rounded-xl border border-dashed border-[#CBD5E1] p-3" method="POST" action="?/medication">
+				<form
+					class="space-y-3 rounded-xl border border-dashed border-[#CBD5E1] p-3"
+					method="POST"
+					action="?/medication"
+					use:enhance={() => {
+						return async ({ update }) => {
+							frequency = '';
+							meal = '';
+							open = null;
+							await update();
+						};
+					}}
+				>
 					<input class="field" name="title" placeholder="Medication" required />
 					<input class="field" name="detail" placeholder="Dose and supply" />
 					<input class="field" name="note" placeholder="Indication" />
+					<fieldset>
+						<legend class="text-sm font-semibold">How often</legend>
+						<div class="mt-1 grid gap-1 sm:grid-cols-2">
+							{#each frequencyTags as tag}
+								<label class="flex items-center gap-2 text-sm">
+									<input
+										name="frequency"
+										type="checkbox"
+										value={tag}
+										checked={frequency === tag}
+										onchange={(event) => (frequency = event.currentTarget.checked ? tag : '')}
+									/>
+									{tag}
+								</label>
+							{/each}
+						</div>
+					</fieldset>
+					<fieldset>
+						<legend class="text-sm font-semibold">With meals</legend>
+						<div class="mt-1 grid gap-1 sm:grid-cols-2">
+							{#each mealTags as tag}
+								<label class="flex items-center gap-2 text-sm">
+									<input
+										name="meal"
+										type="checkbox"
+										value={tag}
+										checked={meal === tag}
+										onchange={(event) => (meal = event.currentTarget.checked ? tag : '')}
+									/>
+									{tag}
+								</label>
+							{/each}
+						</div>
+					</fieldset>
 					<label class="block text-sm font-semibold">
 						Completion date
 						<span class="font-normal text-[#64748B]">optional</span>

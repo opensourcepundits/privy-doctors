@@ -22,25 +22,36 @@
 	let open = $state(false);
 	let root: HTMLDivElement | undefined = $state();
 	let formEl: HTMLFormElement | undefined = $state();
-	const unseen = $derived(notes.filter((note) => !note.seen_at).length);
+	let markedIds = $state<number[]>([]);
+	let markedAt = $state<string | null>(null);
+	const rows = $derived(
+		notes.map((note) => (note.seen_at || !markedIds.includes(note.id) ? note : { ...note, seen_at: markedAt }))
+	);
+	const unseen = $derived(rows.filter((note) => !note.seen_at).length);
 
-	function close(mark: boolean) {
-		if (!open) return;
+	function close() {
 		open = false;
-		if (mark && markSeen && unseen > 0) formEl?.requestSubmit();
 	}
 
 	function toggle() {
-		if (open) close(true);
-		else open = true;
+		if (open) {
+			close();
+			return;
+		}
+		open = true;
+		const fresh = notes.filter((note) => !note.seen_at && !markedIds.includes(note.id));
+		if (!fresh.length || !markSeen) return;
+		markedAt = new Date().toISOString();
+		markedIds = [...markedIds, ...fresh.map((note) => note.id)];
+		formEl?.requestSubmit();
 	}
 
 	function onPointerDown(event: PointerEvent) {
-		if (!root?.contains(event.target as Node)) close(true);
+		if (!root?.contains(event.target as Node)) close();
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
-		if (event.key === 'Escape') close(true);
+		if (event.key === 'Escape') close();
 	}
 
 	$effect(() => {
@@ -74,17 +85,28 @@
 		{/if}
 	</button>
 	{#if markSeen}
-		<form class="hidden" method="POST" action={markSeen} bind:this={formEl} use:enhance></form>
+		<form
+			class="hidden"
+			method="POST"
+			action={markSeen}
+			bind:this={formEl}
+			use:enhance={() => {
+				return async ({ result }) => {
+					if (result.type === 'success') return;
+					markedIds = [];
+					markedAt = null;
+				};
+			}}
+		></form>
 	{/if}
 	{#if open}
-		<button class="fixed inset-0 z-40 bg-[#0F172A]/55" type="button" aria-label="Close notifications" onclick={() => close(true)}></button>
 		<div class="absolute right-0 z-50 mt-3 w-[min(24rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border-2 border-[#0F172A] bg-white shadow-[0_24px_60px_rgba(15,23,42,0.45)]">
 			<div class="bg-[#0F172A] px-4 py-3 text-white">
 				<p class="font-semibold">Notifications</p>
 				<p class="text-xs text-white/80">{unseen ? `${unseen} unseen` : 'All seen'}</p>
 			</div>
 			<div class="max-h-96 overflow-y-auto bg-white">
-				{#each notes as note}
+				{#each rows as note}
 					<article class="border-b border-[#E2E8F0] px-4 py-3 last:border-b-0 {note.seen_at ? 'bg-white' : 'border-l-4 border-l-[#B45309] bg-[#FFF7ED]'}">
 						<div class="flex items-start justify-between gap-3">
 							<p class="font-semibold text-[#0F172A]">{note.title}</p>

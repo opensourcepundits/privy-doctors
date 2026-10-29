@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { tagsFrom } from '#lib/doses';
 import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
@@ -563,7 +564,7 @@ export async function taskVisits(patientId: number) {
 		JOIN doctors d ON d.id = a.doctor_id
 		WHERE a.patient_id = ${patientId}
 		  AND a.starts_at::date >= ${CLINIC_DAY}::date
-		  AND a.status IN ('accepted', 'confirmed', 'rescheduled')
+		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
 	const movable = new Set(['accepted', 'confirmed', 'rescheduled']);
@@ -1482,12 +1483,13 @@ export async function addConsultOrder(
 	title: string,
 	detail: string,
 	note: string,
-	completesOn: string | null = null
+	completesOn: string | null = null,
+	tags = ''
 ) {
 	const orderUid = recordUid('ORD');
 	const [order] = await client`
-		INSERT INTO consultation_orders (consultation_id, uid, kind, title, detail, note, completes_on)
-		VALUES (${consultId}, ${orderUid}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn})
+		INSERT INTO consultation_orders (consultation_id, uid, kind, title, detail, note, completes_on, tags)
+		VALUES (${consultId}, ${orderUid}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn}, ${tags || null})
 		RETURNING id
 	`;
 	const label = title.trim();
@@ -1703,12 +1705,15 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 			RETURNING id
 		`;
 		for (const [index, med] of meds.entries()) {
+			const marks = tagsFrom(med.tags);
+			const sig = [med.detail, marks.frequency, marks.meal].filter(Boolean).join('. ');
 			await client`
 				INSERT INTO prescription_items (
-					prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on
+					prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
+					frequency, schedule_detail
 				) VALUES (
-					${rx.id}, ${med.title}, ${med.detail}, 'Oral', ${med.detail}, ${med.note}, ${med.detail}, '0', ${index},
-					${isoDate(med.completes_on) || null}
+					${rx.id}, ${med.title}, ${med.detail}, 'Oral', ${sig}, ${med.note}, ${med.detail}, '0', ${index},
+					${isoDate(med.completes_on) || null}, ${marks.frequency || null}, ${marks.meal || null}
 				)
 			`;
 		}

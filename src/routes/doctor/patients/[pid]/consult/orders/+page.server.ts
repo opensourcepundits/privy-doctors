@@ -1,4 +1,5 @@
 import { redirect } from '@sveltejs/kit';
+import { frequencyTags, mealTags } from '#lib/doses';
 import { addConsultOrder, addReferral, draftConsult, finalizeConsult, referralDoctors, removeConsultOrder, setConsultCompletion } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
@@ -31,7 +32,19 @@ export const actions = {
 		if (!title) return { message: 'Name the medication.' };
 		const completes = completionDate(data.get('completes_on'));
 		if (completes === false) return { message: 'Enter a valid completion date for this medicine.' };
-		await addConsultOrder(consult.id, 'medication', title, detail, String(data.get('note') ?? ''), completes);
+		const chosen = [...data.getAll('frequency'), ...data.getAll('meal')].map(String);
+		const tags = [...frequencyTags, ...mealTags].filter((label) => chosen.includes(label));
+		const frequency = tags.find((label) => (frequencyTags as readonly string[]).includes(label));
+		const meal = tags.find((label) => (mealTags as readonly string[]).includes(label));
+		await addConsultOrder(
+			consult.id,
+			'medication',
+			title,
+			detail,
+			String(data.get('note') ?? ''),
+			completes,
+			[frequency, meal].filter(Boolean).join(' · ')
+		);
 		return { saved: true };
 	},
 	referral: async ({ request, params, locals }) => {

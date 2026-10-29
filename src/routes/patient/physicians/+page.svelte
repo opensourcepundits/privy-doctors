@@ -1,8 +1,15 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import AccessRequests from '#lib/components/AccessRequests.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let chosen = $state<Record<number, boolean>>({});
+	let saved = $state('');
+
+	function isOn(doctor: { id: number; status: string }) {
+		return doctor.id in chosen ? chosen[doctor.id] : doctor.status === 'granted';
+	}
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
@@ -14,6 +21,9 @@
 </header>
 
 <section class="cards-2 px-4 py-4 lg:px-0">
+	{#if saved}
+		<p class="span-2 rounded-xl bg-[#0F172A] px-4 py-3 text-sm text-white">{saved}</p>
+	{/if}
 	{#if form?.message}
 		<p class="span-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
 	{/if}
@@ -23,7 +33,7 @@
 		</div>
 	{/if}
 	{#each data.physicians as doctor}
-		{@const on = doctor.status === 'granted'}
+		{@const on = isOn(doctor)}
 		<article class="card flex items-start justify-between gap-4">
 			<a class="min-w-0" href="/patient/doctors/{doctor.id}">
 				<p class="font-semibold">{doctor.name}{doctor.credentials ? `, ${doctor.credentials}` : ''}</p>
@@ -35,17 +45,35 @@
 					<span class="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow {on ? 'left-5' : 'left-0.5'}"></span>
 				</span>
 			{:else}
-				<form method="POST" action="?/access">
+				<form
+					method="POST"
+					action="?/access"
+					use:enhance={() => {
+						const next = !on;
+						chosen[doctor.id] = next;
+						return async ({ result, update }) => {
+							if (result.type === 'success') {
+								const name = String(result.data?.name ?? doctor.name);
+								saved = next ? `Record access on for ${name}` : `Record access off for ${name}`;
+								await update({ invalidateAll: false });
+								return;
+							}
+							delete chosen[doctor.id];
+							chosen = { ...chosen };
+							await update();
+						};
+					}}
+				>
 					<input type="hidden" name="doctor_id" value={doctor.id} />
 					<input type="hidden" name="allow" value={on ? 'no' : 'yes'} />
 					<button
-						class="relative mt-1 h-7 w-12 shrink-0 rounded-full {on ? 'bg-brand' : 'bg-[#475569]'}"
+						class="relative mt-1 h-8 w-14 shrink-0 rounded-full {on ? 'bg-brand' : 'bg-[#CBD5E1]'}"
 						type="submit"
 						role="switch"
 						aria-checked={on}
 						aria-label={on ? `Turn off record access for ${doctor.name}` : `Turn on record access for ${doctor.name}`}
 					>
-						<span class="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow {on ? 'left-5' : 'left-0.5'}"></span>
+						<span class="absolute top-1 h-6 w-6 rounded-full bg-white shadow {on ? 'left-7' : 'left-1'}"></span>
 					</button>
 				</form>
 			{/if}

@@ -9,6 +9,18 @@ export type DoseSource = {
 	due_label?: string | null;
 };
 
+export const frequencyTags = ['Once a day', 'Twice a day', 'Three times a day', 'Four times a day', 'At bedtime'] as const;
+
+export const mealTags = [
+	'With food',
+	'Before eating',
+	'Without food',
+	'With or without food',
+	'With breakfast',
+	'With lunch',
+	'With dinner'
+] as const;
+
 export type DoseMarks = {
 	frequency: string;
 	frequencyIcon: string;
@@ -147,13 +159,14 @@ function mealCue(text: string): Pick<DoseMarks, 'mealLabel' | 'mealIcons'> {
 	if (/without food|empty stomach|on an empty/.test(text)) {
 		return { mealLabel: 'Without food', mealIcons: ['no_meals'] };
 	}
-	if (/before\b.{0,40}\bmeal|30 minutes before/.test(text)) {
-		return { mealLabel: 'Before a meal', mealIcons: ['timer'] };
+	if (/before eating|before\b.{0,40}\bmeal|30 minutes before/.test(text)) {
+		return { mealLabel: 'Before eating', mealIcons: ['timer'] };
 	}
 	if (/\bwith breakfast\b/.test(text)) return { mealLabel: 'With breakfast', mealIcons: ['breakfast_dining'] };
 	if (/\bwith lunch\b/.test(text)) return { mealLabel: 'With lunch', mealIcons: ['lunch_dining'] };
 	if (/\bwith dinner\b/.test(text)) return { mealLabel: 'With dinner', mealIcons: ['dinner_dining'] };
-	if (/with meals|with food|with a meal|at meals/.test(text)) {
+	if (/\bwith food\b/.test(text)) return { mealLabel: 'With food', mealIcons: ['restaurant'] };
+	if (/with meals|with a meal|at meals/.test(text)) {
 		return { mealLabel: 'With a meal', mealIcons: ['restaurant'] };
 	}
 	if (/\bbedtime\b|\bat night\b/.test(text)) return { mealLabel: 'Not with a meal', mealIcons: ['bedtime'] };
@@ -193,6 +206,17 @@ function stopsFor(item: DoseSource) {
 	]
 		.sort((a, b) => a.minutes - b.minutes)
 		.slice(0, count);
+}
+
+export function tagsFrom(value: string | null | undefined) {
+	const chosen = String(value ?? '')
+		.split(' · ')
+		.map((part) => part.trim())
+		.filter(Boolean);
+	return {
+		frequency: frequencyTags.find((label) => chosen.includes(label)) ?? '',
+		meal: mealTags.find((label) => chosen.includes(label)) ?? ''
+	};
 }
 
 export function doseMarks(item: DoseSource): DoseMarks {

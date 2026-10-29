@@ -11,14 +11,14 @@
 
 <header class="px-4 pt-5 lg:px-0">
 	<p class="kicker">From your consultations</p>
-	<h1 class="display text-2xl font-bold">Tasks</h1>
+	<h1 class="display text-2xl font-bold">To do</h1>
 	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
-		Approved and rescheduled visits are listed here. You can move an approved visit to another open time, and the physician is notified. Test orders stay linked to the consultation that requested them.
+		Upcoming consultations are listed here, along with tests from a consultation. You can move an approved visit to another open time, and the physician is notified.
 	</p>
 </header>
 
 <section id="visits" class="px-4 pt-4 lg:px-0">
-	<h2 class="display text-lg font-semibold">Visits</h2>
+	<h2 class="display text-lg font-semibold">Upcoming consultations</h2>
 	{#await data.visits}
 		<div class="pt-3"><Skeleton count={2} /></div>
 	{:then visits}
@@ -34,7 +34,7 @@
 					<BookingActions id={visit.id} status={visit.status} note={visit.response_note} slots={visit.slots} mode="patient" />
 				</article>
 			{:else}
-				<p class="text-sm text-[#64748B]">No approved or rescheduled visits.</p>
+				<p class="text-sm text-[#64748B]">No upcoming consultations.</p>
 			{/each}
 		</div>
 	{:catch}

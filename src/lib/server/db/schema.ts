@@ -278,6 +278,7 @@ export const consultationOrders = pgTable('consultation_orders', {
 	title: text('title').notNull(),
 	detail: text('detail'),
 	note: text('note'),
+	tags: text('tags'),
 	completesOn: date('completes_on')
 });
 

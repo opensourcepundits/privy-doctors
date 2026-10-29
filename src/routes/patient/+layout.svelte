@@ -18,7 +18,7 @@
 	const nav = [
 		{ href: '/patient', label: 'Home', icon: 'home' },
 		{ href: '/patient/book', label: 'Book', icon: 'calendar_month' },
-		{ href: '/patient/tasks', label: 'Tasks', icon: 'checklist' },
+		{ href: '/patient/tasks', label: 'To do', icon: 'checklist' },
 		{ href: '/patient/history', label: 'History', icon: 'clinical_notes' },
 		{ href: '/patient/profile', label: 'Profile', icon: 'person' }
 	];

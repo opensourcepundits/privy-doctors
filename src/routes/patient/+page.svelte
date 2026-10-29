@@ -42,13 +42,12 @@
 		<Skeleton kind="stats" count={2} />
 		<h2 class="display text-lg font-semibold">Active prescriptions</h2>
 		<Skeleton count={2} />
-		<h2 class="display text-lg font-semibold">Tasks</h2>
+		<h2 class="display text-lg font-semibold">To do</h2>
 		<Skeleton count={2} />
 	</div>
 {:then home}
 	{@const meds = home.active.flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber })))}
 	{@const checked = home.vital ? `${formatTime(home.vital.recorded_at)} · ${formatDate(home.vital.recorded_at)}` : 'No reading filed'}
-	{@const tasksDone = home.tasks.filter((task) => task.stored_name).length}
 {#if home.requests.length}
 	<section class="grid gap-3 px-4 pt-4 lg:px-0">
 		<h2 class="display text-lg font-semibold">Allow record access</h2>
@@ -145,8 +144,8 @@
 
 <section>
 	<div class="mb-2 flex items-center justify-between">
-		<h2 class="display text-lg font-semibold">Tasks · {tasksDone} of {home.tasks.length}</h2>
-		<a class="text-sm font-semibold text-brand" href="/patient/tasks">Open checklist</a>
+		<h2 class="display text-lg font-semibold">To do</h2>
+		<a class="text-sm font-semibold text-brand" href="/patient/tasks">Open</a>
 	</div>
 	<div class="space-y-3">
 		{#each home.visitTasks as visit}
@@ -169,7 +168,9 @@
 				<p class="text-sm {task.stored_name ? 'text-emerald-700' : ''}">{task.stored_name ? 'Result PDF received' : 'Upload the result PDF'}</p>
 			</article>
 		{:else}
-			<p class="text-sm text-[#64748B]">No tests have been added from a consultation yet.</p>
+			{#if !home.visitTasks.length}
+				<p class="text-sm text-[#64748B]">Nothing is waiting on your list.</p>
+			{/if}
 		{/each}
 	</div>
 </section>

@@ -395,6 +395,7 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS responded_at timestamp;
 
 ALTER TABLE consultations ADD COLUMN IF NOT EXISTS uid text;
 ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS tags text;
 ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS uid text;
 ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS order_uid text;
 ALTER TABLE care_orders ADD COLUMN IF NOT EXISTS uid text;

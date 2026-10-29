@@ -19,7 +19,6 @@ export const actions = {
 		const allow = String(data.get('allow') ?? '') === 'yes';
 		const result = await setRecordAccess(patient.id, Number(data.get('doctor_id')), allow);
 		if ('error' in result) return fail(400, { message: result.error });
-		const notice = allow ? `Record access on for ${result.name}` : `Record access off for ${result.name}`;
-		redirect(303, `/patient/physicians?notice=${encodeURIComponent(notice)}`);
+		return { doctorId: Number(data.get('doctor_id')), allow, name: result.name };
 	}
 };
