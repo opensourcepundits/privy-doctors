@@ -1,11 +1,15 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
+	import DayPlan from '#lib/components/DayPlan.svelte';
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	let rxView = $state<'today' | 'orders'>('today');
 	const active = $derived(data.prescriptions.filter((item) => item.status === 'active'));
+	const activeMeds = $derived(active.flatMap((order) => order.items));
 	const past = $derived(data.prescriptions.filter((item) => item.status !== 'active'));
 	const activeCount = $derived(active.reduce((sum, order) => sum + order.items.length, 0));
 
@@ -36,6 +40,7 @@
 				<div class="rounded-xl border border-[#E2E8F0] bg-white px-3 py-2.5">
 					<p class="font-semibold">{item.name}</p>
 					<p class="text-sm text-[#334155]">{item.strength} {item.form}</p>
+					<DoseMarks {item} />
 					{#if item.sig}<p class="mt-1 text-sm">{item.sig}</p>{/if}
 					{#if item.indication}<p class="text-sm text-[#64748B]">{item.indication}</p>{/if}
 					<p class="mt-1 text-xs text-[#64748B]">{[item.supply_label, item.refills, item.completes_on ? `Completes ${formatDate(item.completes_on)}` : ''].filter(Boolean).join(' · ')}</p>
@@ -54,15 +59,28 @@
 
 <section class="space-y-4 px-4 py-4 lg:px-0">
 	<div class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">
-		<div class="flex items-center justify-between gap-3 px-4 py-3">
+		<div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 			<h2 class="display text-lg font-semibold">Active prescriptions</h2>
-			<p class="text-sm text-[#64748B]">{active.length}</p>
+			<div class="flex items-center gap-2">
+				<div class="flex rounded-full border border-[#CBD5E1] bg-[#F8FAFC] p-0.5 text-xs font-semibold">
+					<button class="rounded-full px-3 py-1 {rxView === 'today' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'today'} onclick={() => (rxView = 'today')}>Today</button>
+					<button class="rounded-full px-3 py-1 {rxView === 'orders' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'orders'} onclick={() => (rxView = 'orders')}>Orders</button>
+				</div>
+				<p class="text-sm text-[#64748B]">{active.length}</p>
+			</div>
 		</div>
-		{#each active as order, index}
-			{@render prescription(order, index === 0)}
+		{#if rxView === 'today'}
+			<div class="border-t border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+				<p class="mb-2 text-xs text-[#334155]">Each dose is listed in the order you take it today. A medicine taken more than once appears once for each dose.</p>
+				<DayPlan items={activeMeds} />
+			</div>
 		{:else}
-			<p class="border-t border-[#E2E8F0] px-4 py-4 text-sm text-[#64748B]">No active prescriptions.</p>
-		{/each}
+			{#each active as order, index}
+				{@render prescription(order, index === 0)}
+			{:else}
+				<p class="border-t border-[#E2E8F0] px-4 py-4 text-sm text-[#64748B]">No active prescriptions.</p>
+			{/each}
+		{/if}
 	</div>
 
 	<div class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">

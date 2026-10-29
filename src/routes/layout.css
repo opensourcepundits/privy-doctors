@@ -62,6 +62,10 @@ body {
 	vertical-align: middle;
 }
 
+.material-symbols-outlined.fill {
+	font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
+}
+
 .card {
 	border: 1px solid var(--color-line);
 	border-radius: 1rem;

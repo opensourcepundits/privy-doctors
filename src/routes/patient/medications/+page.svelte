@@ -1,9 +1,12 @@
 <script lang="ts">
+	import DayPlan from '#lib/components/DayPlan.svelte';
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let rxView = $state<'today' | 'list'>('today');
 	const current = $derived(data.prescriptions.filter((order) => order.status === 'active').flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber, code: order.code, prescription_completes: order.completes_on }))));
 	const past = $derived(data.prescriptions.filter((order) => order.status !== 'active').flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber, status: order.status }))));
 </script>
@@ -16,11 +19,20 @@
 </header>
 
 <section class="space-y-3 px-4 py-4">
+	<div class="flex rounded-full border border-[#CBD5E1] bg-white p-0.5 text-xs font-semibold">
+		<button class="flex-1 rounded-full px-3 py-1 {rxView === 'today' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'today'} onclick={() => (rxView = 'today')}>Today</button>
+		<button class="flex-1 rounded-full px-3 py-1 {rxView === 'list' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'list'} onclick={() => (rxView = 'list')}>List</button>
+	</div>
+	{#if rxView === 'today'}
+		<p class="text-xs text-[#334155]">Each dose is listed in the order you take it today.</p>
+		<DayPlan items={current} />
+	{:else}
 	{#each current as med}
 		<article class="card">
 			<p class="text-xs text-[#64748B]"><Mention text={med.prescriber} /> · {med.code}</p>
 			<h2 class="font-semibold">{med.name}</h2>
 			<p class="text-sm">{med.strength} {med.form}</p>
+			<DoseMarks item={med} />
 			<p class="mt-2 text-sm">{med.indication}</p>
 			<p class="text-sm text-[#64748B]">{med.schedule_detail}</p>
 			<p class="text-xs text-[#64748B]">{med.remaining_label} · {med.refills}</p>
@@ -28,6 +40,7 @@
 			{#if med.completes_on}<p class="text-xs text-[#64748B]">This medicine completes {formatDate(med.completes_on)}</p>{/if}
 		</article>
 	{/each}
+	{/if}
 	<form class="card space-y-2" method="POST" action="?/otc">
 		<p class="font-semibold">Add an over-the-counter supplement</p>
 		<input class="field" name="name" placeholder="Name" required />

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Badge from '#lib/components/Badge.svelte';
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
@@ -31,6 +32,7 @@
 		<article class="card">
 			<h2 class="font-semibold">{item.name} {item.strength}</h2>
 			<p class="text-sm text-[#64748B]">{item.form} · {item.frequency}</p>
+			<DoseMarks {item} />
 			<p class="mt-2 text-sm">{item.sig}</p>
 			<p class="mt-2 text-sm">{item.indication}</p>
 			<p class="mt-2 text-xs text-[#64748B]">Dispense {item.quantity ?? '—'} · {item.supply_label} · {item.refills}</p>

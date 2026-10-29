@@ -1,12 +1,15 @@
 <script lang="ts">
 	import AccessRequests from '#lib/components/AccessRequests.svelte';
 	import Badge from '#lib/components/Badge.svelte';
+	import DayPlan from '#lib/components/DayPlan.svelte';
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { appointmentStatus, dayRelation, formatDate, formatLongDate, formatTime, initials, liveCopy } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
+	let rxView = $state<'today' | 'list'>('today');
 </script>
 
 <header class="px-4 pt-5 lg:px-0">
@@ -109,23 +112,35 @@
 </div>
 <div class="grid content-start gap-4">
 <section>
-	<div class="mb-2 flex items-center justify-between">
+	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<h2 class="display text-lg font-semibold">Active prescriptions · {meds.length}</h2>
-		<a class="text-sm font-semibold text-brand" href="/patient/prescriptions">View all</a>
-	</div>
-	<div class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">
-		{#each meds as med, index}
-			<div class="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] sm:items-center sm:gap-4 {index ? 'border-t border-[#E2E8F0]' : ''}">
-				<div class="min-w-0">
-					<p class="font-semibold">{med.name}</p>
-					<p class="text-xs text-[#64748B]">{med.strength} · <Mention text={med.prescriber} /></p>
-				</div>
-				<p class="text-sm text-[#334155]">{med.schedule_detail}</p>
+		<div class="flex items-center gap-2">
+			<div class="flex rounded-full border border-[#CBD5E1] bg-white p-0.5 text-xs font-semibold">
+				<button class="rounded-full px-3 py-1 {rxView === 'today' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'today'} onclick={() => (rxView = 'today')}>Today</button>
+				<button class="rounded-full px-3 py-1 {rxView === 'list' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'list'} onclick={() => (rxView = 'list')}>List</button>
 			</div>
-		{:else}
-			<p class="px-4 py-3 text-sm text-[#64748B]">No active prescriptions.</p>
-		{/each}
+			<a class="text-sm font-semibold text-brand" href="/patient/prescriptions">View all</a>
+		</div>
 	</div>
+	{#if rxView === 'today'}
+		<p class="mb-2 text-xs text-[#334155]">Each dose is listed in the order you take it today.</p>
+		<DayPlan items={meds} />
+	{:else}
+		<div class="overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white">
+			{#each meds as med, index}
+				<div class="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] sm:items-start sm:gap-4 {index ? 'border-t border-[#E2E8F0]' : ''}">
+					<div class="min-w-0">
+						<p class="font-semibold">{med.name}</p>
+						<p class="text-xs text-[#64748B]">{med.strength} · <Mention text={med.prescriber} /></p>
+						<DoseMarks item={med} />
+					</div>
+					<p class="text-sm text-[#334155]">{med.schedule_detail}</p>
+				</div>
+			{:else}
+				<p class="px-4 py-3 text-sm text-[#64748B]">No active prescriptions.</p>
+			{/each}
+		</div>
+	{/if}
 </section>
 
 <section>
@@ -159,11 +174,6 @@
 			</article>
 		{/each}
 	</div>
-	<article class="card mt-3">
-		<p class="font-semibold">Questions or palpitations?</p>
-		<p class="text-sm">The cardiology triage team is available day or night. Severe chest pain or fainting: call emergency services.</p>
-		<a class="mt-2 inline-flex text-sm font-semibold text-brand" href="/patient/help">Call nurse triage</a>
-	</article>
 </section>
 </div>
 </div>

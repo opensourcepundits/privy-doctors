@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate, formatTime, liveCopy } from '#lib/format';
 	import type { VisitRecord } from '#lib/server/clinic';
@@ -107,6 +108,7 @@
 								<li class="text-sm">
 									<p class="font-semibold">{item.name}{item.strength ? ` ${item.strength}` : ''}</p>
 									<p class="text-[#64748B]">{[item.form, item.route, item.frequency].filter(Boolean).join(' · ')}</p>
+									<DoseMarks {item} />
 									{#if item.sig}<p>{item.sig}</p>{/if}
 									{#if item.indication}<p>{item.indication}</p>{/if}
 									<p class="text-xs text-[#64748B]">
