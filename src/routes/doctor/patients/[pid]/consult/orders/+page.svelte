@@ -53,6 +53,7 @@
 	let completesOn = $state('');
 	let frequency = $state('');
 	let meal = $state('');
+	let photoName = $state('');
 	let loadedId = 0;
 
 	function postedCompletion() {
@@ -278,7 +279,19 @@
 					</div>
 				{/each}
 				<form class="flex flex-wrap items-center gap-2" method="POST" action="?/photo" enctype="multipart/form-data">
-					<input class="text-sm" name="photo" type="file" accept="image/*" required />
+					<label class="btn-sm" for="prescription-photo">Choose photo</label>
+					<input
+						class="sr-only"
+						id="prescription-photo"
+						name="photo"
+						type="file"
+						accept="image/*"
+						required
+						onchange={(event) => {
+							photoName = event.currentTarget.files?.[0]?.name ?? '';
+						}}
+					/>
+					{#if photoName}<span class="text-xs text-[#64748B]">{photoName}</span>{/if}
 					<button class="btn-sm" type="submit">Upload photo</button>
 				</form>
 			</div>

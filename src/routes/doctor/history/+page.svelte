@@ -25,7 +25,7 @@
 					</div>
 					<p class="mt-2 text-sm font-medium">{visit.title}</p>
 					{#if visit.specialty}<p class="mt-1 text-sm text-[#64748B]">{visit.specialty}</p>{/if}
-					<p class="mt-3 text-sm font-semibold text-brand">Open consultation</p>
+					<span class="btn-sm mt-3">Open consultation</span>
 				</a>
 			{/each}
 		</div>
