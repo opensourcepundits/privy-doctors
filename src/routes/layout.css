@@ -153,6 +153,51 @@ body {
 
 .btn-line:hover { background: var(--color-brand-soft); }
 
+.btn-sm,
+.btn-sm-line,
+.btn-sm-danger {
+	box-sizing: border-box;
+	display: inline-flex;
+	width: auto;
+	max-width: 100%;
+	min-height: 2rem;
+	align-items: center;
+	justify-content: center;
+	gap: 0.3rem;
+	padding: 0.3rem 0.75rem;
+	border-radius: 0.5rem;
+	font-weight: 650;
+	font-size: 0.8rem;
+	line-height: 1.2;
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.btn-sm {
+	border: 0;
+	background: var(--color-brand);
+	color: white;
+}
+
+.btn-sm:hover { background: var(--color-brand-strong); }
+
+.btn-sm-line {
+	border: 1px solid var(--color-brand);
+	background: white;
+	color: var(--color-brand);
+}
+
+.btn-sm-line:hover { background: var(--color-brand-soft); }
+
+.btn-sm-danger {
+	border: 0;
+	background: #dc2626;
+	color: white;
+}
+
+.btn-sm-danger:hover { background: #b91c1c; }
+
 .field {
 	height: 2.75rem;
 	width: 100%;

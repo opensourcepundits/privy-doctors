@@ -13,9 +13,11 @@
 				<p class="text-sm font-bold tabular-nums text-[#0F172A]">{group.time}</p>
 			</div>
 			<div class="min-w-0">
-				<p class="flex items-center gap-1.5 px-3 pt-3 text-xs font-bold tracking-wide text-brand uppercase">
-					<span class="material-symbols-outlined text-[18px]" aria-hidden="true">{group.icon}</span>
-					{group.period}
+				<p class="px-3 pt-3">
+					<span class="inline-flex items-center gap-1 rounded-md border border-brand-tint bg-brand-wash px-1.5 py-0.5 text-[11px] font-semibold tracking-wide text-brand uppercase">
+						<span class="material-symbols-outlined text-[14px]" aria-hidden="true">{group.icon}</span>
+						{group.period}
+					</span>
 				</p>
 				{#each group.doses as dose, doseIndex}
 					<div class="px-3 py-2.5 {doseIndex ? 'border-t border-[#E2E8F0]' : ''}">

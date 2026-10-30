@@ -41,7 +41,7 @@
 				{#if patient.conditions.length}
 					<p class="mt-3 line-clamp-2 text-sm text-[#64748B]">{patient.conditions.join(' · ')}</p>
 				{/if}
-				<p class="mt-3 text-sm font-semibold text-brand">Open chart</p>
+				<span class="btn-sm mt-3">Open chart</span>
 			</a>
 		{:else}
 			<p class="text-sm text-[#64748B]">

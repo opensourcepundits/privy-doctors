@@ -225,7 +225,7 @@
 	<div class="mt-3 flex items-center justify-between gap-3 text-sm">
 		<p class="text-[#64748B]">{filtered.length} {filtered.length === 1 ? 'clinician' : 'clinicians'}</p>
 		{#if filtering}
-			<button class="font-semibold text-brand" type="button" onclick={clearSearch}>Clear search</button>
+			<button class="btn-sm" type="button" onclick={clearSearch}>Clear search</button>
 		{/if}
 	</div>
 

@@ -24,7 +24,7 @@
 				<p>Alerted {report.alerted.join(', ')}</p>
 			{/if}
 			{#each report.files as file}
-				<p><a class="font-semibold text-brand" href="/files/reports/{file.id}?download">{file.file_name}</a></p>
+				<p><a class="btn-sm" href="/files/reports/{file.id}?download">{file.file_name}</a></p>
 			{/each}
 		</article>
 	</section>

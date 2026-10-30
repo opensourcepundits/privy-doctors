@@ -147,7 +147,7 @@
 								<span>{formatClock(row.start_time)} to {formatClock(row.end_time)}</span>
 								<form method="POST" action="?/remove">
 									<input type="hidden" name="id" value={row.id} />
-									<button class="font-semibold text-brand" type="submit">Remove</button>
+									<button class="btn-sm-danger" type="submit">Remove</button>
 								</form>
 							</li>
 						{/each}
@@ -184,10 +184,10 @@
 			{/each}
 			<div class="flex flex-wrap gap-3 text-sm font-semibold">
 				{#if clinicShown < 3}
-					<button class="text-brand" type="button" onclick={() => (clinicShown += 1)}>Add another range</button>
+					<button class="btn-sm" type="button" onclick={() => (clinicShown += 1)}>Add another range</button>
 				{/if}
 				{#if clinicShown > 1}
-					<button class="text-[#64748B]" type="button" onclick={() => (clinicShown -= 1)}>Remove last range</button>
+					<button class="btn-sm-line" type="button" onclick={() => (clinicShown -= 1)}>Remove last range</button>
 				{/if}
 			</div>
 			<p class="text-xs text-[#64748B]">Saving replaces the ranges already stored for this day.</p>
@@ -208,7 +208,7 @@
 								<span>{formatClock(row.start_time)} to {formatClock(row.end_time)}</span>
 								<form method="POST" action="?/remove">
 									<input type="hidden" name="id" value={row.id} />
-									<button class="font-semibold text-brand" type="submit">Remove</button>
+									<button class="btn-sm-danger" type="submit">Remove</button>
 								</form>
 							</li>
 						{/each}
@@ -245,10 +245,10 @@
 			{/each}
 			<div class="flex flex-wrap gap-3 text-sm font-semibold">
 				{#if homeShown < 3}
-					<button class="text-brand" type="button" onclick={() => (homeShown += 1)}>Add another range</button>
+					<button class="btn-sm" type="button" onclick={() => (homeShown += 1)}>Add another range</button>
 				{/if}
 				{#if homeShown > 1}
-					<button class="text-[#64748B]" type="button" onclick={() => (homeShown -= 1)}>Remove last range</button>
+					<button class="btn-sm-line" type="button" onclick={() => (homeShown -= 1)}>Remove last range</button>
 				{/if}
 			</div>
 			<p class="text-xs text-[#64748B]">Saving replaces the ranges already stored for this day.</p>

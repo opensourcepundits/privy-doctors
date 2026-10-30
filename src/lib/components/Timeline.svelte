@@ -33,7 +33,7 @@
 									{#if file.image}
 										<a href={file.href}><img class="h-28 max-w-xs rounded-xl border border-[#E2E8F0] object-contain" src={file.href} alt={file.name} /></a>
 									{/if}
-									<a class="text-sm font-semibold text-brand" href="{file.href}?download">{file.name}</a>
+									<a class="btn-sm" href="{file.href}?download">{file.name}</a>
 								</li>
 							{/each}
 						</ul>
@@ -49,9 +49,9 @@
 						<a class="pointer-events-auto relative z-10" href={event.href}><img class="mt-2 h-28 w-full max-w-xs rounded-xl bg-[#020617] object-contain" src={event.image} alt="" /></a>
 					{/if}
 					{#if event.href && event.image}
-						<a class="pointer-events-auto relative z-10 mt-1 inline-flex text-sm font-semibold text-brand" href={event.href}>{event.link}</a>
+						<a class="btn-sm pointer-events-auto relative z-10 mt-2" href={event.href}>{event.link}</a>
 					{:else if event.href && event.link}
-						<p class="mt-1 text-sm font-semibold text-brand">{event.link}</p>
+						<span class="btn-sm mt-2">{event.link}</span>
 					{/if}
 				</div>
 			</li>
@@ -62,7 +62,7 @@
 		<p class="font-semibold">No records found</p>
 		<p class="text-sm text-[#64748B]">There are no records filed under this category.</p>
 		{#if emptyHref}
-			<a class="text-sm font-semibold text-brand" href={emptyHref}>Show all history</a>
+			<a class="btn-sm mt-3" href={emptyHref}>Show all history</a>
 		{/if}
 	</div>
 {/if}

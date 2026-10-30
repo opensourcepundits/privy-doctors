@@ -44,11 +44,11 @@
 	{#each sessions as session}
 		<div class="mx-4 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm lg:mx-0">
 			<p class="min-w-0 flex-1">Consultation in progress with <span class="font-semibold">{session.first_name} {session.last_name}</span>.</p>
-			<a class="font-semibold text-brand" href="/doctor/patients/{session.pid}/consult">Resume</a>
+			<a class="btn-sm" href="/doctor/patients/{session.pid}/consult">Resume</a>
 			<form method="POST" action="/doctor/session?/cancel" onsubmit={(event) => { if (!confirm(`Cancel the consultation with ${session.first_name} ${session.last_name}? Notes from this session will be discarded.`)) event.preventDefault(); }}>
 				<input type="hidden" name="id" value={session.id} />
 				<input type="hidden" name="return" value={path} />
-				<button class="font-semibold text-red-700" type="submit">Cancel</button>
+				<button class="btn-sm-danger" type="submit">Cancel</button>
 			</form>
 		</div>
 	{/each}

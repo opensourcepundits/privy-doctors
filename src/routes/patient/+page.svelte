@@ -112,13 +112,13 @@
 <div class="grid content-start gap-4">
 <section>
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-		<h2 class="display text-lg font-semibold">Active prescriptions · {meds.length}</h2>
+		<h2 class="display text-lg font-semibold">Active prescriptions · {meds.length} {meds.length === 1 ? 'med' : 'meds'}</h2>
 		<div class="flex items-center gap-2">
 			<div class="flex rounded-full border border-[#CBD5E1] bg-white p-0.5 text-xs font-semibold">
 				<button class="rounded-full px-3 py-1 {rxView === 'today' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'today'} onclick={() => (rxView = 'today')}>Today</button>
 				<button class="rounded-full px-3 py-1 {rxView === 'list' ? 'bg-[#0F172A] text-white' : 'text-[#334155]'}" type="button" aria-pressed={rxView === 'list'} onclick={() => (rxView = 'list')}>List</button>
 			</div>
-			<a class="text-sm font-semibold text-brand" href="/patient/prescriptions">View all</a>
+			<a class="btn-sm" href="/patient/prescriptions">View all</a>
 		</div>
 	</div>
 	{#if rxView === 'today'}
@@ -145,7 +145,7 @@
 <section>
 	<div class="mb-2 flex items-center justify-between">
 		<h2 class="display text-lg font-semibold">To do</h2>
-		<a class="text-sm font-semibold text-brand" href="/patient/tasks">Open</a>
+		<a class="btn-sm" href="/patient/tasks">Open</a>
 	</div>
 	<div class="space-y-3">
 		{#each home.visitTasks as visit}
@@ -156,7 +156,7 @@
 				<p class="text-sm text-[#64748B]"><Mention text={visit.doctor_name} /></p>
 				<p class="mt-2"><Badge tone={marker.tone}>{marker.label}</Badge></p>
 				{#if visit.status === 'accepted' || visit.status === 'confirmed' || visit.status === 'rescheduled'}
-					<a class="mt-2 inline-flex text-sm font-semibold text-brand" href="/patient/tasks#visits">Reschedule</a>
+					<a class="btn mt-3" href="/patient/tasks#visits">Reschedule</a>
 				{/if}
 			</article>
 		{/each}
@@ -165,7 +165,11 @@
 				<p class="font-semibold">{task.title}</p>
 				<p class="text-sm text-[#64748B]">Consultation {task.consultation_uid ?? task.consultation_code} · <Mention text={task.doctor_name} /></p>
 				{#if task.order_uid}<p class="text-xs text-[#64748B]">Order {task.order_uid}</p>{/if}
-				<p class="text-sm {task.stored_name ? 'text-emerald-700' : ''}">{task.stored_name ? 'Result PDF received' : 'Upload the result PDF'}</p>
+				{#if task.stored_name}
+					<p class="text-sm text-emerald-700">Result PDF received</p>
+				{:else}
+					<a class="btn mt-3" href="/patient/tasks">Upload the result PDF</a>
+				{/if}
 			</article>
 		{:else}
 			{#if !home.visitTasks.length}

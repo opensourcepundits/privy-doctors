@@ -21,11 +21,14 @@ export const mealTags = [
 	'With dinner'
 ] as const;
 
+export type DoseTag = {
+	icon: string;
+	label: string;
+};
+
 export type DoseMarks = {
 	frequency: string;
-	frequencyIcon: string;
-	mealLabel: string;
-	mealIcons: string[];
+	tags: DoseTag[];
 };
 
 export type DayGroup = {
@@ -152,25 +155,57 @@ function periodFor(clock: Clock, count: number, named: Slot[]) {
 	return periodFromMinutes(clock.minutes);
 }
 
-function mealCue(text: string): Pick<DoseMarks, 'mealLabel' | 'mealIcons'> {
+function mealCues(text: string): DoseTag[] {
 	if (/with or without|with\/without/.test(text)) {
-		return { mealLabel: 'With or without food', mealIcons: ['restaurant', 'no_meals'] };
+		return [
+			{ icon: 'restaurant', label: 'With food' },
+			{ icon: 'no_meals', label: 'Or without' }
+		];
 	}
 	if (/without food|empty stomach|on an empty/.test(text)) {
-		return { mealLabel: 'Without food', mealIcons: ['no_meals'] };
+		return [{ icon: 'no_meals', label: 'Without food' }];
 	}
 	if (/before eating|before\b.{0,40}\bmeal|30 minutes before/.test(text)) {
-		return { mealLabel: 'Before eating', mealIcons: ['timer'] };
+		return [{ icon: 'timer', label: 'Before eating' }];
 	}
-	if (/\bwith breakfast\b/.test(text)) return { mealLabel: 'With breakfast', mealIcons: ['breakfast_dining'] };
-	if (/\bwith lunch\b/.test(text)) return { mealLabel: 'With lunch', mealIcons: ['lunch_dining'] };
-	if (/\bwith dinner\b/.test(text)) return { mealLabel: 'With dinner', mealIcons: ['dinner_dining'] };
-	if (/\bwith food\b/.test(text)) return { mealLabel: 'With food', mealIcons: ['restaurant'] };
-	if (/with meals|with a meal|at meals/.test(text)) {
-		return { mealLabel: 'With a meal', mealIcons: ['restaurant'] };
+	if (/\bwith breakfast\b/.test(text)) {
+		return [
+			{ icon: 'restaurant', label: 'With food' },
+			{ icon: 'breakfast_dining', label: 'Breakfast' }
+		];
 	}
-	if (/\bbedtime\b|\bat night\b/.test(text)) return { mealLabel: 'Not with a meal', mealIcons: ['bedtime'] };
-	return { mealLabel: '', mealIcons: [] };
+	if (/\bwith lunch\b/.test(text)) {
+		return [
+			{ icon: 'restaurant', label: 'With food' },
+			{ icon: 'lunch_dining', label: 'Lunch' }
+		];
+	}
+	if (/\bwith dinner\b/.test(text)) {
+		return [
+			{ icon: 'restaurant', label: 'With food' },
+			{ icon: 'dinner_dining', label: 'Dinner' }
+		];
+	}
+	if (/\bwith food\b/.test(text)) return [{ icon: 'restaurant', label: 'With food' }];
+	if (/with meals|with a meal|at meals/.test(text)) return [{ icon: 'restaurant', label: 'With a meal' }];
+	if (/\bbedtime\b|\bat night\b/.test(text)) return [{ icon: 'bedtime', label: 'Bedtime' }];
+	return [];
+}
+
+function frequencyTagsFor(frequency: string, count: number): DoseTag[] {
+	const text = frequency.toLowerCase();
+	if (/\bbedtime\b|\bat night\b/.test(text)) {
+		return [
+			{ icon: 'today', label: 'Daily' },
+			{ icon: 'bedtime', label: 'Bedtime' }
+		];
+	}
+	const times = count <= 1 ? 'Once' : count === 2 ? 'Twice' : count === 3 ? '3 times' : '4 times';
+	const cadence = /\bweek\b/.test(text) ? 'Weekly' : 'Daily';
+	return [
+		{ icon: 'repeat', label: times },
+		{ icon: 'today', label: cadence }
+	];
 }
 
 function stopsFor(item: DoseSource) {
@@ -224,8 +259,12 @@ export function doseMarks(item: DoseSource): DoseMarks {
 	const count = timesPerDay(text);
 	const frequency =
 		item.frequency?.trim() || (count === 1 ? 'Once a day' : count === 2 ? 'Twice a day' : `${count} times a day`);
-	const frequencyIcon = count <= 1 ? 'looks_one' : count === 2 ? 'looks_two' : count === 3 ? 'looks_3' : 'looks_4';
-	return { frequency, frequencyIcon, ...mealCue(text) };
+	const tags = [...frequencyTagsFor(frequency, count)];
+	for (const tag of mealCues(text)) {
+		if (tags.some((existing) => existing.label === tag.label)) continue;
+		tags.push(tag);
+	}
+	return { frequency, tags };
 }
 
 export function dayPlan(items: DoseSource[]): DayGroup[] {

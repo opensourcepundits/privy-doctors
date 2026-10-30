@@ -56,7 +56,7 @@
 								{:else}
 									<p class="text-sm font-semibold text-emerald-700">Consultation signed</p>
 								{/if}
-								<a class="text-sm font-semibold text-brand" href="/doctor/patients/{referral.pid}">Open chart</a>
+								<a class="btn-sm" href="/doctor/patients/{referral.pid}">Open chart</a>
 							</div>
 						</article>
 					{/each}

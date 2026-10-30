@@ -49,7 +49,7 @@
 		<div>
 			<h2 class="display text-lg font-semibold lg:text-xl">Today's patient schedule</h2>
 		</div>
-		<a class="text-sm font-semibold text-brand" href="/doctor/search">View all</a>
+		<a class="btn-sm" href="/doctor/search">View all</a>
 	</div>
 	{#await data.schedule}
 		<Skeleton count={3} />
@@ -73,8 +73,8 @@
 							<p class="text-xs text-[#64748B]">{visit.pid}</p>
 							<p class="mt-2 text-sm">Reason: <Mention text={visit.reason} /></p>
 							<p class="text-xs text-[#64748B]"><Mention text={visit.last_visit_label} /></p>
-							<a class="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{visit.pid}">
-								Open chart <span class="material-symbols-outlined text-base">arrow_forward</span>
+							<a class="btn mt-3" href="/doctor/patients/{visit.pid}">
+								Open chart <span class="material-symbols-outlined text-lg">arrow_forward</span>
 							</a>
 							<BookingActions id={visit.id} status={visit.status} note={visit.response_note} slots={schedule.slots} />
 						</div>

@@ -221,7 +221,7 @@
 						</div>
 						<form method="POST" action="?/remove">
 							<input type="hidden" name="id" value={order.id} />
-							<button class="text-xs text-[#64748B]" type="submit">Remove</button>
+							<button class="btn-sm-line" type="submit">Remove</button>
 						</form>
 					</div>
 					{#if order.note}
@@ -273,7 +273,7 @@
 							{#if !chosen.has_login}
 								<p class="mt-1 text-xs text-[#64748B]">No clinic login is on file, so this referral is saved on the order and no alert is sent.</p>
 							{/if}
-							<button class="mt-1 text-xs font-semibold text-brand" type="button" onclick={() => (picked = null)}>Choose someone else</button>
+							<button class="btn-sm mt-1" type="button" onclick={() => (picked = null)}>Choose someone else</button>
 						</div>
 					{/if}
 					<input type="hidden" name="doctor_id" value={picked ?? ''} />
@@ -307,7 +307,7 @@
 							{#if order.detail}<p class="text-[11px] text-brand">{order.detail}</p>{/if}
 							{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 							{#if task?.stored_name}
-								<a class="text-[11px] font-semibold text-brand" href="/files/tasks/{task.id}">Result PDF received</a>
+								<a class="btn-sm mt-1" href="/files/tasks/{task.id}">Result PDF received</a>
 							{:else if task}
 								<p class="text-[11px] text-[#64748B]">On the patient checklist</p>
 							{/if}

@@ -19,7 +19,7 @@
 				<img class="mx-auto max-h-[32rem] w-full object-contain" src={image} alt={title} />
 				<figcaption class="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-300">
 					<span>{caption || title}</span>
-					<a class="font-semibold text-white" href={image} download>Download image</a>
+					<a class="btn-sm" href={image} download>Download image</a>
 				</figcaption>
 			</figure>
 		{/if}

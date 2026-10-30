@@ -88,7 +88,7 @@
 				{/if}
 			</div>
 			{#if editing !== field}
-				<button class="shrink-0 font-semibold text-brand" type="button" onclick={() => begin(field)}>Edit</button>
+				<button class="btn-sm shrink-0" type="button" onclick={() => begin(field)}>Edit</button>
 			{/if}
 		</div>
 

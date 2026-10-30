@@ -7,7 +7,7 @@
 
 <div class="px-4 pt-5 lg:px-0">
 	{#if data.profile.id === data.doctor.id}
-		<a class="text-sm font-semibold text-brand" href="/doctor/profile">Edit your profile</a>
+		<a class="btn-sm" href="/doctor/profile">Edit your profile</a>
 	{/if}
 </div>
 <ClinicianView doctor={data.profile} />

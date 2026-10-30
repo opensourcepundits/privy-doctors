@@ -97,7 +97,7 @@
 								<p class="font-semibold">Order #{order.code}</p>
 								<p class="text-xs text-[#64748B]">{formatDate(order.ordered_at)} · {formatTime(order.ordered_at)} · {order.status}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
 							</div>
-							<a class="shrink-0 text-sm font-semibold text-brand" href="/doctor/patients/{pid}/prescriptions/{order.id}">Open</a>
+							<a class="btn-sm shrink-0" href="/doctor/patients/{pid}/prescriptions/{order.id}">Open</a>
 						</div>
 						<p class="mt-2 text-sm"><Mention text={order.prescriber} />{#if order.specialty} · {order.specialty}{/if}</p>
 						{#if order.facility}<p class="text-sm text-[#64748B]">{order.facility}</p>{/if}

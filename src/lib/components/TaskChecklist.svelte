@@ -29,6 +29,12 @@
 		message?: string;
 	} = $props();
 
+	let chosen = $state<Record<number, string>>({});
+
+	function remember(id: number, input: HTMLInputElement) {
+		chosen[id] = input.files?.[0]?.name ?? '';
+	}
+
 	const groups = $derived.by(() => {
 		const rows: {
 			consultation_id: number;
@@ -91,24 +97,22 @@
 								{#if task.stored_name}
 									<p class="mt-1 text-sm text-emerald-700">Result received{task.file_name ? ` · ${task.file_name}` : ''}</p>
 									<iframe class="mt-2 h-72 w-full rounded-xl border border-[#E2E8F0] bg-white" title="{task.title} result" src="/files/tasks/{task.id}"></iframe>
-									<a class="mt-2 inline-flex text-sm font-semibold text-brand" href="/files/tasks/{task.id}?download">Download PDF</a>
+									<a class="btn mt-3" href="/files/tasks/{task.id}?download">Download PDF</a>
 									{#if upload}
 										<form class="mt-3 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data">
 											<input type="hidden" name="task" value={task.id} />
-											<label class="block text-sm font-semibold" for="replace-{task.id}">
-												Replace the PDF
-												<input class="mt-1 block w-full text-sm" id="replace-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required />
-											</label>
+											<label class="btn" for="replace-{task.id}">Replace the PDF</label>
+											<input class="sr-only" id="replace-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required onchange={(event) => remember(task.id, event.currentTarget)} />
+											{#if chosen[task.id]}<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>{/if}
 											<button class="btn" type="submit">Upload replacement</button>
 										</form>
 									{/if}
 								{:else if upload}
 									<form class="mt-2 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data">
 										<input type="hidden" name="task" value={task.id} />
-										<label class="block text-sm font-semibold" for="result-{task.id}">
-											Upload the result PDF
-											<input class="mt-1 block w-full text-sm" id="result-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required />
-										</label>
+										<label class="btn" for="result-{task.id}">Upload the result PDF</label>
+										<input class="sr-only" id="result-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required onchange={(event) => remember(task.id, event.currentTarget)} />
+										{#if chosen[task.id]}<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>{/if}
 										<button class="btn" type="submit">Mark done and save PDF</button>
 									</form>
 								{:else}
