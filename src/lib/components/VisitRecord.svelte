@@ -4,7 +4,20 @@
 	import { formatDate, formatTime, liveCopy } from '#lib/format';
 	import type { VisitRecord } from '#lib/server/clinic';
 
-	let { record, pid }: { record: VisitRecord; pid: string } = $props();
+	let {
+		record,
+		pid,
+		portal = 'doctor',
+		backHref = '',
+		backLabel = 'Chart'
+	}: {
+		record: VisitRecord;
+		pid: string;
+		portal?: 'doctor' | 'patient';
+		backHref?: string;
+		backLabel?: string;
+	} = $props();
+	const back = $derived(backHref || `/doctor/patients/${pid}`);
 
 	const modes: Record<string, string> = {
 		in_person: 'In person',
@@ -26,8 +39,8 @@
 </script>
 
 <header class="px-4 pt-5 lg:px-0">
-	<a class="inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor/patients/{pid}">
-		<span class="material-symbols-outlined text-base">arrow_back</span> Chart
+	<a class="inline-flex items-center gap-1 text-sm font-semibold text-brand" href={back}>
+		<span class="material-symbols-outlined text-base">arrow_back</span> {backLabel}
 	</a>
 	<p class="kicker mt-3">{statusLabel(record.status)} · {formatDate(record.when)}{#if record.code} · {record.code}{/if}</p>
 	<h1 class="display text-2xl font-bold">{record.focus}</h1>
@@ -38,10 +51,10 @@
 	{#if record.modality}
 		<p class="mt-1 text-sm">{modes[record.modality] ?? record.modality}</p>
 	{/if}
-	{#if record.continueHref}
+	{#if portal === 'doctor' && record.continueHref}
 		<a class="btn mt-4" href={record.continueHref}>Continue consultation</a>
 	{/if}
-	{#if record.editHref}
+	{#if portal === 'doctor' && record.editHref}
 		<a class="btn mt-4" href={record.editHref}>Edit prescription</a>
 	{/if}
 </header>
@@ -100,7 +113,9 @@
 								<p class="font-semibold">Order #{order.code}</p>
 								<p class="text-xs text-[#64748B]">{formatDate(order.ordered_at)} · {formatTime(order.ordered_at)} · {order.status}{#if order.completes_on} · Completes {formatDate(order.completes_on)}{/if}</p>
 							</div>
-							<a class="btn-sm shrink-0" href="/doctor/patients/{pid}/prescriptions/{order.id}">Open</a>
+							{#if portal === 'doctor'}
+								<a class="btn-sm shrink-0" href="/doctor/patients/{pid}/prescriptions/{order.id}">Open</a>
+							{/if}
 						</div>
 						<p class="mt-2 text-sm"><Mention text={order.prescriber} />{#if order.specialty} · {order.specialty}{/if}</p>
 						{#if order.facility}<p class="text-sm text-[#64748B]">{order.facility}</p>{/if}

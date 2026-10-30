@@ -125,7 +125,13 @@ function stamped(value: Date | string) {
 export function historyEvents(
 	source: HistorySource,
 	slice: HistorySlice,
-	links: { lab: (id: number) => string; image: (id: number) => string; visit?: (id: number) => string; report?: (id: number) => string }
+	links: {
+		lab: (id: number) => string;
+		image: (id: number) => string;
+		visit?: (id: number) => string;
+		report?: (id: number) => string;
+		procedure?: (item: Surgery) => string;
+	}
 ) {
 	const include = new Set(parts[slice]);
 	const items: TimelineEvent[] = [];
@@ -160,7 +166,7 @@ export function historyEvents(
 				body: report.detail ?? '',
 				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : ''].filter(Boolean).join(' '),
 				href: links.report ? links.report(report.id) : '',
-				link: links.report ? 'Edit report' : '',
+				link: links.report ? 'Open report' : '',
 				image: '',
 				log: reportChangeLines(report.edits),
 				files: (report.files ?? []).map((file) => ({
@@ -218,8 +224,8 @@ export function historyEvents(
 				meta: 'Procedure on file',
 				body: '',
 				note: '',
-				href: '',
-				link: '',
+				href: links.procedure ? links.procedure(item) : '',
+				link: links.procedure ? 'Open procedure' : '',
 				image: ''
 			});
 		}

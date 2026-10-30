@@ -17,6 +17,16 @@
 	--color-brand-accent: #14b8a6;
 	--color-shell: #d9e3ee;
 	--color-shell-desk: #eef3f8;
+	--color-red-50: #f8f1f0;
+	--color-red-100: #f3e4e2;
+	--color-red-200: #e7cdc9;
+	--color-red-300: #d7aea8;
+	--color-red-400: #c48e88;
+	--color-red-500: #b56f68;
+	--color-red-600: #a35d58;
+	--color-red-700: #8a4e4a;
+	--color-red-800: #6e3f3c;
+	--color-red-900: #5a3331;
 }
 
 .scheme-doctor {
@@ -204,11 +214,11 @@ body {
 
 .btn-sm-danger {
 	border: 0;
-	background: #dc2626;
+	background: #a35d58;
 	color: white;
 }
 
-.btn-sm-danger:hover { background: #b91c1c; }
+.btn-sm-danger:hover { background: #8a4e4a; }
 
 .field {
 	height: 2.75rem;

@@ -9,7 +9,7 @@
 	<ol class="max-w-3xl">
 		{#each events as event, index}
 			<li class="relative grid grid-cols-[3.25rem_0.7rem_minmax(0,1fr)] gap-x-1.5 sm:grid-cols-[6.5rem_1.25rem_minmax(0,1fr)] sm:gap-x-4">
-				{#if event.href && !event.image}
+				{#if event.href}
 					<a class="absolute inset-0 z-0" href={event.href} aria-label={event.link || event.title}></a>
 				{/if}
 				<div class="pointer-events-none pt-0.5 text-left sm:text-right">

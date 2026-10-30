@@ -174,6 +174,14 @@
 			<span class="material-symbols-outlined text-lg">stethoscope</span>
 			My physicians
 		</a>
+		{#if !data.preview}
+			<form method="POST" action="?/code">
+				<button class="btn" type="submit">
+					<span class="material-symbols-outlined text-lg">pin</span>
+					Generate code
+				</button>
+			</form>
+		{/if}
 	</div>
 </header>
 
@@ -184,24 +192,26 @@
 			<p class="mt-2">Show this code to a clinician. Scanning it adds them to My physicians and opens your full history. You are notified when that happens.</p>
 			<div class="mt-4"><Skeleton count={1} /></div>
 		</article>
-	{:else if pass.qr}
+	{:else}
 		<article class="card span-2">
 			<p class="kicker">Record access</p>
 			<p class="mt-2">Show this code to a clinician. Scanning it adds them to My physicians and opens your full history. You are notified when that happens.</p>
-			<img class="mx-auto mt-4 w-52 rounded-xl bg-white p-2" src={pass.qr} width="208" height="208" alt="QR code for {patient.first_name} {patient.last_name}'s medical record" />
+			{#if pass.qr}
+				<img class="mx-auto mt-4 w-52 rounded-xl bg-white p-2" src={pass.qr} width="208" height="208" alt="QR code for {patient.first_name} {patient.last_name}'s medical record" />
+			{/if}
 			{#if !data.preview}
 				{#if pass.code}
 					<p class="mt-4 text-[#64748B]">Access code</p>
 					<p class="nums font-mono text-2xl tracking-widest">{pass.code.code}</p>
 					<p class="text-[#64748B]">Expires {formatDate(pass.code.expires_at)} · {formatTime(pass.code.expires_at)}. It works once.</p>
 				{:else}
-					<p class="mt-4 text-[#64748B]">If a camera is not available, create a code the clinician can type. It works once and expires in 24 hours.</p>
+					<p class="mt-4 text-[#64748B]">If a camera is not available, generate a code the clinician can type. It works once and expires in 24 hours.</p>
 				{/if}
 				<form class="mt-4" method="POST" action="?/code">
-					<button class="btn" type="submit">{pass.code ? 'Create a new access code' : 'Create access code'}</button>
+					<button class="btn" type="submit">{pass.code ? 'Generate a new code' : 'Generate code'}</button>
 				</form>
 				{#if pass.code}
-					<p class="mt-2 text-[#64748B]">Creating a new code replaces the one above.</p>
+					<p class="mt-2 text-[#64748B]">Generating a new code replaces the one above.</p>
 				{/if}
 			{/if}
 		</article>

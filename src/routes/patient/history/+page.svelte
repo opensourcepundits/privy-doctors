@@ -51,7 +51,9 @@
 					{
 						lab: (id) => `/patient/labs/${id}`,
 						image: (id) => `/patient/imaging/${id}`,
-						report: data.preview ? undefined : (id) => `/patient/reports/${id}`
+						visit: (id) => `/patient/visits/${id}`,
+						report: (id) => `/patient/reports/${id}`,
+						procedure: (item) => `/patient/history/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`
 					}
 				)}
 		<Timeline {events} emptyHref={view !== 'all' ? '?view=all' : ''} />

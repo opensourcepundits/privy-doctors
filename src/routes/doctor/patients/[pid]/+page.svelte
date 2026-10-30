@@ -43,7 +43,10 @@
 	const links = $derived({
 		lab: (id: number) => `/doctor/patients/${data.patient.pid}/labs/${id}`,
 		image: (id: number) => `/doctor/patients/${data.patient.pid}/imaging/${id}`,
-		visit: (id: number) => `/doctor/patients/${data.patient.pid}/visits/${id}`
+		visit: (id: number) => `/doctor/patients/${data.patient.pid}/visits/${id}`,
+		report: (id: number) => `/doctor/patients/${data.patient.pid}/reports/${id}`,
+		procedure: (item: { year: string; name: string }) =>
+			`/doctor/patients/${data.patient.pid}/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`
 	});
 	const source = $derived({
 		encounters: chart?.encounters ?? [],
