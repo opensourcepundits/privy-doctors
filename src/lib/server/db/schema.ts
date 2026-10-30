@@ -1,6 +1,7 @@
 import {
 	boolean,
 	date,
+	customType,
 	integer,
 	jsonb,
 	numeric,
@@ -277,13 +278,20 @@ export const consultationEntries = pgTable('consultation_entries', {
 	detail: text('detail')
 });
 
+const bytea = customType<{ data: Buffer }>({
+	dataType() {
+		return 'bytea';
+	}
+});
+
 export const prescriptionPhotos = pgTable('prescription_photos', {
 	id: serial('id').primaryKey(),
 	consultationId: integer('consultation_id').notNull(),
 	fileName: text('file_name').notNull(),
 	storedName: text('stored_name').notNull(),
 	contentType: text('content_type').notNull(),
-	createdAt: timestamp('created_at').notNull()
+	createdAt: timestamp('created_at').notNull(),
+	bytes: bytea('bytes')
 });
 
 export const consultationOrders = pgTable('consultation_orders', {

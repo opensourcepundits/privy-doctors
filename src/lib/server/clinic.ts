@@ -4,7 +4,7 @@ import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } 
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
 import { resolveImagePaths } from './storage';
-import { deletePrescriptionPhoto, savePrescriptionPhoto } from './uploads';
+import { deletePrescriptionPhoto } from './uploads';
 
 export type PatientRow = {
 	id: number;
@@ -757,13 +757,50 @@ async function photosByPatient(patientId: number) {
 	`;
 }
 
+let prescriptionPhotoStore: Promise<void> | null = null;
+
+function ensurePrescriptionPhotoStore() {
+	prescriptionPhotoStore ??= client`
+		CREATE TABLE IF NOT EXISTS prescription_photos (
+			id serial PRIMARY KEY,
+			consultation_id integer NOT NULL REFERENCES consultations(id) ON DELETE CASCADE,
+			file_name text NOT NULL,
+			stored_name text NOT NULL,
+			content_type text NOT NULL,
+			created_at timestamp NOT NULL,
+			bytes bytea
+		)
+	`
+		.then(() => client`ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea`)
+		.then(() => undefined)
+		.catch((error) => {
+			prescriptionPhotoStore = null;
+			throw error;
+		});
+	return prescriptionPhotoStore;
+}
+
 export async function prescriptionPhotos(consultId: number) {
+	await ensurePrescriptionPhotoStore();
 	return client<{ id: number; file_name: string; content_type: string }[]>`
 		SELECT id, file_name, content_type
 		FROM prescription_photos
 		WHERE consultation_id = ${consultId}
 		ORDER BY id
 	`;
+}
+
+export async function prescriptionPhotoBytes(id: number) {
+	await ensurePrescriptionPhotoStore();
+	const [row] = await client<{ encoded: string | null; stored_name: string }[]>`
+		SELECT encode(bytes, 'base64') AS encoded, stored_name
+		FROM prescription_photos
+		WHERE id = ${id}
+	`;
+	if (!row) return null;
+	if (row.encoded) return Buffer.from(row.encoded, 'base64');
+	const { readPrescriptionPhoto } = await import('./uploads');
+	return readPrescriptionPhoto(row.stored_name);
 }
 
 async function referralsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
@@ -2065,21 +2102,19 @@ export async function addPrescriptionPhoto(
 	ext: string,
 	contentType: string
 ) {
+	await ensurePrescriptionPhotoStore();
 	const [count] = await client<{ count: number }[]>`
 		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
 	`;
 	if (count.count >= 6) return { error: 'This consultation already has 6 prescription photos.' as const };
 	const stored = `rx-${consultId}-${Date.now()}.${ext}`;
-	await savePrescriptionPhoto(stored, bytes);
-	try {
-		await client`
-			INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at)
-			VALUES (${consultId}, ${fileName}, ${stored}, ${contentType}, ${nowLocal().stamp})
-		`;
-	} catch (error) {
-		await deletePrescriptionPhoto(stored);
-		throw error;
-	}
+	await client`
+		INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at, bytes)
+		VALUES (
+			${consultId}, ${fileName}, ${stored}, ${contentType}, ${nowLocal().stamp},
+			decode(${bytes.toString('base64')}, 'base64')
+		)
+	`;
 	const [consult] = await client<{ status: string; completes_on: Date | string | null }[]>`
 		SELECT status, completes_on FROM consultations WHERE id = ${consultId}
 	`;

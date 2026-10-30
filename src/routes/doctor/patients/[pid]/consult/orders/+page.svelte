@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
+	import PrescriptionPhotoField from '#lib/components/PrescriptionPhotoField.svelte';
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
@@ -53,7 +54,6 @@
 	let completesOn = $state('');
 	let frequency = $state('');
 	let meal = $state('');
-	let photoName = $state('');
 	let loadedId = 0;
 
 	function postedCompletion() {
@@ -278,22 +278,7 @@
 						</form>
 					</div>
 				{/each}
-				<form class="flex flex-wrap items-center gap-2" method="POST" action="?/photo" enctype="multipart/form-data">
-					<label class="btn-sm" for="prescription-photo">Choose photo</label>
-					<input
-						class="sr-only"
-						id="prescription-photo"
-						name="photo"
-						type="file"
-						accept="image/*"
-						required
-						onchange={(event) => {
-							photoName = event.currentTarget.files?.[0]?.name ?? '';
-						}}
-					/>
-					{#if photoName}<span class="text-xs text-[#64748B]">{photoName}</span>{/if}
-					<button class="btn-sm" type="submit">Upload photo</button>
-				</form>
+				<PrescriptionPhotoField />
 			</div>
 			<label class="block text-sm font-semibold" for="rx-complete">
 				Prescription completion date

@@ -88,8 +88,13 @@ export const actions = {
 		if (!(file instanceof File)) return { message: 'Choose a photo of the prescription.' };
 		const accepted = await acceptPrescriptionPhoto(file);
 		if ('error' in accepted) return { message: accepted.error };
-		const saved = await addPrescriptionPhoto(consult.id, accepted.name, accepted.bytes, accepted.ext, accepted.type);
-		if (saved && 'error' in saved) return { message: saved.error };
+		try {
+			const saved = await addPrescriptionPhoto(consult.id, accepted.name, accepted.bytes, accepted.ext, accepted.type);
+			if (saved && 'error' in saved) return { message: saved.error };
+		} catch (error) {
+			console.error(error);
+			return { message: 'The photo could not be saved. Choose a smaller JPEG or PNG and try again.' };
+		}
 		return { saved: true };
 	},
 	removePhoto: async ({ request, params, locals }) => {

@@ -435,8 +435,11 @@ CREATE TABLE IF NOT EXISTS prescription_photos (
   file_name text NOT NULL,
   stored_name text NOT NULL,
   content_type text NOT NULL,
-  created_at timestamp NOT NULL
+  created_at timestamp NOT NULL,
+  bytes bytea
 );
+
+ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea;
 
 CREATE TABLE IF NOT EXISTS self_report_alerts (
   id serial PRIMARY KEY,

@@ -1,6 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { accessStatus, doctorForUser, patientForUser, prescriptionPhotoAccess } from '#lib/server/clinic';
-import { readPrescriptionPhoto } from '#lib/server/uploads';
+import { accessStatus, doctorForUser, patientForUser, prescriptionPhotoAccess, prescriptionPhotoBytes } from '#lib/server/clinic';
 
 function downloadName(name: string) {
 	const cleaned = name.replace(/[/\\"]/g, '').replace(/[^\w.\- ()]+/g, '').slice(0, 80);
@@ -20,7 +19,7 @@ export async function GET({ params, locals, url }) {
 		const granted = (await accessStatus(file.patient_id, doctor.id)) === 'granted';
 		if (!granted && doctor.id !== file.doctor_id) error(403, 'That photo is not on a chart you can open');
 	}
-	const bytes = await readPrescriptionPhoto(file.stored_name);
+	const bytes = await prescriptionPhotoBytes(file.id);
 	if (!bytes) error(404, 'Prescription photo is missing');
 	const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
 	return new Response(new Uint8Array(bytes), {
