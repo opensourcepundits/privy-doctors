@@ -68,10 +68,18 @@
 	});
 </script>
 
-<header class="px-4 pt-6 lg:px-0">
-	<p class="kicker">Clinician</p>
-	<h1 class="display text-2xl font-bold">{data.doctor.name}</h1>
-	<p class="text-sm text-[#64748B]">{data.doctor.credentials} · {data.doctor.specialty}</p>
+<header class="flex items-start justify-between gap-3 px-4 pt-6 lg:px-0">
+	<div class="min-w-0">
+		<p class="kicker">Clinician</p>
+		<h1 class="display text-2xl font-bold">{data.doctor.name}</h1>
+		<p class="text-sm text-[#64748B]">{data.doctor.credentials} · {data.doctor.specialty}</p>
+	</div>
+	<form method="POST" action="/logout">
+		<button class="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700" type="submit">
+			<span class="material-symbols-outlined text-[16px]">logout</span>
+			Sign out
+		</button>
+	</form>
 </header>
 
 {#if form?.message}
@@ -249,8 +257,7 @@
 	</article>
 	{/if}
 
-	<div class="flex flex-col gap-3 lg:col-span-2 lg:flex-row">
+	<div class="lg:col-span-2">
 		<a class="btn" href="/patient">Open Noor Yadallee's patient view</a>
-		<form method="POST" action="/logout"><button class="btn-line" type="submit">Sign out</button></form>
 	</div>
 </section>

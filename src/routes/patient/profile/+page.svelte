@@ -141,7 +141,17 @@
 {/snippet}
 
 <header class="px-4 pt-6 lg:px-0">
-	<p class="kicker">Your account</p>
+	<div class="flex items-start justify-between gap-3">
+		<p class="kicker">Your account</p>
+		{#if !data.preview}
+			<form method="POST" action="/logout">
+				<button class="inline-flex h-8 shrink-0 items-center gap-1 rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700" type="submit">
+					<span class="material-symbols-outlined text-[16px]">logout</span>
+					Sign out
+				</button>
+			</form>
+		{/if}
+	</div>
 	<div class="mt-3 flex items-center gap-4">
 		<div class="grid h-16 w-16 place-items-center rounded-full bg-brand text-lg font-bold text-white">
 			{initials(patient.first_name, patient.last_name)}
@@ -238,10 +248,7 @@
 		</article>
 	{/if}
 
-	<div class="span-2 flex flex-col gap-3 sm:flex-row">
+	<div class="span-2">
 		<a class="btn" href="/patient/help">Contact care team</a>
-		{#if !data.preview}
-			<form method="POST" action="/logout"><button class="btn-line" type="submit">Sign out</button></form>
-		{/if}
 	</div>
 </section>
