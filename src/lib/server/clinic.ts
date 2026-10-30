@@ -813,6 +813,13 @@ function visitShape(
 	return { when, ...fields, ...parts, prescriptions, referrals };
 }
 
+function sameClinician(encounterName: string, doctorName: string) {
+	const recorded = encounterName.trim().toLowerCase();
+	const current = doctorName.trim().toLowerCase();
+	if (!recorded || !current) return false;
+	return recorded.startsWith(current) || current.startsWith(recorded);
+}
+
 export async function visitByEncounter(patientId: number, encounterId: number, doctorId: number, pid: string) {
 	const [visit] = await client`
 		SELECT * FROM encounters WHERE id = ${encounterId} AND patient_id = ${patientId}
@@ -828,6 +835,8 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 	]);
 	const open = linked?.consult.status === 'in_session' && linked.consult.doctor_id === doctorId;
 	const editable = Boolean(linked && linked.consult.status === 'signed' && linked.consult.doctor_id === doctorId);
+	const [actor] = await client<{ name: string }[]>`SELECT name FROM doctors WHERE id = ${doctorId}`;
+	const ownsEncounter = Boolean(!linked && actor && sameClinician(visit.doctor_name, actor.name));
 	return visitShape(
 		visit.occurred_on,
 		{
@@ -844,7 +853,11 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 			plan: visit.plan ?? '',
 			narrative: linked && linked.consult.narrative !== visit.findings ? (linked.consult.narrative ?? '') : '',
 			continueHref: open ? `/doctor/patients/${pid}/consult` : '',
-			editHref: editable && linked ? `/doctor/patients/${pid}/consults/${linked.consult.id}/prescription` : '',
+			editHref: editable && linked
+				? `/doctor/patients/${pid}/consults/${linked.consult.id}/prescription`
+				: ownsEncounter
+					? `/doctor/patients/${pid}/visits/${visit.id}/prescription`
+					: '',
 			photos
 		},
 		linked ?? { entries: [], orders: [], tasks: [] },
@@ -1205,6 +1218,107 @@ export async function analytics() {
 	const referralTotal = referrals.reduce((sum, row) => sum + Number(row.patients), 0);
 	const panel = cohorts.reduce((sum, row) => sum + Number(row.patients), 0);
 	return { metrics, modalities, cohorts, referrals, note: note?.body ?? '', modalityTotal, referralTotal, panel };
+}
+
+export type ConsultHistoryItem = {
+	kind: 'consult' | 'encounter';
+	id: number;
+	code: string;
+	when: Date | string;
+	title: string;
+	pid: string;
+	first_name: string;
+	last_name: string;
+	specialty: string;
+	href: string;
+};
+
+export async function consultHistory(doctorId: number) {
+	const consults = await client<
+		{
+			id: number;
+			code: string;
+			narrative: string | null;
+			started_at: Date | string;
+			pid: string;
+			first_name: string;
+			last_name: string;
+			specialty: string;
+		}[]
+	>`
+		SELECT c.id, c.code, c.narrative, c.started_at, p.pid, p.first_name, p.last_name, d.specialty
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		JOIN doctors d ON d.id = c.doctor_id
+		WHERE c.doctor_id = ${doctorId}
+		  AND c.status = 'signed'
+		  AND c.code NOT LIKE 'VIS-%'
+		  AND EXISTS (
+			SELECT 1 FROM patient_access a
+			WHERE a.patient_id = c.patient_id AND a.doctor_id = ${doctorId} AND a.status = 'granted'
+		  )
+		ORDER BY c.started_at DESC
+	`;
+	const encounters = await client<
+		{
+			id: number;
+			focus: string;
+			occurred_on: Date | string;
+			pid: string;
+			first_name: string;
+			last_name: string;
+			doctor_role: string;
+		}[]
+	>`
+		SELECT e.id, e.focus, e.occurred_on, p.pid, p.first_name, p.last_name, e.doctor_role
+		FROM encounters e
+		JOIN patients p ON p.id = e.patient_id
+		JOIN doctors d ON d.id = ${doctorId}
+		WHERE e.doctor_name ILIKE d.name || '%'
+		  AND (
+			e.consultation_id IS NULL
+			OR NOT EXISTS (
+				SELECT 1 FROM consultations c
+				WHERE c.id = e.consultation_id
+				  AND c.doctor_id = ${doctorId}
+				  AND c.status = 'signed'
+				  AND c.code NOT LIKE 'VIS-%'
+			)
+		  )
+		  AND EXISTS (
+			SELECT 1 FROM patient_access a
+			WHERE a.patient_id = e.patient_id AND a.doctor_id = ${doctorId} AND a.status = 'granted'
+		  )
+		ORDER BY e.occurred_on DESC
+	`;
+	const rows: ConsultHistoryItem[] = [
+		...consults.map((consult) => ({
+			kind: 'consult' as const,
+			id: consult.id,
+			code: consult.code,
+			when: consult.started_at,
+			title: consult.narrative?.trim().split('\n')[0] || 'Signed consultation',
+			pid: consult.pid,
+			first_name: consult.first_name,
+			last_name: consult.last_name,
+			specialty: consult.specialty ?? '',
+			href: `/doctor/patients/${consult.pid}/consults/${consult.id}`
+		})),
+		...encounters.map((visit) => ({
+			kind: 'encounter' as const,
+			id: visit.id,
+			code: '',
+			when: visit.occurred_on,
+			title: visit.focus,
+			pid: visit.pid,
+			first_name: visit.first_name,
+			last_name: visit.last_name,
+			specialty: visit.doctor_role ?? '',
+			href: `/doctor/patients/${visit.pid}/visits/${visit.id}`
+		}))
+	];
+	rows.sort((a, b) => new Date(b.when).getTime() - new Date(a.when).getTime());
+	return rows;
 }
 
 export async function openConsultsForDoctor(doctorId: number) {
@@ -1765,6 +1879,42 @@ export async function startConsultForReferral(referralId: number, doctorId: numb
 		WHERE id = ${referralId}
 	`;
 	return { pid: patient.pid as string };
+}
+
+export async function consultForEncounterEdit(patientId: number, encounterId: number, doctorId: number) {
+	const [visit] = await client<{
+		id: number;
+		consultation_id: number | null;
+		doctor_name: string;
+		findings: string | null;
+		occurred_on: Date | string;
+	}[]>`
+		SELECT id, consultation_id, doctor_name, findings, occurred_on
+		FROM encounters
+		WHERE id = ${encounterId} AND patient_id = ${patientId}
+	`;
+	if (!visit) return { error: 'Consultation not found.' as const };
+	const [doctor] = await client<{ name: string }[]>`SELECT name FROM doctors WHERE id = ${doctorId}`;
+	if (!doctor || !sameClinician(visit.doctor_name, doctor.name)) {
+		return { error: 'Only the doctor who signed this consultation can edit the prescription.' as const };
+	}
+	if (visit.consultation_id) {
+		const [existing] = await client<{ id: number; doctor_id: number; status: string }[]>`
+			SELECT id, doctor_id, status FROM consultations WHERE id = ${visit.consultation_id}
+		`;
+		if (existing?.status === 'signed' && existing.doctor_id === doctorId) return { consultId: existing.id };
+		if (existing) return { error: 'Only the doctor who signed this consultation can edit the prescription.' as const };
+	}
+	const [consult] = await client<{ id: number }[]>`
+		INSERT INTO consultations (patient_id, doctor_id, code, uid, status, modality, narrative, pharmacy, started_at)
+		VALUES (
+			${patientId}, ${doctorId}, ${'VIS-' + visit.id}, ${recordUid('CON')}, 'signed', 'in_person',
+			${visit.findings ?? ''}, NULL, ${visit.occurred_on}
+		)
+		RETURNING id
+	`;
+	await client`UPDATE encounters SET consultation_id = ${consult.id} WHERE id = ${visit.id}`;
+	return { consultId: consult.id };
 }
 
 export async function consultForChart(patientId: number, consultId: number) {

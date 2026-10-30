@@ -54,7 +54,7 @@
 			{:else}
 				<p class="px-2 py-2 text-sm text-[#64748B]">No referrals are waiting.</p>
 			{/each}
-			<a class="btn-sm mt-1" href="/doctor/referrals">Open referral tab</a>
+			<a class="btn-sm mt-1" href="/doctor/referrals">All incoming referrals</a>
 		</div>
 	{/if}
 </div>

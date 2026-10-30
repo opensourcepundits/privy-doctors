@@ -17,13 +17,12 @@
 	const path = $derived(page.url.pathname);
 	const query = $derived(page.url.search);
 	const notice = $derived(page.url.searchParams.get('notice'));
-	const waiting = $derived(data.incoming.filter((item) => item.status !== 'completed').length);
 	const sessions = $derived(
 		data.openConsults.filter((item) => path !== `/doctor/patients/${item.pid}/consult`)
 	);
 	const nav = $derived([
 		{ href: '/doctor', label: 'Home', icon: 'home' },
-		{ href: '/doctor/referrals', label: 'Referrals', icon: 'diversity_1', badge: waiting || undefined },
+		{ href: '/doctor/history', label: 'History', icon: 'history' },
 		{ href: '/doctor/search?intent=consult', label: 'Consult', icon: 'add', fab: true },
 		{ href: '/doctor/analytics', label: 'Data', icon: 'monitoring' },
 		{ href: '/doctor/profile', label: 'Profile', icon: 'person' }
