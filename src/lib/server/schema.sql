@@ -429,6 +429,15 @@ CREATE TABLE IF NOT EXISTS self_report_files (
   created_at timestamp NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS prescription_photos (
+  id serial PRIMARY KEY,
+  consultation_id integer NOT NULL REFERENCES consultations(id) ON DELETE CASCADE,
+  file_name text NOT NULL,
+  stored_name text NOT NULL,
+  content_type text NOT NULL,
+  created_at timestamp NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS self_report_alerts (
   id serial PRIMARY KEY,
   report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,

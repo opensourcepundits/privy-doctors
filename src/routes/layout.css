@@ -314,6 +314,18 @@ textarea.field {
 	height: auto;
 }
 
+.action-pair {
+	display: grid;
+	gap: 0.5rem;
+	min-width: 0;
+}
+
+@media (min-width: 640px) {
+	.action-pair:has(> :nth-child(2)) {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
 @media (min-width: 1024px) {
 	.action-row:has(> :nth-child(2)) {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -332,5 +344,14 @@ textarea.field {
 	.action-row:not(:has(> :nth-child(2))) .btn:not(.btn-block) {
 		width: fit-content;
 		min-width: min(12rem, 100%);
+	}
+
+	.action-row:has(> .action-pair > :nth-child(2)) {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		max-width: none;
+	}
+
+	.action-row:has(> .action-pair > :nth-child(2)) > .action-pair {
+		display: contents;
 	}
 }

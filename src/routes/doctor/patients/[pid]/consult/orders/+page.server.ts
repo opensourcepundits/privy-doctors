@@ -1,7 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { frequencyTags, mealTags } from '#lib/doses';
-import { addConsultOrder, addReferral, draftConsult, finalizeConsult, medicinesCatalog, recordMedicineUse, referralDoctors, removeConsultOrder, setConsultCompletion } from '#lib/server/clinic';
+import { addConsultOrder, addPrescriptionPhoto, addReferral, draftConsult, finalizeConsult, medicinesCatalog, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultOrder, removePrescriptionPhoto, setConsultCompletion } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
+import { acceptPrescriptionPhoto } from '#lib/server/uploads';
 
 function completionDate(value: FormDataEntryValue | null) {
 	const text = String(value ?? '').trim();
@@ -18,12 +19,13 @@ async function context(locals: App.Locals, pid: string) {
 
 export async function load({ parent }) {
 	const { doctor, patient } = await parent();
-	const [consult, doctors, medicines] = await Promise.all([
-		draftConsult(patient.id, doctor.id),
+	const consult = await draftConsult(patient.id, doctor.id);
+	const [doctors, medicines, photos] = await Promise.all([
 		referralDoctors().then((rows) => rows.filter((item) => item.id !== doctor.id)),
-		medicinesCatalog()
+		medicinesCatalog(),
+		prescriptionPhotos(consult.id)
 	]);
-	return { doctor, patient, consult, doctors, medicines };
+	return { doctor, patient, consult, doctors, medicines, photos };
 }
 
 export const actions = {
@@ -74,9 +76,26 @@ export const actions = {
 		return { saved: true };
 	},
 	remove: async ({ request, params, locals }) => {
-		await context(locals, params.pid);
+		const { consult } = await context(locals, params.pid);
 		const data = await request.formData();
-		await removeConsultOrder(Number(data.get('id')));
+		await removeConsultOrder(Number(data.get('id')), consult.id);
+		return { saved: true };
+	},
+	photo: async ({ request, params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		const data = await request.formData();
+		const file = data.get('photo');
+		if (!(file instanceof File)) return { message: 'Choose a photo of the prescription.' };
+		const accepted = await acceptPrescriptionPhoto(file);
+		if ('error' in accepted) return { message: accepted.error };
+		const saved = await addPrescriptionPhoto(consult.id, accepted.name, accepted.bytes, accepted.ext, accepted.type);
+		if (saved && 'error' in saved) return { message: saved.error };
+		return { saved: true };
+	},
+	removePhoto: async ({ request, params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		const data = await request.formData();
+		await removePrescriptionPhoto(Number(data.get('id')), consult.id);
 		return { saved: true };
 	},
 	finalize: async ({ request, params, locals }) => {
@@ -88,7 +107,9 @@ export const actions = {
 		if (filed && 'error' in filed) return { message: filed.error, completesOn: completes ?? '' };
 		const notice = filed?.medications
 			? 'Consultation, prescriptions, and bill saved to this patient record'
-			: 'Consultation and bill saved to this patient record';
+			: filed?.photos
+				? 'Consultation saved with a photograph of the prescription'
+				: 'Consultation and bill saved to this patient record';
 		redirect(303, `/doctor/patients/${patient.pid}?tab=consults&notice=${notice}`);
 	}
 };

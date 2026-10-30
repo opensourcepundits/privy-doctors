@@ -28,6 +28,12 @@
 		{#if order.pharmacy}<p>{order.pharmacy}</p>{/if}
 		{#if order.course_label}<p class="mt-2 text-[#64748B]">{liveCopy(order.course_label)}</p>{/if}
 	</article>
+	{#each order.photos as photo}
+		<a class="card block overflow-hidden" href="/files/prescriptions/{photo.id}" target="_blank" rel="noreferrer">
+			<img class="max-h-80 w-full object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
+			<p class="mt-2 text-xs text-[#64748B]">{photo.file_name}</p>
+		</a>
+	{/each}
 	{#each order.items as item}
 		<article class="card">
 			<h2 class="font-semibold">{item.name} {item.strength}</h2>

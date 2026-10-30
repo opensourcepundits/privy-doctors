@@ -41,6 +41,9 @@
 	{#if record.continueHref}
 		<a class="btn mt-4" href={record.continueHref}>Continue consultation</a>
 	{/if}
+	{#if record.editHref}
+		<a class="btn mt-4" href={record.editHref}>Edit prescription</a>
+	{/if}
 </header>
 
 <section class="space-y-3 px-4 py-4 lg:px-0">
@@ -131,8 +134,20 @@
 					</li>
 				{/each}
 			</ul>
-		{:else}
+		{:else if !record.photos.length}
 			<p class="mt-2 text-sm text-[#64748B]">No prescriptions were filed with this consultation.</p>
+		{/if}
+		{#if record.photos.length}
+			<ul class="mt-3 space-y-2">
+				{#each record.photos as photo}
+					<li>
+						<a class="block overflow-hidden rounded-xl border border-[#E2E8F0]" href="/files/prescriptions/{photo.id}" target="_blank" rel="noreferrer">
+							<img class="max-h-64 w-full bg-white object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
+							<span class="block px-3 py-2 text-xs text-[#64748B]">{photo.file_name}</span>
+						</a>
+					</li>
+				{/each}
+			</ul>
 		{/if}
 	</article>
 

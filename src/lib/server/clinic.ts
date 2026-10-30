@@ -4,6 +4,7 @@ import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } 
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import { client } from './db';
 import { resolveImagePaths } from './storage';
+import { deletePrescriptionPhoto, savePrescriptionPhoto } from './uploads';
 
 export type PatientRow = {
 	id: number;
@@ -706,6 +707,8 @@ export type VisitRecord = {
 	plan: string;
 	narrative: string;
 	continueHref: string;
+	editHref: string;
+	photos: { id: number; file_name: string; content_type: string }[];
 	entries: VisitEntry[];
 	orders: VisitOrder[];
 	tasks: VisitTask[];
@@ -734,10 +737,33 @@ async function prescriptionsOnVisit(patientId: number, day: string, doctorName: 
 		WHERE prescription_id = ANY(${ids})
 		ORDER BY sort_order, id
 	`;
+	const photos = await photosByPatient(patientId);
 	return rows.map((row) => ({
 		...row,
-		items: items.filter((item) => item.prescription_id === row.id)
+		items: items.filter((item) => item.prescription_id === row.id),
+		photos: photos
+			.filter((photo) => photo.code === row.code)
+			.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
 	}));
+}
+
+async function photosByPatient(patientId: number) {
+	return client<{ id: number; file_name: string; content_type: string; code: string }[]>`
+		SELECT ph.id, ph.file_name, ph.content_type, ('RX-' || ph.consultation_id::text) AS code
+		FROM prescription_photos ph
+		JOIN consultations c ON c.id = ph.consultation_id
+		WHERE c.patient_id = ${patientId}
+		ORDER BY ph.id
+	`;
+}
+
+export async function prescriptionPhotos(consultId: number) {
+	return client<{ id: number; file_name: string; content_type: string }[]>`
+		SELECT id, file_name, content_type
+		FROM prescription_photos
+		WHERE consultation_id = ${consultId}
+		ORDER BY id
+	`;
 }
 
 async function referralsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
@@ -795,11 +821,13 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 	const linked = visit.consultation_id ? await consultParts(patientId, visit.consultation_id) : null;
 	const day = isoDate(visit.occurred_on);
 	const consultId = linked?.consult.id ?? null;
-	const [prescriptions, referrals] = await Promise.all([
+	const [prescriptions, referrals, photos] = await Promise.all([
 		prescriptionsOnVisit(patientId, day, visit.doctor_name, consultId),
-		referralsOnVisit(patientId, day, visit.doctor_name, consultId)
+		referralsOnVisit(patientId, day, visit.doctor_name, consultId),
+		consultId ? prescriptionPhotos(consultId) : Promise.resolve([])
 	]);
 	const open = linked?.consult.status === 'in_session' && linked.consult.doctor_id === doctorId;
+	const editable = Boolean(linked && linked.consult.status === 'signed' && linked.consult.doctor_id === doctorId);
 	return visitShape(
 		visit.occurred_on,
 		{
@@ -815,7 +843,9 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 			findings: visit.findings ?? '',
 			plan: visit.plan ?? '',
 			narrative: linked && linked.consult.narrative !== visit.findings ? (linked.consult.narrative ?? '') : '',
-			continueHref: open ? `/doctor/patients/${pid}/consult` : ''
+			continueHref: open ? `/doctor/patients/${pid}/consult` : '',
+			editHref: editable && linked ? `/doctor/patients/${pid}/consults/${linked.consult.id}/prescription` : '',
+			photos
 		},
 		linked ?? { entries: [], orders: [], tasks: [] },
 		prescriptions,
@@ -829,11 +859,13 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 	const { consult, entries, orders, tasks } = linked;
 	const doctor = [consult.doctor_name, consult.credentials].filter(Boolean).join(', ');
 	const day = isoDate(consult.started_at);
-	const [prescriptions, referrals] = await Promise.all([
+	const [prescriptions, referrals, photos] = await Promise.all([
 		prescriptionsOnVisit(patientId, day, doctor, consult.id),
-		referralsOnVisit(patientId, day, consult.doctor_name, consult.id)
+		referralsOnVisit(patientId, day, consult.doctor_name, consult.id),
+		prescriptionPhotos(consult.id)
 	]);
 	const open = consult.status === 'in_session' && consult.doctor_id === doctorId;
+	const editable = consult.status === 'signed' && consult.doctor_id === doctorId;
 	return visitShape(
 		consult.started_at,
 		{
@@ -849,7 +881,9 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 			findings: '',
 			plan: '',
 			narrative: consult.narrative ?? '',
-			continueHref: open ? `/doctor/patients/${pid}/consult` : ''
+			continueHref: open ? `/doctor/patients/${pid}/consult` : '',
+			editHref: editable ? `/doctor/patients/${pid}/consults/${consult.id}/prescription` : '',
+			photos
 		},
 		{ entries, orders, tasks },
 		prescriptions,
@@ -1060,9 +1094,13 @@ export async function prescriptionsFor(patientId: number) {
 		WHERE p.patient_id = ${patientId}
 		ORDER BY i.sort_order, i.id
 	`;
+	const photos = await photosByPatient(patientId);
 	return rows.map((row) => ({
 		...row,
-		items: items.filter((item) => item.prescription_id === row.id)
+		items: items.filter((item) => item.prescription_id === row.id),
+		photos: photos
+			.filter((photo) => photo.code === row.code)
+			.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
 	}));
 }
 
@@ -1270,6 +1308,14 @@ export async function setConsultCompletion(consultId: number, completesOn: strin
 	await client`
 		UPDATE consultations SET completes_on = ${completesOn}
 		WHERE id = ${consultId} AND status = 'in_session'
+	`;
+}
+
+export async function setFiledCompletion(consultId: number, completesOn: string | null) {
+	await client`UPDATE consultations SET completes_on = ${completesOn} WHERE id = ${consultId}`;
+	await client`
+		UPDATE prescriptions SET completes_on = ${completesOn}
+		WHERE code = ${'RX-' + consultId}
 	`;
 }
 
@@ -1721,10 +1767,201 @@ export async function startConsultForReferral(referralId: number, doctorId: numb
 	return { pid: patient.pid as string };
 }
 
-export async function removeConsultOrder(id: number) {
+export async function consultForChart(patientId: number, consultId: number) {
+	const [consult] = await client`
+		SELECT * FROM consultations WHERE id = ${consultId} AND patient_id = ${patientId}
+	`;
+	if (!consult) return null;
+	const orders = await client`
+		SELECT * FROM consultation_orders WHERE consultation_id = ${consult.id} ORDER BY id
+	`;
+	const photos = await prescriptionPhotos(consult.id);
+	return { ...consult, orders, photos };
+}
+
+export async function prescriptionPhotoAccess(id: number) {
+	const [row] = await client<
+		{
+			id: number;
+			stored_name: string;
+			file_name: string;
+			content_type: string;
+			patient_id: number;
+			doctor_id: number;
+		}[]
+	>`
+		SELECT p.id, p.stored_name, p.file_name, p.content_type, c.patient_id, c.doctor_id
+		FROM prescription_photos p
+		JOIN consultations c ON c.id = p.consultation_id
+		WHERE p.id = ${id}
+	`;
+	return row ?? null;
+}
+
+async function consultPrescriptionId(consultId: number, course: string, completesOn: string | null) {
+	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId}`;
+	if (!consult) return null;
+	const code = `RX-${consultId}`;
+	const [existing] = await client<{ id: number }[]>`
+		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${code}
+	`;
+	if (existing) {
+		if (completesOn) {
+			await client`
+				UPDATE prescriptions SET completes_on = COALESCE(completes_on, ${completesOn})
+				WHERE id = ${existing.id}
+			`;
+		}
+		return existing.id;
+	}
+	const [doctor] = await client`SELECT * FROM doctors WHERE id = ${consult.doctor_id}`;
+	const { stamp } = nowLocal();
+	const [rx] = await client<{ id: number }[]>`
+		INSERT INTO prescriptions (
+			patient_id, code, prescriber, specialty, facility, pharmacy, ordered_at, status, course_label, completes_on
+		)
+		VALUES (
+			${consult.patient_id}, ${code}, ${doctor.name}, ${doctor.specialty},
+			${doctor.location}, NULL, ${stamp}, 'active', ${course}, ${completesOn}
+		)
+		RETURNING id
+	`;
+	return rx.id;
+}
+
+export async function fileSignedMedication(
+	consultId: number,
+	title: string,
+	detail: string,
+	note: string,
+	completesOn: string | null,
+	tags: string
+) {
+	const [consult] = await client<{ completes_on: Date | string | null }[]>`
+		SELECT completes_on FROM consultations WHERE id = ${consultId}
+	`;
+	const completion = completesOn || isoDate(consult?.completes_on) || null;
+	const rxId = await consultPrescriptionId(consultId, 'Added after the consultation was signed', completion);
+	if (!rxId) return;
+	await client`
+		UPDATE prescriptions SET course_label = 'Signed during consultation'
+		WHERE id = ${rxId} AND course_label = 'Photograph of the written prescription'
+	`;
+	const marks = tagsFrom(tags);
+	const sig = [detail, marks.frequency, marks.meal].filter(Boolean).join('. ');
+	const [count] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count FROM prescription_items WHERE prescription_id = ${rxId}
+	`;
+	await client`
+		INSERT INTO prescription_items (
+			prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
+			frequency, schedule_detail
+		) VALUES (
+			${rxId}, ${title}, ${detail}, 'Oral', ${sig}, ${note}, ${detail}, '0', ${count.count},
+			${completesOn}, ${marks.frequency || null}, ${marks.meal || null}
+		)
+	`;
+}
+
+async function pruneFiledPrescription(consultId: number) {
+	const [consult] = await client<{ patient_id: number }[]>`
+		SELECT patient_id FROM consultations WHERE id = ${consultId}
+	`;
+	if (!consult) return;
+	const [rx] = await client<{ id: number }[]>`
+		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${'RX-' + consultId}
+	`;
+	if (!rx) return;
+	const [left] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count FROM prescription_items WHERE prescription_id = ${rx.id}
+	`;
+	const [photos] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
+	`;
+	if (left.count === 0 && photos.count === 0) {
+		await client`DELETE FROM prescriptions WHERE id = ${rx.id}`;
+		return;
+	}
+	if (left.count === 0 && photos.count > 0) {
+		await client`
+			UPDATE prescriptions SET course_label = 'Photograph of the written prescription' WHERE id = ${rx.id}
+		`;
+	}
+}
+
+export async function dropFiledMedication(consultId: number, title: string) {
+	const [consult] = await client<{ patient_id: number }[]>`
+		SELECT patient_id FROM consultations WHERE id = ${consultId}
+	`;
+	if (!consult) return;
+	const [rx] = await client<{ id: number }[]>`
+		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${'RX-' + consultId}
+	`;
+	if (!rx) return;
+	const [item] = await client<{ id: number }[]>`
+		SELECT id FROM prescription_items
+		WHERE prescription_id = ${rx.id} AND name = ${title}
+		ORDER BY id DESC
+		LIMIT 1
+	`;
+	if (item) await client`DELETE FROM prescription_items WHERE id = ${item.id}`;
+	await pruneFiledPrescription(consultId);
+}
+
+export async function addPrescriptionPhoto(
+	consultId: number,
+	fileName: string,
+	bytes: Buffer,
+	ext: string,
+	contentType: string
+) {
+	const [count] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
+	`;
+	if (count.count >= 6) return { error: 'This consultation already has 6 prescription photos.' as const };
+	const stored = `rx-${consultId}-${Date.now()}.${ext}`;
+	await savePrescriptionPhoto(stored, bytes);
+	try {
+		await client`
+			INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at)
+			VALUES (${consultId}, ${fileName}, ${stored}, ${contentType}, ${nowLocal().stamp})
+		`;
+	} catch (error) {
+		await deletePrescriptionPhoto(stored);
+		throw error;
+	}
+	const [consult] = await client<{ status: string; completes_on: Date | string | null }[]>`
+		SELECT status, completes_on FROM consultations WHERE id = ${consultId}
+	`;
+	if (consult?.status === 'signed') {
+		await consultPrescriptionId(
+			consultId,
+			'Photograph of the written prescription',
+			isoDate(consult.completes_on) || null
+		);
+	}
+	return { saved: true as const };
+}
+
+export async function removePrescriptionPhoto(id: number, consultId: number) {
+	const [row] = await client<{ stored_name: string }[]>`
+		DELETE FROM prescription_photos
+		WHERE id = ${id} AND consultation_id = ${consultId}
+		RETURNING stored_name
+	`;
+	if (!row) return;
+	await deletePrescriptionPhoto(row.stored_name);
+	const [consult] = await client<{ status: string }[]>`
+		SELECT status FROM consultations WHERE id = ${consultId}
+	`;
+	if (consult?.status === 'signed') await pruneFiledPrescription(consultId);
+}
+
+export async function removeConsultOrder(id: number, consultId?: number) {
 	const [order] = await client<{ id: number; kind: string; title: string; consultation_id: number }[]>`
 		SELECT id, kind, title, consultation_id FROM consultation_orders WHERE id = ${id}
 	`;
+	if (!order || (consultId != null && order.consultation_id !== consultId)) return;
 	if (order?.kind === 'referral') {
 		const [referral] = await client`
 			SELECT r.id, r.status, r.note, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
@@ -1741,11 +1978,14 @@ export async function removeConsultOrder(id: number) {
 		}
 	}
 	await client`DELETE FROM patient_tasks WHERE order_id = ${id} AND stored_name IS NULL`;
-	if (order?.kind === 'medication') {
-		const [consult] = await client<{ doctor_id: number }[]>`
-			SELECT doctor_id FROM consultations WHERE id = ${order.consultation_id}
+	if (order.kind === 'medication') {
+		const [consult] = await client<{ doctor_id: number; status: string }[]>`
+			SELECT doctor_id, status FROM consultations WHERE id = ${order.consultation_id}
 		`;
-		if (consult) await releaseMedicineUse(consult.doctor_id, order.title);
+		if (consult) {
+			await releaseMedicineUse(consult.doctor_id, order.title);
+			if (consult.status === 'signed') await dropFiledMedication(order.consultation_id, order.title);
+		}
 	}
 	await client`DELETE FROM consultation_orders WHERE id = ${id}`;
 }
@@ -1802,6 +2042,13 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 				)
 			`;
 		}
+	} else {
+		const [photo] = await client<{ id: number }[]>`
+			SELECT id FROM prescription_photos WHERE consultation_id = ${consultId} LIMIT 1
+		`;
+		if (photo) {
+			await consultPrescriptionId(consultId, 'Photograph of the written prescription', completion);
+		}
 	}
 	for (const order of orders.filter((item) => item.kind === 'test')) {
 		await client`
@@ -1828,7 +2075,10 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 	`;
 	await client`UPDATE consultations SET status = 'signed' WHERE id = ${consultId}`;
 	await client`UPDATE referrals SET status = 'completed' WHERE follow_consult_id = ${consultId}`;
-	return { medications: meds.length };
+	const [photoCount] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
+	`;
+	return { medications: meds.length, photos: photoCount.count };
 }
 
 export async function logVital(patientId: number, systolic: number, diastolic: number, heartRate: number, source: string) {

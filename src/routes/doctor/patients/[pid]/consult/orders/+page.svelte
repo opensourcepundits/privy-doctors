@@ -156,7 +156,7 @@
 					</form>
 				</div>
 			{:else}
-				<p class="text-sm text-[#64748B]">No medications on this order set yet.</p>
+				<p class="text-sm text-[#64748B]">No medications typed yet. Type them in, or upload a photo of the written prescription.</p>
 			{/each}
 			{#if open === 'medication'}
 				<form
@@ -260,6 +260,28 @@
 					<button class="btn" type="submit">Save medication</button>
 				</form>
 			{/if}
+			<div class="space-y-2 border-t border-[#E2E8F0] pt-3">
+				<p class="text-sm font-semibold">Photograph of the written prescription</p>
+				<p class="text-xs text-[#64748B]">Upload a photo instead of typing each medicine.</p>
+				{#each data.photos as photo}
+					<div class="flex items-start justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
+						<a href="/files/prescriptions/{photo.id}" target="_blank" rel="noreferrer">
+							<img class="max-h-48 rounded-lg border border-[#E2E8F0] bg-white object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
+							<span class="mt-1 block text-xs text-[#64748B]">{photo.file_name}</span>
+						</a>
+						<form method="POST" action="?/removePhoto">
+							<input type="hidden" name="id" value={photo.id} />
+							<button class="grid h-8 w-8 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600" type="submit" aria-label="Remove prescription photo">
+								<span class="material-symbols-outlined text-[18px]">delete_outline</span>
+							</button>
+						</form>
+					</div>
+				{/each}
+				<form class="flex flex-wrap items-center gap-2" method="POST" action="?/photo" enctype="multipart/form-data">
+					<input class="text-sm" name="photo" type="file" accept="image/*" required />
+					<button class="btn-sm" type="submit">Upload photo</button>
+				</form>
+			</div>
 			<label class="block text-sm font-semibold" for="rx-complete">
 				Prescription completion date
 				<input

@@ -277,6 +277,15 @@ export const consultationEntries = pgTable('consultation_entries', {
 	detail: text('detail')
 });
 
+export const prescriptionPhotos = pgTable('prescription_photos', {
+	id: serial('id').primaryKey(),
+	consultationId: integer('consultation_id').notNull(),
+	fileName: text('file_name').notNull(),
+	storedName: text('stored_name').notNull(),
+	contentType: text('content_type').notNull(),
+	createdAt: timestamp('created_at').notNull()
+});
+
 export const consultationOrders = pgTable('consultation_orders', {
 	id: serial('id').primaryKey(),
 	consultationId: integer('consultation_id').notNull(),

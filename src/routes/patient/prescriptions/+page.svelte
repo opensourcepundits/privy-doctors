@@ -27,7 +27,7 @@
 		<summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
 			<div class="min-w-0">
 				<p class="font-semibold"><Mention text={order.prescriber} /> · {formatDate(order.ordered_at)}</p>
-				<p class="truncate text-sm text-[#64748B]">{order.items.map((item) => item.name).join(', ')}</p>
+				<p class="truncate text-sm text-[#64748B]">{order.items.length ? order.items.map((item) => item.name).join(', ') : order.photos.length ? 'Photograph of the written prescription' : order.course_label}</p>
 			</div>
 			<span class="flex shrink-0 items-center gap-2">
 				<Badge tone={marker.tone}>{marker.label}</Badge>
@@ -45,6 +45,11 @@
 					{#if item.indication}<p class="text-sm text-[#64748B]">{item.indication}</p>{/if}
 					<p class="mt-1 text-xs text-[#64748B]">{[item.supply_label, item.refills, item.completes_on ? `Completes ${formatDate(item.completes_on)}` : ''].filter(Boolean).join(' · ')}</p>
 				</div>
+			{/each}
+			{#each order.photos as photo}
+				<a class="block overflow-hidden rounded-xl border border-[#E2E8F0] bg-white" href="/files/prescriptions/{photo.id}" target="_blank" rel="noreferrer">
+					<img class="max-h-64 w-full object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
+				</a>
 			{/each}
 		</div>
 	</details>

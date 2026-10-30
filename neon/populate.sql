@@ -649,4 +649,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS patient_tasks_uid_key ON patient_tasks (uid);
 CREATE UNIQUE INDEX IF NOT EXISTS care_orders_uid_key ON care_orders (uid);
 CREATE UNIQUE INDEX IF NOT EXISTS labs_uid_key ON labs (uid);
 
+CREATE TABLE IF NOT EXISTS prescription_photos (
+  id serial PRIMARY KEY,
+  consultation_id integer NOT NULL REFERENCES consultations(id) ON DELETE CASCADE,
+  file_name text NOT NULL,
+  stored_name text NOT NULL,
+  content_type text NOT NULL,
+  created_at timestamp NOT NULL
+);
+
 COMMIT;

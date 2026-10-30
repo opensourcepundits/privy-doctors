@@ -101,11 +101,15 @@
 				tone: order.status === 'completed' ? 'bg-emerald-600' : order.status === 'ceased' ? 'bg-slate-400' : 'bg-sky-700',
 				title: `Order #${order.code}`,
 				meta: [order.prescriber, order.specialty, order.status].filter(Boolean).join(' · '),
-				body: order.items.map((item) => [item.name, item.strength].filter(Boolean).join(' ')).join(' · '),
+				body: order.items.length
+					? order.items.map((item) => [item.name, item.strength].filter(Boolean).join(' ')).join(' · ')
+					: order.photos.length
+						? 'Photograph of the written prescription'
+						: (order.course_label ?? ''),
 				note: [order.facility, order.completes_on ? `Completes ${formatDate(order.completes_on)}` : ''].filter(Boolean).join(' · '),
 				href: `/doctor/patients/${data.patient.pid}/prescriptions/${order.id}`,
 				link: 'Open prescription',
-				image: ''
+				image: order.photos[0] ? `/files/prescriptions/${order.photos[0].id}` : ''
 			} satisfies TimelineEvent;
 		})
 	);
