@@ -14,6 +14,7 @@
 	let frequency = $state('');
 	let meal = $state('');
 	let completesOn = $state('');
+	let photoPicked = $state(false);
 	let loadedId = 0;
 
 	function timesFor(med: { doctors: Record<string, { times: number }> }) {
@@ -227,8 +228,10 @@
 				</form>
 			</div>
 		{:else}
-			<p class="text-sm text-[#64748B]">No photo attached.</p>
+			{#if !photoPicked}
+				<p class="text-sm text-[#64748B]">No photo attached.</p>
+			{/if}
 		{/each}
-		<PrescriptionPhotoField inputId="prescription-photo-edit" />
+		<PrescriptionPhotoField inputId="prescription-photo-edit" bind:selected={photoPicked} />
 	</article>
 </section>

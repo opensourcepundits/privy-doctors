@@ -1,5 +1,5 @@
 <script lang="ts">
-	let { inputId = 'prescription-photo' }: { inputId?: string } = $props();
+	let { inputId = 'prescription-photo', selected = $bindable(false) }: { inputId?: string; selected?: boolean } = $props();
 	let input = $state<HTMLInputElement | null>(null);
 	let preview = $state('');
 	let ready = $state(false);
@@ -46,6 +46,7 @@
 		const file = target.files?.[0];
 		clearPreview();
 		ready = false;
+		selected = false;
 		note = '';
 		if (!file) return;
 		if (!file.type.startsWith('image/')) {
@@ -53,9 +54,11 @@
 			note = 'Choose a JPEG, PNG, or WebP photo.';
 			return;
 		}
+		selected = true;
 		const shrunk = await shrinkPhoto(file);
 		if (!shrunk) {
 			target.value = '';
+			selected = false;
 			note = 'This photo could not be read. Choose a JPEG or PNG.';
 			return;
 		}
@@ -70,6 +73,7 @@
 		if (input) input.value = '';
 		clearPreview();
 		ready = false;
+		selected = false;
 		note = '';
 	}
 </script>
