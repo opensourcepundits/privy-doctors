@@ -1,6 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import { frequencyTags, mealTags } from '#lib/doses';
-import { addConsultOrder, addReferral, draftConsult, finalizeConsult, referralDoctors, removeConsultOrder, setConsultCompletion } from '#lib/server/clinic';
+import { addConsultOrder, addReferral, draftConsult, finalizeConsult, medicinesCatalog, recordMedicineUse, referralDoctors, removeConsultOrder, setConsultCompletion } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
 function completionDate(value: FormDataEntryValue | null) {
@@ -18,17 +18,21 @@ async function context(locals: App.Locals, pid: string) {
 
 export async function load({ parent }) {
 	const { doctor, patient } = await parent();
-	const consult = await draftConsult(patient.id, doctor.id);
-	const doctors = (await referralDoctors()).filter((item) => item.id !== doctor.id);
-	return { doctor, patient, consult, doctors };
+	const [consult, doctors, medicines] = await Promise.all([
+		draftConsult(patient.id, doctor.id),
+		referralDoctors().then((rows) => rows.filter((item) => item.id !== doctor.id)),
+		medicinesCatalog()
+	]);
+	return { doctor, patient, consult, doctors, medicines };
 }
 
 export const actions = {
 	medication: async ({ request, params, locals }) => {
-		const { consult } = await context(locals, params.pid);
+		const { consult, doctor } = await context(locals, params.pid);
 		const data = await request.formData();
 		const title = String(data.get('title') ?? '').trim();
 		const detail = String(data.get('detail') ?? '').trim();
+		const note = String(data.get('note') ?? '').trim();
 		if (!title) return { message: 'Name the medication.' };
 		const completes = completionDate(data.get('completes_on'));
 		if (completes === false) return { message: 'Enter a valid completion date for this medicine.' };
@@ -41,10 +45,11 @@ export const actions = {
 			'medication',
 			title,
 			detail,
-			String(data.get('note') ?? ''),
+			note,
 			completes,
 			[frequency, meal].filter(Boolean).join(' · ')
 		);
+		await recordMedicineUse(doctor.id, doctor.name, title, note);
 		return { saved: true };
 	},
 	referral: async ({ request, params, locals }) => {

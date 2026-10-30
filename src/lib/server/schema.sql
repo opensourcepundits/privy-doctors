@@ -130,6 +130,15 @@ CREATE TABLE prescription_items (
   completes_on date
 );
 
+CREATE TABLE medicines (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  doctors jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX medicines_name_key ON medicines (lower(name));
+
 CREATE TABLE dose_logs (
   id serial PRIMARY KEY,
   patient_id int NOT NULL REFERENCES patients(id),

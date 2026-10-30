@@ -11,6 +11,28 @@
 	let open = $state<'medication' | 'referral' | 'test' | null>(null);
 	let specialist = $state('');
 	let picked = $state<number | null>(null);
+	let medQuery = $state('');
+	let medNote = $state('');
+	let medList = $state(false);
+
+	function timesFor(med: { doctors: Record<string, { times: number }> }) {
+		return med.doctors[String(data.doctor.id)]?.times ?? 0;
+	}
+
+	const medMatches = $derived.by(() => {
+		const needle = medQuery.trim().toLowerCase();
+		if (!needle) return [];
+		return data.medicines
+			.filter((med) => [med.name, med.description].join(' ').toLowerCase().includes(needle))
+			.sort((a, b) => timesFor(b) - timesFor(a) || a.name.localeCompare(b.name))
+			.slice(0, 8);
+	});
+
+	function chooseMedicine(med: (typeof data.medicines)[number]) {
+		medQuery = med.name;
+		if (!medNote.trim() && med.description) medNote = med.description;
+		medList = false;
+	}
 
 	const specialistMatches = $derived.by(() => {
 		const needle = specialist.trim().toLowerCase();
@@ -95,7 +117,20 @@
 				</span>
 				e-Prescription orders
 			</h2>
-			<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'medication' ? null : 'medication')}>
+			<button
+				class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white"
+				type="button"
+				onclick={() => {
+					open = open === 'medication' ? null : 'medication';
+					if (open === 'medication') {
+						medQuery = '';
+						medNote = '';
+						frequency = '';
+						meal = '';
+						medList = false;
+					}
+				}}
+			>
 				<span class="material-symbols-outlined text-base">add</span>
 				Add medication
 			</button>
@@ -132,14 +167,57 @@
 						return async ({ update }) => {
 							frequency = '';
 							meal = '';
+							medQuery = '';
+							medNote = '';
+							medList = false;
 							open = null;
 							await update();
 						};
 					}}
 				>
-					<input class="field" name="title" placeholder="Medication" required />
+					<div class="relative">
+						<input
+							class="field"
+							name="title"
+							placeholder="Medication"
+							required
+							autocomplete="off"
+							role="combobox"
+							aria-autocomplete="list"
+							aria-expanded={medList && medQuery.trim().length > 0}
+							aria-controls="medicine-matches"
+							bind:value={medQuery}
+							oninput={() => (medList = true)}
+							onfocus={() => (medList = true)}
+							onblur={() => (medList = false)}
+						/>
+						{#if medList && medQuery.trim()}
+							<ul id="medicine-matches" class="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#E2E8F0] bg-white shadow-lg" role="listbox">
+								{#each medMatches as med}
+									<li class="border-t border-[#E2E8F0] first:border-t-0">
+										<button
+											class="block w-full px-3 py-2 text-left hover:bg-brand-wash"
+											type="button"
+											role="option"
+											aria-selected="false"
+											onmousedown={(event) => event.preventDefault()}
+											onclick={() => chooseMedicine(med)}
+										>
+											<span class="block text-sm font-semibold">{med.name}</span>
+											{#if med.description}<span class="block text-xs text-[#64748B]">{med.description}</span>{/if}
+											{#if timesFor(med)}
+												<span class="block text-xs text-brand">Prescribed by you {timesFor(med) === 1 ? '1 time' : `${timesFor(med)} times`}</span>
+											{/if}
+										</button>
+									</li>
+								{:else}
+									<li class="px-3 py-2 text-sm text-[#64748B]">No saved medicine matches. This name will be added when you save.</li>
+								{/each}
+							</ul>
+						{/if}
+					</div>
 					<input class="field" name="detail" placeholder="Dose and supply" />
-					<input class="field" name="note" placeholder="Indication" />
+					<input class="field" name="note" placeholder="Indication" bind:value={medNote} />
 					<fieldset>
 						<legend class="text-sm font-semibold">How often</legend>
 						<div class="mt-1 grid gap-1 sm:grid-cols-2">

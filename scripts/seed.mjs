@@ -477,6 +477,48 @@ await rx('RX-82190', 'Dr. Emily Watson, MD', 'Primary Care', 'West End Primary C
 	{ name: 'Lisinopril', strength: '10 mg', form: 'Tablet', frequency: 'Once daily', sig: 'Previously 1 tablet daily.', indication: 'Blood pressure. Switched toward metoprolol.', quantity: 30, supply: 'Discontinued', refills: '0' }
 ]);
 
+const prescribers = Object.fromEntries(
+	(await sql`SELECT id, name FROM doctors WHERE name IN ('Dr. Sarah Jensen', 'Dr. Emily Watson', 'Dr. Marcus Vance')`).map(
+		(row) => [row.name, row.id]
+	)
+);
+
+function usage(name, times) {
+	const id = prescribers[name];
+	if (!id) return {};
+	return { [id]: { name, times } };
+}
+
+const medicines = [
+	['Apixaban (Eliquis)', 'Prevents blood clots and lowers the risk of stroke associated with irregular heart rhythm.', usage('Dr. Sarah Jensen', 1)],
+	['Metoprolol Succinate ER', 'Helps calm the heart, maintain steady heartbeat rhythm, and reduce episodes of sudden palpitations.', usage('Dr. Sarah Jensen', 1)],
+	['Aspirin (Enteric Coated)', 'Protects arteries and maintains smooth blood flow as routine preventive cardiology care.', usage('Dr. Sarah Jensen', 1)],
+	['Atorvastatin Calcium', 'Cholesterol control and LDL plaque stabilization.', usage('Dr. Emily Watson', 1)],
+	['Pantoprazole Sodium', 'Acid reflux management and protection against medication-related gastritis.', usage('Dr. Marcus Vance', 1)],
+	['Lisinopril', 'Blood pressure. Switched toward metoprolol.', usage('Dr. Emily Watson', 1)],
+	['Amlodipine', 'Calcium-channel blocker for blood pressure and angina.', {}],
+	['Losartan', 'Angiotensin receptor blocker for blood pressure and heart protection.', {}],
+	['Hydrochlorothiazide', 'Thiazide diuretic for blood pressure and fluid retention.', {}],
+	['Metformin', 'Lowers blood glucose in type 2 diabetes.', {}],
+	['Levothyroxine', 'Thyroid hormone replacement.', {}],
+	['Omeprazole', 'Proton pump inhibitor for acid reflux.', {}],
+	['Amoxicillin', 'Penicillin antibiotic for bacterial infection.', {}],
+	['Ibuprofen', 'Anti-inflammatory for pain and fever.', {}],
+	['Clopidogrel', 'Antiplatelet agent that lowers clot risk after stenting.', {}],
+	['Furosemide', 'Loop diuretic for fluid overload and heart failure.', {}],
+	['Rosuvastatin', 'Statin for cholesterol lowering.', {}],
+	['Warfarin', 'Anticoagulant for clot prevention when monitored by INR.', {}],
+	['Gabapentin', 'Used for nerve pain and seizure control.', {}],
+	['Sertraline', 'SSRI for depression and anxiety.', {}]
+];
+
+for (const [name, description, doctors] of medicines) {
+	await sql`
+		INSERT INTO medicines (name, description, doctors)
+		VALUES (${name}, ${description}, ${doctors}::jsonb)
+	`;
+}
+
 await sql`
 	INSERT INTO dose_logs (patient_id, item_name, slot, label, status, log_date) VALUES
 	(${ids['PID-4089']}, 'Morning medicines', 'morning', 'Morning 8:00 AM • Done', 'taken', DATE '2024-11-17'),

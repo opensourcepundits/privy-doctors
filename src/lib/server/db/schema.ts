@@ -125,6 +125,13 @@ export const prescriptions = pgTable('prescriptions', {
 	completesOn: date('completes_on')
 });
 
+export const medicines = pgTable('medicines', {
+	id: serial('id').primaryKey(),
+	name: text('name').notNull(),
+	description: text('description').notNull(),
+	doctors: jsonb('doctors').notNull()
+});
+
 export const prescriptionItems = pgTable('prescription_items', {
 	id: serial('id').primaryKey(),
 	prescriptionId: integer('prescription_id').notNull(),

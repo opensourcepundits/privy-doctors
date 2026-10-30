@@ -137,6 +137,15 @@ CREATE TABLE prescription_items (
   completes_on date
 );
 
+CREATE TABLE medicines (
+  id serial PRIMARY KEY,
+  name text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  doctors jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX medicines_name_key ON medicines (lower(name));
+
 CREATE TABLE dose_logs (
   id serial PRIMARY KEY,
   patient_id int NOT NULL REFERENCES patients(id),
@@ -471,6 +480,26 @@ INSERT INTO prescription_items ("id", "prescription_id", "name", "strength", "fo
 INSERT INTO prescription_items ("id", "prescription_id", "name", "strength", "form", "route", "frequency", "sig", "indication", "quantity", "supply_label", "refills", "schedule_slot", "schedule_detail", "remaining_label", "due_label", "sort_order", "completes_on") VALUES (4, 2, 'Atorvastatin Calcium', '20 mg', 'Oral tablet', 'Oral', 'Bedtime', 'Take 1 tablet daily at bedtime.', 'Cholesterol control and LDL plaque stabilization.', 90, '90-day supply', '2 refills left', 'bedtime', 'Daily at bedtime', NULL, NULL, 0, NULL);
 INSERT INTO prescription_items ("id", "prescription_id", "name", "strength", "form", "route", "frequency", "sig", "indication", "quantity", "supply_label", "refills", "schedule_slot", "schedule_detail", "remaining_label", "due_label", "sort_order", "completes_on") VALUES (5, 3, 'Pantoprazole Sodium', '40 mg', 'Delayed-release tablet', 'Oral', 'Once daily', 'Took 1 tablet once daily 30 minutes before the first meal.', 'Acid reflux management and protection against medication-related gastritis.', 30, 'Course finished', '0', NULL, NULL, NULL, NULL, 0, NULL);
 INSERT INTO prescription_items ("id", "prescription_id", "name", "strength", "form", "route", "frequency", "sig", "indication", "quantity", "supply_label", "refills", "schedule_slot", "schedule_detail", "remaining_label", "due_label", "sort_order", "completes_on") VALUES (6, 4, 'Lisinopril', '10 mg', 'Tablet', 'Oral', 'Once daily', 'Previously 1 tablet daily.', 'Blood pressure. Switched toward metoprolol.', 30, 'Discontinued', '0', NULL, NULL, NULL, NULL, 0, NULL);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (1, 'Apixaban (Eliquis)', 'Prevents blood clots and lowers the risk of stroke associated with irregular heart rhythm.', '{"2":{"name":"Dr. Sarah Jensen","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (2, 'Metoprolol Succinate ER', 'Helps calm the heart, maintain steady heartbeat rhythm, and reduce episodes of sudden palpitations.', '{"2":{"name":"Dr. Sarah Jensen","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (3, 'Aspirin (Enteric Coated)', 'Protects arteries and maintains smooth blood flow as routine preventive cardiology care.', '{"2":{"name":"Dr. Sarah Jensen","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (4, 'Atorvastatin Calcium', 'Cholesterol control and LDL plaque stabilization.', '{"7":{"name":"Dr. Emily Watson","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (5, 'Pantoprazole Sodium', 'Acid reflux management and protection against medication-related gastritis.', '{"8":{"name":"Dr. Marcus Vance","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (6, 'Lisinopril', 'Blood pressure. Switched toward metoprolol.', '{"7":{"name":"Dr. Emily Watson","times":1}}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (7, 'Amlodipine', 'Calcium-channel blocker for blood pressure and angina.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (8, 'Losartan', 'Angiotensin receptor blocker for blood pressure and heart protection.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (9, 'Hydrochlorothiazide', 'Thiazide diuretic for blood pressure and fluid retention.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (10, 'Metformin', 'Lowers blood glucose in type 2 diabetes.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (11, 'Levothyroxine', 'Thyroid hormone replacement.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (12, 'Omeprazole', 'Proton pump inhibitor for acid reflux.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (13, 'Amoxicillin', 'Penicillin antibiotic for bacterial infection.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (14, 'Ibuprofen', 'Anti-inflammatory for pain and fever.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (15, 'Clopidogrel', 'Antiplatelet agent that lowers clot risk after stenting.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (16, 'Furosemide', 'Loop diuretic for fluid overload and heart failure.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (17, 'Rosuvastatin', 'Statin for cholesterol lowering.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (18, 'Warfarin', 'Anticoagulant for clot prevention when monitored by INR.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (19, 'Gabapentin', 'Used for nerve pain and seizure control.', '{}'::jsonb);
+INSERT INTO medicines ("id", "name", "description", "doctors") VALUES (20, 'Sertraline', 'SSRI for depression and anxiety.', '{}'::jsonb);
 INSERT INTO dose_logs ("id", "patient_id", "item_name", "slot", "label", "status", "log_date") VALUES (1, 1, 'Morning medicines', 'morning', 'Morning 8:00 AM • Done', 'taken', '2024-11-17');
 INSERT INTO dose_logs ("id", "patient_id", "item_name", "slot", "label", "status", "log_date") VALUES (2, 1, 'Aspirin (Enteric Coated)', 'lunch', 'With lunch 12:30 PM • Done', 'taken', '2024-11-17');
 INSERT INTO dose_logs ("id", "patient_id", "item_name", "slot", "label", "status", "log_date") VALUES (3, 1, 'Apixaban (Eliquis)', 'evening', 'Evening 8:00 PM • Due', 'due', '2024-11-17');
@@ -584,6 +613,7 @@ SELECT setval(pg_get_serial_sequence('invoice_lines', 'id'), GREATEST(COALESCE((
 SELECT setval(pg_get_serial_sequence('invoices', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM invoices), 1), 1));
 SELECT setval(pg_get_serial_sequence('lab_results', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM lab_results), 1), 1));
 SELECT setval(pg_get_serial_sequence('labs', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM labs), 1), 1));
+SELECT setval(pg_get_serial_sequence('medicines', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM medicines), 1), 1));
 SELECT setval(pg_get_serial_sequence('modality_volumes', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM modality_volumes), 1), 1));
 SELECT setval(pg_get_serial_sequence('notifications', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM notifications), 1), 1));
 SELECT setval(pg_get_serial_sequence('patient_access', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM patient_access), 1), 1));

@@ -1477,6 +1477,83 @@ export async function taskFile(id: number) {
 	return task ?? null;
 }
 
+type MedicineDoctor = { name: string; times: number };
+
+function medicineDoctors(value: unknown): Record<string, MedicineDoctor> {
+	let source = value;
+	if (typeof source === 'string') {
+		try {
+			source = JSON.parse(source);
+		} catch {
+			return {};
+		}
+	}
+	if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+	const doctors: Record<string, MedicineDoctor> = {};
+	for (const [id, entry] of Object.entries(source)) {
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+		const row = entry as { name?: unknown; times?: unknown };
+		const times = Number(row.times);
+		doctors[id] = {
+			name: typeof row.name === 'string' ? row.name : '',
+			times: Number.isFinite(times) && times > 0 ? Math.floor(times) : 0
+		};
+	}
+	return doctors;
+}
+
+export async function medicinesCatalog() {
+	const rows = await client<{ id: number; name: string; description: string; doctors: unknown }[]>`
+		SELECT id, name, description, doctors FROM medicines ORDER BY name
+	`;
+	return rows.map((row) => ({
+		id: row.id,
+		name: row.name,
+		description: row.description,
+		doctors: medicineDoctors(row.doctors)
+	}));
+}
+
+async function writeMedicineUse(doctorId: number, doctorName: string, name: string, description: string, delta: 1 | -1) {
+	const label = name.trim();
+	if (!label || !doctorId) return;
+	await client.begin(async (sql) => {
+		const [existing] = await sql<{ id: number; description: string; doctors: unknown }[]>`
+			SELECT id, description, doctors FROM medicines WHERE lower(name) = lower(${label})
+		`;
+		const doctors = medicineDoctors(existing?.doctors);
+		const key = String(doctorId);
+		const next = (doctors[key]?.times ?? 0) + delta;
+		if (next > 0) doctors[key] = { name: doctorName || doctors[key]?.name || '', times: next };
+		else delete doctors[key];
+		const kept = existing?.description?.trim() ? existing.description : description.trim();
+		const usage = JSON.stringify(doctors);
+		const tx = sql as typeof sql & { unsafe: (query: string, args: unknown[]) => Promise<unknown> };
+		if (existing) {
+			await tx.unsafe('UPDATE medicines SET description = $1, doctors = $2::jsonb WHERE id = $3', [
+				kept,
+				usage,
+				existing.id
+			]);
+			return;
+		}
+		if (delta < 0) return;
+		await tx.unsafe('INSERT INTO medicines (name, description, doctors) VALUES ($1, $2, $3::jsonb)', [
+			label,
+			kept,
+			usage
+		]);
+	});
+}
+
+export function recordMedicineUse(doctorId: number, doctorName: string, name: string, description: string) {
+	return writeMedicineUse(doctorId, doctorName, name, description, 1);
+}
+
+export function releaseMedicineUse(doctorId: number, name: string) {
+	return writeMedicineUse(doctorId, '', name, '', -1);
+}
+
 export async function addConsultOrder(
 	consultId: number,
 	kind: string,
@@ -1645,7 +1722,9 @@ export async function startConsultForReferral(referralId: number, doctorId: numb
 }
 
 export async function removeConsultOrder(id: number) {
-	const [order] = await client`SELECT id, kind FROM consultation_orders WHERE id = ${id}`;
+	const [order] = await client<{ id: number; kind: string; title: string; consultation_id: number }[]>`
+		SELECT id, kind, title, consultation_id FROM consultation_orders WHERE id = ${id}
+	`;
 	if (order?.kind === 'referral') {
 		const [referral] = await client`
 			SELECT r.id, r.status, r.note, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
@@ -1662,6 +1741,12 @@ export async function removeConsultOrder(id: number) {
 		}
 	}
 	await client`DELETE FROM patient_tasks WHERE order_id = ${id} AND stored_name IS NULL`;
+	if (order?.kind === 'medication') {
+		const [consult] = await client<{ doctor_id: number }[]>`
+			SELECT doctor_id FROM consultations WHERE id = ${order.consultation_id}
+		`;
+		if (consult) await releaseMedicineUse(consult.doctor_id, order.title);
+	}
 	await client`DELETE FROM consultation_orders WHERE id = ${id}`;
 }
 
