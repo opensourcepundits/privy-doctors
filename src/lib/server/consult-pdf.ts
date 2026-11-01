@@ -1,6 +1,5 @@
-import { doseMarks } from '#lib/doses';
 import { ageOn, formatDate, formatLongDate, formatTime, liveCopy, liveProcedureYear } from '#lib/format';
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 const PAGE_W = 612;
 const PAGE_H = 792;
@@ -65,6 +64,7 @@ export type ReportPrescription = {
 	facility: string;
 	pharmacy: string;
 	course: string;
+	authThrough: string;
 	items: ReportItem[];
 };
 
@@ -215,6 +215,16 @@ function refillLine(value: string) {
 	return /refill/i.test(value) ? value : `Refills ${value}`;
 }
 
+type CardLine = { text: string; bold?: boolean; muted?: boolean; italic?: boolean };
+
+function filled(lines: (CardLine | null | undefined | false)[]) {
+	const kept: CardLine[] = [];
+	for (const line of lines) {
+		if (line?.text.trim()) kept.push(line);
+	}
+	return kept;
+}
+
 function dated(value: Date | string | null) {
 	if (!value) return '';
 	const label = formatDate(value);
@@ -282,10 +292,17 @@ class Letter {
 		const leftWidth = CONTENT - rightWidth - 16;
 		const identity = [clinician.specialty, clinician.credentials, clinician.npi ? `NPI ${clinician.npi}` : ''].filter(Boolean).join('  ·  ');
 		const place = [clinician.location, clinician.phone].filter(Boolean).join('  ·  ');
+		const pack = (value: string, size: number, font: PDFFont, gap: number) =>
+			value.trim()
+				? wrap(pdfText(value), font, size, leftWidth)
+						.filter(Boolean)
+						.slice(0, 2)
+						.map((text) => ({ text, size, font, gap }))
+				: [];
 		const left = [
-			...wrap(pdfText(clinician.practice || 'Privy'), this.bold, 14, leftWidth).slice(0, 2).map((text) => ({ text, size: 14, font: this.bold, gap: 18 })),
-			...wrap(pdfText(identity), this.sans, 9, leftWidth).slice(0, 2).map((text) => ({ text, size: 9, font: this.sans, gap: 13 })),
-			...wrap(pdfText(place), this.sans, 9, leftWidth).slice(0, 2).map((text) => ({ text, size: 9, font: this.sans, gap: 13 }))
+			...pack(clinician.practice || 'Privy', 14, this.bold, 18),
+			...pack(identity, 9, this.sans, 13),
+			...pack(place, 9, this.sans, 13)
 		];
 		const leftHeight = left.reduce((sum, line) => sum + line.gap, 0);
 		const rightHeight = right.reduce((sum, line) => sum + line.gap, 0);
@@ -344,7 +361,7 @@ class Letter {
 	}
 
 	private section(title: string) {
-		this.need(40);
+		this.need(120);
 		this.cursor += 12;
 		const baseline = PAGE_H - this.cursor - 8;
 		this.page.drawRectangle({ x: MARGIN, y: baseline + 2, width: 14, height: 2, color: BRAND });
@@ -379,10 +396,19 @@ class Letter {
 		const allergies = patient.allergies.length ? patient.allergies.join(', ') : 'No known allergies';
 		const allergyAlert = patient.allergies.length > 0;
 		const inner = CONTENT - 28;
+		const column = inner / 2;
 		const nameLines = wrap(pdfText(patient.name), this.bold, 16, inner - 90);
-		const factRows = Math.ceil(facts.length / 2) || 0;
-		const allergyLines = wrap(pdfText(allergies), this.sans, 10, inner);
-		const height = 18 + nameLines.length * 20 + 8 + factRows * 32 + 16 + 12 + allergyLines.length * 13 + 14;
+		const allergyLines = wrap(pdfText(allergies), this.sans, 10, inner - 20);
+		const factRows: { pair: { label: string; value: string }[]; lines: string[][]; height: number }[] = [];
+		for (let index = 0; index < facts.length; index += 2) {
+			const pair = facts.slice(index, index + 2);
+			const lines = pair.map((fact) => wrap(pdfText(fact.value), this.sans, 10, column - 16).slice(0, 3));
+			const height = 24 + Math.max(...lines.map((item) => Math.max(item.length, 1))) * 13;
+			factRows.push({ pair, lines, height });
+		}
+		const factsHeight = factRows.reduce((sum, row) => sum + row.height, 0);
+		const allergyHeight = 36 + allergyLines.length * 13;
+		const height = 18 + nameLines.length * 20 + factsHeight + allergyHeight + 12;
 		this.need(height);
 		const top = PAGE_H - this.cursor;
 		this.page.drawRectangle({
@@ -405,19 +431,19 @@ class Letter {
 			}
 			baseline -= 20;
 		});
-		baseline -= 2;
-		for (let index = 0; index < facts.length; index += 2) {
-			const pair = facts.slice(index, index + 2);
-			pair.forEach((fact, column) => {
-				const x = MARGIN + 16 + column * (inner / 2);
+		baseline -= 4;
+		for (const row of factRows) {
+			row.pair.forEach((fact, columnIndex) => {
+				const x = MARGIN + 16 + columnIndex * column;
 				this.page.drawText(pdfText(fact.label.toUpperCase()), { x, y: baseline, size: 7.5, font: this.bold, color: MUTED });
-				const value = fit(fact.value, this.sans, 10.5, inner / 2 - 12);
-				this.page.drawText(value, { x, y: baseline - 14, size: 10.5, font: this.sans, color: INK });
+				row.lines[columnIndex].forEach((line, lineIndex) => {
+					this.page.drawText(line, { x, y: baseline - 14 - lineIndex * 13, size: 10, font: this.sans, color: INK });
+				});
 			});
-			baseline -= 32;
+			baseline -= row.height;
 		}
-		const barTop = baseline + 6;
-		const barHeight = 12 + allergyLines.length * 13 + 8;
+		const barTop = baseline + 4;
+		const barHeight = allergyHeight - 10;
 		this.page.drawRectangle({
 			x: MARGIN + 12,
 			y: barTop - barHeight,
@@ -542,34 +568,40 @@ class Letter {
 		const kinds = [...new Set(this.report.entries.map((entry) => entry.kind || 'Note'))];
 		kinds.sort((a, b) => (preferred.indexOf(a) < 0 ? 99 : preferred.indexOf(a)) - (preferred.indexOf(b) < 0 ? 99 : preferred.indexOf(b)));
 		for (const kind of kinds) {
+			this.need(84);
 			this.cursor += 4;
 			this.text(kind, MARGIN, 8, this.bold, BRAND, CONTENT);
 			for (const entry of this.report.entries.filter((item) => (item.kind || 'Note') === kind)) {
-				this.card(
-					[
-						{ text: entry.label, bold: true },
-						entry.detail ? { text: entry.detail, muted: true } : null
-					].filter((line): line is { text: string; bold?: boolean; muted?: boolean } => Boolean(line))
-				);
+				this.card(filled([{ text: entry.label, bold: true }, entry.detail ? { text: entry.detail, muted: true } : null]));
 			}
 		}
 	}
 
 	private prescriptions() {
-		this.section('Prescription');
 		const orders = this.report.prescriptions;
-		if (!orders.length && !this.report.medications.length && !this.report.photos.length) {
-			this.text('No prescription was filed with this consultation.', MARGIN, 10.5, this.italic, MUTED, CONTENT);
+		if (!orders.length && !this.report.medications.length) {
+			if (!this.report.photos.length) {
+				this.section('Prescription');
+				this.text('No prescription was filed with this consultation.', MARGIN, 10.5, this.italic, MUTED, CONTENT);
+			}
 			return;
 		}
-		if (!orders.length && this.report.medications.length) {
+		this.section('Prescription');
+		if (!orders.length) {
 			for (const order of this.report.medications) this.lineCard(order);
+			return;
 		}
 		for (const order of orders) {
 			this.need(36);
 			const title = order.code ? `Order ${order.code}` : 'Prescription';
 			this.text(title, MARGIN, 12, this.bold, INK, CONTENT);
-			const meta = [statusLabel(order.status), order.orderedAt ? dated(order.orderedAt) : '', order.orderedAt && this.report.timed ? formatTime(order.orderedAt) : '', order.completesOn ? `Completes ${dated(order.completesOn)}` : '']
+			const meta = [
+				statusLabel(order.status),
+				order.orderedAt ? dated(order.orderedAt) : '',
+				order.orderedAt && this.report.timed ? formatTime(order.orderedAt) : '',
+				order.completesOn ? `Completes ${dated(order.completesOn)}` : '',
+				order.authThrough ? `Authorized through ${order.authThrough}` : ''
+			]
 				.filter(Boolean)
 				.join('  ·  ');
 			if (meta) this.text(meta, MARGIN, 9, this.sans, MUTED, CONTENT);
@@ -597,33 +629,28 @@ class Letter {
 	private itemLines(item: ReportItem) {
 		const title = [item.name, item.strength].filter(Boolean).join(' ');
 		const form = [item.form, item.route, item.frequency].filter(Boolean).join(' · ');
-		const seen = new Set([item.frequency.toLowerCase(), form.toLowerCase()]);
-		const schedule = doseMarks(item)
-			.tags.map((tag) => tag.label)
-			.filter((label) => label && !seen.has(label.toLowerCase()));
 		const supply = [item.quantity != null ? `Dispense ${item.quantity}` : '', item.supply, refillLine(item.refills), item.completesOn ? `Completes ${dated(item.completesOn)}` : '']
 			.filter(Boolean)
 			.join(' · ');
-		const lines = [
+		const schedule = item.scheduleDetail && ![item.sig, item.frequency, form].some((part) => part.toLowerCase().includes(item.scheduleDetail.toLowerCase())) ? item.scheduleDetail : '';
+		return filled([
 			{ text: title || 'Medication', bold: true },
 			form ? { text: form, muted: true } : null,
-			schedule.length ? { text: schedule.join(' · '), muted: true } : null,
 			item.sig ? { text: item.sig, italic: true } : null,
 			item.indication ? { text: item.indication } : null,
-			item.scheduleDetail && item.scheduleDetail !== item.sig ? { text: item.scheduleDetail, muted: true } : null,
+			schedule ? { text: schedule, muted: true } : null,
 			supply ? { text: supply, muted: true } : null
-		];
-		return lines.filter((line): line is { text: string; bold?: boolean; muted?: boolean; italic?: boolean } => Boolean(line));
+		]);
 	}
 
-	private card(lines: { text: string; bold?: boolean; muted?: boolean; italic?: boolean }[]) {
+	private card(lines: CardLine[]) {
 		const inner = CONTENT - 28;
 		const wrapped = lines.flatMap((line) => {
 			const font = line.bold ? this.bold : line.italic ? this.italic : this.sans;
 			const size = line.bold ? 11 : 9.5;
 			return wrap(pdfText(liveCopy(line.text)), font, size, inner).map((text) => ({ ...line, text, font, size }));
 		});
-		const height = 16 + wrapped.reduce((sum, line) => sum + (line.text ? line.size + 4 : 6), 0);
+		const height = 24 + wrapped.reduce((sum, line) => sum + (line.text ? line.size + 4 : 6), 0);
 		this.need(height + 4);
 		if (this.cursor + height > PAGE_H - BOTTOM) {
 			for (const line of lines) this.prose(line.text);
@@ -658,12 +685,12 @@ class Letter {
 
 	private lineCard(line: ReportLine) {
 		this.card(
-			[
+			filled([
 				{ text: line.title, bold: true },
 				line.detail ? { text: line.detail } : null,
 				line.note ? { text: line.note, muted: true } : null,
 				line.meta ? { text: line.meta, muted: true } : null
-			].filter((item): item is { text: string; bold?: boolean; muted?: boolean } => Boolean(item))
+			])
 		);
 	}
 
@@ -722,17 +749,22 @@ class Letter {
 	private referrals() {
 		const visits = this.report.referrals;
 		const orders = this.report.referralOrders;
-		if (!visits.length && !orders.length) return;
 		this.section('Referrals');
+		if (!visits.length && !orders.length) {
+			this.text('No referral was made from this consultation.', MARGIN, 10.5, this.italic, MUTED, CONTENT);
+			return;
+		}
 		for (const referral of visits) {
 			const who = [referral.toSpecialty, referral.toCredentials].filter(Boolean).join(' · ');
 			const when = [statusLabel(referral.status), dated(referral.createdAt), formatTime(referral.createdAt)].filter(Boolean).join(' · ');
-			this.card([
-				{ text: `${referral.fromName} to ${referral.toName}`, bold: true },
-				who ? { text: who, muted: true } : { text: '', muted: true },
-				when ? { text: when, muted: true } : { text: '', muted: true },
-				referral.note ? { text: referral.note } : { text: '', muted: true }
-			].filter((line) => line.text));
+			this.card(
+				filled([
+					{ text: `${referral.fromName} to ${referral.toName}`, bold: true },
+					who ? { text: who, muted: true } : null,
+					when ? { text: when, muted: true } : null,
+					referral.note ? { text: referral.note } : null
+				])
+			);
 		}
 		if (!visits.length) {
 			for (const order of orders) this.lineCard(order);
@@ -760,7 +792,9 @@ class Letter {
 	private signature() {
 		const clinician = this.report.clinician;
 		const name = signedBy(clinician.name, clinician.credentials);
-		const role = [clinician.specialty, clinician.practice].filter(Boolean).join('  ·  ');
+		const practice = clinician.practice;
+		const specialty = clinician.specialty && !practice.toLowerCase().includes(clinician.specialty.toLowerCase()) ? clinician.specialty : '';
+		const role = [specialty, practice].filter(Boolean).join('  ·  ');
 		const when = this.report.timed
 			? `${formatLongDate(this.report.visit.when)} at ${formatTime(this.report.visit.when)}`
 			: formatLongDate(this.report.visit.when);
@@ -804,5 +838,3 @@ class Letter {
 export async function renderConsultationPdf(report: ConsultationReport) {
 	return new Letter().render(report);
 }
-
-export type { PDFImage };
