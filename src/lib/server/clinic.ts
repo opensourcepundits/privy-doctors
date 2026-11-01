@@ -2193,7 +2193,12 @@ function nowLocal() {
 	return { date: stamp.slice(0, 10), stamp };
 }
 
-export async function finalizeConsult(consultId: number, completesOn: string | null) {
+export async function finalizeConsult(
+	consultId: number,
+	completesOn: string | null,
+	charges: { description: string; amount: number }[]
+) {
+	if (!charges.length) return { error: 'Enter the consultation bill.' };
 	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId}`;
 	if (!consult || consult.status !== 'in_session') return;
 	await ensureChartLinks(consult.patient_id);
@@ -2258,7 +2263,7 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 		`;
 	}
 	const [chart] = await client`SELECT insurance_name FROM patients WHERE id = ${consult.patient_id}`;
-	const fee = 80;
+	const fee = Math.round(charges.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
 	const [invoice] = await client`
 		INSERT INTO invoices (patient_id, code, title, issued_on, due_on, status, insurance_note, patient_due)
 		VALUES (
@@ -2267,10 +2272,12 @@ export async function finalizeConsult(consultId: number, completesOn: string | n
 		)
 		RETURNING id
 	`;
-	await client`
-		INSERT INTO invoice_lines (invoice_id, description, amount)
-		VALUES (${invoice.id}, 'Doctor consultation fee', ${fee})
-	`;
+	for (const line of charges) {
+		await client`
+			INSERT INTO invoice_lines (invoice_id, description, amount)
+			VALUES (${invoice.id}, ${line.description}, ${line.amount})
+		`;
+	}
 	await client`UPDATE consultations SET status = 'signed' WHERE id = ${consultId}`;
 	await client`UPDATE referrals SET status = 'completed' WHERE follow_consult_id = ${consultId}`;
 	const [photoCount] = await client<{ count: number }[]>`

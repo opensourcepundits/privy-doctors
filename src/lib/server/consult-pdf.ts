@@ -1,4 +1,4 @@
-import { ageOn, formatDate, formatLongDate, formatTime, liveCopy, liveProcedureYear } from '#lib/format';
+import { ageOn, formatDate, formatLongDate, formatTime, liveCopy, liveProcedureYear, money } from '#lib/format';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 const PAGE_W = 612;
@@ -134,6 +134,13 @@ export type ConsultationReport = {
 		note: string;
 	}[];
 	photos: ReportPhoto[];
+	bill: {
+		code: string;
+		dueOn: Date | string | null;
+		note: string;
+		total: number;
+		lines: { description: string; amount: number }[];
+	} | null;
 };
 
 function pdfText(value: string) {
@@ -253,6 +260,7 @@ class Letter {
 		this.doc.setCreator('Privy');
 		this.pages = [];
 		this.openPage(true);
+		this.bill();
 		this.patient();
 		this.visitFacts();
 		this.clinical();
@@ -377,6 +385,42 @@ class Letter {
 		const y = PAGE_H - this.cursor;
 		this.page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 0.6, color: LINE });
 		this.cursor += 10;
+	}
+
+	private bill() {
+		const bill = this.report.bill;
+		if (!bill || !Number.isFinite(bill.total)) return;
+		this.section('Bill');
+		const caption = [bill.code, bill.dueOn ? `Due ${dated(bill.dueOn)}` : ''].filter(Boolean).join('  ·  ');
+		if (caption) this.text(caption, MARGIN, 9, this.sans, MUTED, CONTENT);
+		const amountWidth = 96;
+		const labelWidth = CONTENT - amountWidth - 12;
+		for (const line of bill.lines) {
+			this.need(18);
+			const y = PAGE_H - this.cursor - 11;
+			this.page.drawText(fit(line.description || 'Charge', this.sans, 11, labelWidth), {
+				x: MARGIN,
+				y,
+				size: 11,
+				font: this.sans,
+				color: INK
+			});
+			const amount = pdfText(money(line.amount));
+			const width = this.sans.widthOfTextAtSize(amount, 11);
+			this.page.drawText(amount, { x: PAGE_W - MARGIN - width, y, size: 11, font: this.sans, color: INK });
+			this.cursor += 18;
+		}
+		this.need(36);
+		const rule = PAGE_H - this.cursor - 4;
+		this.page.drawLine({ start: { x: MARGIN, y: rule }, end: { x: PAGE_W - MARGIN, y: rule }, thickness: 0.8, color: LINE });
+		this.cursor += 18;
+		const totalY = PAGE_H - this.cursor - 12;
+		this.page.drawText('Total', { x: MARGIN, y: totalY, size: 12, font: this.bold, color: INK });
+		const total = pdfText(money(bill.total));
+		const totalWidth = this.bold.widthOfTextAtSize(total, 12);
+		this.page.drawText(total, { x: PAGE_W - MARGIN - totalWidth, y: totalY, size: 12, font: this.bold, color: INK });
+		this.cursor += 18;
+		if (bill.note) this.text(bill.note, MARGIN, 9, this.sans, MUTED, CONTENT);
 	}
 
 	private patient() {

@@ -114,6 +114,38 @@ The demo accounts use the password `clinic-demo`.
 
 The doctor can also open Noor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
 
+## Generated IDs
+
+These are the codes the app prints on charts, orders, bills, PDFs, and QR codes. Each one is created when the record is created.
+
+| Code | Example | When it is created |
+| --- | --- | --- |
+| `PID-` | `PID-1001` | A walk-in chart is registered. The number is one higher than the largest existing `PID-` number. With an empty database the first chart is `PID-1001`. |
+| `ENC-` | `ENC-3` | A consultation is opened. The digits are that patient’s database id, so every consultation for the same patient carries the same `ENC-` code. It is the code on the visit screen and on the PDF. |
+| `VIS-` | `VIS-4` | A signed visit is reopened so its prescription can be edited. The digits are the encounter id. This working copy stays off the history export list. |
+| `CON-` | `CON-A1B2C3` | A consultation is opened. Six random hexadecimal characters. Labs, checklist tasks, and care orders use it to point back at the consultation. |
+| `ORD-` | `ORD-9F03C1` | A medication, referral, or diagnostic is added during a consultation. |
+| `TSK-` | `TSK-44AB10` | That diagnostic is placed on the patient’s checklist. |
+| `CRD-` | `CRD-8810DE` | The consultation is signed and a diagnostic becomes a care order. |
+| `LAB-` | `LAB-C03A19` | A laboratory panel is ordered from the chart. |
+| `RX-` | `RX-12` | The consultation is signed and a prescription is filed. The digits are the consultation’s database id. |
+| `OTC-SELF` | `OTC-SELF` | The patient logs a supplement. Each patient has one list with this code. |
+| `INV-` | `INV-12` | The consultation is signed and the bill is saved. The digits are the consultation’s database id. The PDF prints this bill at the top. |
+| Access code | `K7NP-2Q4M` | The patient generates a code from the profile. Eight letters or digits, shown as four and four. `I`, `O`, `0`, and `1` are left out. It works once and expires in 24 hours. Generating another code replaces it. |
+| Record token | 48 hexadecimal characters | The chart is created. It is the value inside the QR code. |
+
+`CON-`, `ORD-`, `TSK-`, `CRD-`, and `LAB-` are six hexadecimal characters from three random bytes. A seeded row that was stored without one of these ids receives one the first time that chart is opened. That fill-in is `PREFIX-` plus the first six characters of an MD5 of the prefix and the row id, so the same row keeps the same code.
+
+Files stored for uploads use a separate name, built from the record they belong to:
+
+| Stored name | Belongs to |
+| --- | --- |
+| `task-15.pdf` | A checklist result. The number is the task id. |
+| `report-4-1.pdf` | A file attached to a self-report. The first number is the report id and the second is the file’s place in that upload. |
+| `rx-12-1730000000000.jpg` | A photograph of a written prescription. The first number is the consultation id and the second is the time it was saved. |
+
+The demo seed also contains hand-written codes such as `PID-4089`, `RX-88412`, and `INV-2024-1184`. New records follow the table above.
+
 ## Open it on a phone on the same network
 
 The phone and the computer must be on the same Wi-Fi. Start the dev server so it listens on the LAN:

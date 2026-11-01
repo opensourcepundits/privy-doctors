@@ -219,7 +219,44 @@ function reportFrom(
 			createdAt: referral.created_at,
 			note: referral.note ?? ''
 		})),
-		photos: []
+		photos: [],
+		bill: null
+	};
+}
+
+async function billFor(patientId: number, consultId: number | null) {
+	if (!consultId) return null;
+	const [invoice] = await client<
+		{
+			id: number;
+			code: string;
+			due_on: Date | string | null;
+			insurance_note: string | null;
+			patient_due: string | number;
+		}[]
+	>`
+		SELECT id, code, due_on, insurance_note, patient_due
+		FROM invoices
+		WHERE patient_id = ${patientId} AND code = ${'INV-' + consultId}
+		ORDER BY id DESC
+		LIMIT 1
+	`;
+	if (!invoice) return null;
+	const rows = await client<{ description: string; amount: string | number }[]>`
+		SELECT description, amount FROM invoice_lines WHERE invoice_id = ${invoice.id} ORDER BY id
+	`;
+	const lines = rows.flatMap((row) => {
+		const value = amount(row.amount);
+		if (value == null) return [];
+		return [{ description: text(row.description) || 'Charge', amount: value }];
+	});
+	const due = amount(invoice.patient_due);
+	return {
+		code: invoice.code,
+		dueOn: invoice.due_on,
+		note: text(invoice.insurance_note),
+		total: due ?? lines.reduce((sum, line) => sum + line.amount, 0),
+		lines
 	};
 }
 
@@ -260,6 +297,7 @@ async function consultReport(clinician: Clinician, id: number) {
 		timed: true
 	});
 	report.photos = await photosOf(record);
+	report.bill = await billFor(owned.patient_id, owned.id);
 	return report;
 }
 
@@ -306,5 +344,6 @@ async function encounterReport(clinician: Clinician, id: number) {
 		timed: false
 	});
 	report.photos = await photosOf(record);
+	report.bill = await billFor(owned.patient_id, owned.consultation_id);
 	return report;
 }

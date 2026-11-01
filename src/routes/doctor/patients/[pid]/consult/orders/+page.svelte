@@ -5,7 +5,7 @@
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
-	import { formatDate, isoDate } from '#lib/format';
+	import { formatDate, isoDate, money } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -67,6 +67,33 @@
 		loadedId = data.consult.id;
 		completesOn = next;
 	});
+
+	let itemized = $state(false);
+	let billTotal = $state('');
+	let billLines = $state([{ description: '', amount: '' }]);
+	let billReady = false;
+
+	$effect.pre(() => {
+		if (!form || !('billMode' in form) || billReady) return;
+		billReady = true;
+		itemized = form.billMode === 'items';
+		billTotal = typeof form.billTotal === 'string' ? form.billTotal : '';
+		if (!Array.isArray(form.items)) return;
+		const next = form.items.flatMap((item) => {
+			if (!item || typeof item !== 'object') return [];
+			const row = item as { description?: unknown; amount?: unknown };
+			return [{ description: String(row.description ?? ''), amount: String(row.amount ?? '') }];
+		});
+		if (next.length) billLines = next;
+	});
+
+	const itemSum = $derived(
+		billLines.reduce((sum, line) => {
+			const text = line.amount.trim();
+			if (!/^\d+(\.\d{0,2})?$/.test(text)) return sum;
+			return sum + Number(text);
+		}, 0)
+	);
 
 	const meds = $derived(data.consult.orders.filter((order) => order.kind === 'medication'));
 	const referrals = $derived(data.consult.orders.filter((order) => order.kind === 'referral'));
@@ -431,6 +458,54 @@
 			</div>
 		</section>
 	</div>
+
+	<article class="card space-y-3">
+		<div>
+			<h2 class="display text-sm font-bold">Bill</h2>
+			<p class="mt-1 text-xs text-[#64748B]">Enter the total for this consultation. List each charge only when the patient should see a breakdown.</p>
+		</div>
+		<input type="hidden" form="finalize" name="bill_mode" value={itemized ? 'items' : 'total'} />
+		<label class="flex items-center gap-2 text-sm font-semibold">
+			<input type="checkbox" bind:checked={itemized} />
+			List each charge
+		</label>
+		{#if itemized}
+			<div class="space-y-2">
+				{#each billLines as line, index}
+					<div class="grid grid-cols-[minmax(0,1fr)_7.5rem_auto] items-end gap-2">
+						<label class="block text-sm font-semibold">
+							{#if index === 0}Charge <span class="text-red-600" aria-hidden="true">*</span>{/if}
+							<input class="field mt-1" form="finalize" name="item_description" required maxlength="120" aria-label="Charge" bind:value={line.description} placeholder="Consultation fee" />
+						</label>
+						<label class="block text-sm font-semibold">
+							{#if index === 0}Amount <span class="text-red-600" aria-hidden="true">*</span>{/if}
+							<input class="field mt-1" form="finalize" name="item_amount" type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required aria-label="Amount" bind:value={line.amount} placeholder="0.00" />
+						</label>
+						<button
+							class="grid h-10 w-10 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600"
+							type="button"
+							aria-label="Remove charge"
+							onclick={() => {
+								billLines = billLines.filter((_, item) => item !== index);
+								if (!billLines.length) billLines = [{ description: '', amount: '' }];
+							}}
+						>
+							<span class="material-symbols-outlined text-[18px]">close</span>
+						</button>
+					</div>
+				{/each}
+			</div>
+			<div class="flex items-center justify-between gap-3">
+				<button class="btn-sm" type="button" onclick={() => (billLines = [...billLines, { description: '', amount: '' }])}>Add a charge</button>
+				<p class="text-sm font-semibold">Total <span class="nums">{money(itemSum)}</span></p>
+			</div>
+		{:else}
+			<label class="block text-sm font-semibold" for="bill-total">
+				Total <span class="text-red-600" aria-hidden="true">*</span>
+				<input class="field mt-1" id="bill-total" form="finalize" name="bill_total" type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required bind:value={billTotal} placeholder="0.00" />
+			</label>
+		{/if}
+	</article>
 
 	<div class="rounded-2xl border border-[#E2E8F0] bg-white p-4">
 		<div class="mb-3 flex items-center justify-between text-xs">

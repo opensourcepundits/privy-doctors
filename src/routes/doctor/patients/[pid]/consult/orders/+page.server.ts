@@ -11,6 +11,53 @@ function completionDate(value: FormDataEntryValue | null) {
 	return text;
 }
 
+function chargeAmount(value: string) {
+	const text = value.trim().replace(/[$,]/g, '');
+	if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+	const amount = Math.round(Number(text) * 100) / 100;
+	if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000) return null;
+	return amount;
+}
+
+function billDraft(data: FormData) {
+	const descriptions = data.getAll('item_description').map((value) => String(value));
+	const amounts = data.getAll('item_amount').map((value) => String(value));
+	const count = Math.max(descriptions.length, amounts.length);
+	return {
+		billMode: String(data.get('bill_mode') ?? '') === 'items' ? 'items' : 'total',
+		billTotal: String(data.get('bill_total') ?? ''),
+		items: Array.from({ length: count }, (_, index) => ({
+			description: descriptions[index] ?? '',
+			amount: amounts[index] ?? ''
+		}))
+	};
+}
+
+function chargesFrom(data: FormData) {
+	const draft = billDraft(data);
+	if (draft.billMode === 'items') {
+		const filled = draft.items.filter((item) => item.description.trim() || item.amount.trim());
+		if (!filled.length) return { ...draft, error: 'Add at least one charge, or enter only the total.' };
+		if (filled.length > 12) return { ...draft, error: 'Keep the bill to 12 charges.' };
+		const lines: { description: string; amount: number }[] = [];
+		for (const item of filled) {
+			const description = item.description.trim();
+			if (!description || description.length > 120) {
+				return { ...draft, error: 'Name each charge in 120 characters or fewer.' };
+			}
+			const amount = chargeAmount(item.amount);
+			if (amount == null) return { ...draft, error: 'Enter each charge as dollars and cents, such as 80 or 80.00.' };
+			lines.push({ description, amount });
+		}
+		return { ...draft, lines };
+	}
+	const amount = chargeAmount(draft.billTotal);
+	if (amount == null) {
+		return { ...draft, error: 'Enter the consultation total as dollars and cents, such as 80 or 80.00.' };
+	}
+	return { ...draft, lines: [{ description: 'Consultation', amount }] };
+}
+
 async function context(locals: App.Locals, pid: string) {
 	const { doctor, patient } = await requireChart(locals, pid);
 	const consult = await draftConsult(patient.id, doctor.id);
@@ -106,10 +153,13 @@ export const actions = {
 	finalize: async ({ request, params, locals }) => {
 		const { consult, patient } = await context(locals, params.pid);
 		const data = await request.formData();
+		const draft = chargesFrom(data);
 		const completes = completionDate(data.get('completes_on'));
-		if (completes === false) return { message: 'Enter a valid completion date for the prescription.' };
-		const filed = await finalizeConsult(consult.id, completes);
-		if (filed && 'error' in filed) return { message: filed.error, completesOn: completes ?? '' };
+		const kept = { billMode: draft.billMode, billTotal: draft.billTotal, items: draft.items };
+		if (completes === false) return { message: 'Enter a valid completion date for the prescription.', completesOn: '', ...kept };
+		if ('error' in draft) return { message: draft.error, completesOn: completes ?? '', ...kept };
+		const filed = await finalizeConsult(consult.id, completes, draft.lines);
+		if (filed && 'error' in filed) return { message: filed.error, completesOn: completes ?? '', ...kept };
 		const notice = filed?.medications
 			? 'Consultation, prescriptions, and bill saved to this patient record'
 			: filed?.photos
