@@ -34,7 +34,7 @@ CREATE TABLE patients (
   record_token text UNIQUE,
   first_name text NOT NULL,
   last_name text NOT NULL,
-  dob date NOT NULL,
+  dob date,
   sex text NOT NULL,
   blood_type text,
   allergies jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -660,5 +660,7 @@ CREATE TABLE IF NOT EXISTS prescription_photos (
 );
 
 ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea;
+
+ALTER TABLE patients ALTER COLUMN dob DROP NOT NULL;
 
 COMMIT;

@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
-	import { ageOn } from '#lib/format';
+	import { ageLabel } from '#lib/format';
 	import { historyEvents, type HistorySlice } from '#lib/history';
 	import type { PageProps } from './$types';
 
@@ -21,7 +21,7 @@
 
 <header class="px-4 pt-5 lg:px-0">
 	<h1 class="display text-2xl font-bold">Health and medical history</h1>
-	<p class="text-sm">{data.patient.first_name} {data.patient.last_name} · {ageOn(data.patient.dob)} yrs · {data.patient.pid}</p>
+	<p class="text-sm">{[`${data.patient.first_name} ${data.patient.last_name}`, ageLabel(data.patient.dob, 'yrs'), data.patient.pid].filter(Boolean).join(' · ')}</p>
 	<p class="mt-3 max-w-3xl text-sm text-[#64748B]">
 		Conditions: {data.patient.conditions.join(' · ') || 'None filed'}. Allergies: {data.patient.allergies.join(' · ') || 'None filed'}. Blood type {data.patient.blood_type}.
 	</p>

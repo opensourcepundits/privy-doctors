@@ -118,13 +118,23 @@ export function formatTime(value: Date | string) {
 	}).format(toLive(value));
 }
 
-export function ageOn(dob: Date | string, today = liveDay()) {
+export function ageOn(dob: Date | string | null | undefined, today = liveDay()) {
+	if (dob == null || dob === '') return null;
 	const birth = asDate(dob);
+	if (Number.isNaN(birth.getTime())) return null;
 	const now = asDate(today);
 	let age = now.getFullYear() - birth.getFullYear();
 	const month = now.getMonth() - birth.getMonth();
 	if (month < 0 || (month === 0 && now.getDate() < birth.getDate())) age -= 1;
 	return age;
+}
+
+export function ageLabel(dob: Date | string | null | undefined, unit: 'y' | 'years' | 'yrs' = 'y') {
+	const age = ageOn(dob);
+	if (age == null) return '';
+	if (unit === 'years') return `${age} years`;
+	if (unit === 'yrs') return `${age} yrs`;
+	return `${age}y`;
 }
 
 function calendarStamp(value: Date | string) {

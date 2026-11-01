@@ -59,7 +59,6 @@
 	<p class="kicker">{data.patient.pid}</p>
 	<h1 class="display text-2xl font-bold">{data.patient.first_name} {data.patient.last_name}</h1>
 	<p class="text-sm text-[#64748B]">{activeCount} active medications · {past.length} past orders</p>
-	<p class="mt-2 text-sm">{data.patient.pharmacy_name} · {data.patient.pharmacy_address} · {data.patient.pharmacy_phone}</p>
 </header>
 
 <section class="space-y-4 px-4 py-4 lg:px-0">

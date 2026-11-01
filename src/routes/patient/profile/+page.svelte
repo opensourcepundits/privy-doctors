@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ageOn, formatDate, formatTime, initials, liveProcedureYear } from '#lib/format';
+	import { ageLabel, formatDate, formatTime, initials, liveProcedureYear } from '#lib/format';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
 
@@ -14,7 +14,7 @@
 	const raw = $derived({
 		first_name: patient.first_name,
 		last_name: patient.last_name,
-		dob: String(patient.dob).slice(0, 10),
+		dob: patient.dob ? String(patient.dob).slice(0, 10) : '',
 		sex: patient.sex,
 		blood_type: patient.blood_type ?? '',
 		nic: patient.nic ?? '',
@@ -158,7 +158,7 @@
 		</div>
 		<div>
 			<h1 class="display text-2xl font-bold lg:text-3xl">{patient.first_name} {patient.last_name}</h1>
-			<p class="text-sm text-[#64748B]">{ageOn(patient.dob)} years · {patient.sex} · {patient.pid}</p>
+			<p class="text-sm text-[#64748B]">{[ageLabel(patient.dob, 'years'), patient.sex, patient.pid].filter(Boolean).join(' · ')}</p>
 		</div>
 	</div>
 	<div class="mt-4 flex flex-wrap gap-2">

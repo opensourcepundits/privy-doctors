@@ -42,7 +42,7 @@ export const patients = pgTable('patients', {
 	recordToken: text('record_token').unique(),
 	firstName: text('first_name').notNull(),
 	lastName: text('last_name').notNull(),
-	dob: date('dob').notNull(),
+	dob: date('dob'),
 	sex: text('sex').notNull(),
 	bloodType: text('blood_type'),
 	allergies: jsonb('allergies').notNull(),

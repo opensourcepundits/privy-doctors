@@ -90,7 +90,6 @@ export type ConsultationReport = {
 		conditions: string[];
 		surgeries: { year: string; name: string }[];
 		insurance: string;
-		pharmacy: string;
 	};
 	clinician: {
 		name: string;
@@ -390,8 +389,7 @@ class Letter {
 			patient.sex ? { label: 'Sex', value: patient.sex } : null,
 			patient.bloodType ? { label: 'Blood type', value: patient.bloodType } : null,
 			patient.phone ? { label: 'Phone', value: patient.phone } : null,
-			patient.insurance ? { label: 'Insurance', value: patient.insurance } : null,
-			patient.pharmacy ? { label: 'Preferred pharmacy', value: patient.pharmacy } : null
+			patient.insurance ? { label: 'Insurance', value: patient.insurance } : null
 		].filter((fact): fact is { label: string; value: string } => Boolean(fact));
 		const allergies = patient.allergies.length ? patient.allergies.join(', ') : 'No known allergies';
 		const allergyAlert = patient.allergies.length > 0;
@@ -499,7 +497,6 @@ class Letter {
 			visit.kind ? { label: 'Visit', value: visit.kind } : null,
 			visit.doctor ? { label: 'Clinician', value: [visit.doctor, visit.role].filter(Boolean).join(' · ') } : null,
 			visit.location || visit.practice ? { label: 'Where', value: [visit.practice, visit.location].filter(Boolean).join(' · ') } : null,
-			visit.pharmacy ? { label: 'Pharmacy for this visit', value: visit.pharmacy } : null,
 			visit.completesOn ? { label: 'Course completes', value: dated(visit.completesOn) } : null
 		].filter((fact): fact is { label: string; value: string } => Boolean(fact));
 		if (!facts.length) return;
@@ -607,7 +604,7 @@ class Letter {
 			if (meta) this.text(meta, MARGIN, 9, this.sans, MUTED, CONTENT);
 			const who = [order.prescriber, order.specialty].filter(Boolean).join(' · ');
 			if (who) this.text(who, MARGIN, 10, this.sans, INK, CONTENT);
-			const where = [order.facility, order.pharmacy].filter(Boolean).join(' · ');
+			const where = order.facility;
 			if (where) this.text(where, MARGIN, 10, this.sans, MUTED, CONTENT);
 			const course = order.course.trim();
 			if (course && course !== 'Signed during consultation') this.prose(course);

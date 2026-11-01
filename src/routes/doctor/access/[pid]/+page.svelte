@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ageOn } from '#lib/format';
+	import { ageLabel } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -9,7 +9,7 @@
 <header class="px-4 pt-6 lg:px-0">
 	<p class="kicker">Record locked</p>
 	<h1 class="display text-2xl font-bold lg:text-3xl">{patient.first_name} {patient.last_name}</h1>
-	<p class="text-sm text-[#64748B]">{patient.pid} · {ageOn(patient.dob)} years · {patient.sex}</p>
+	<p class="text-sm text-[#64748B]">{[patient.pid, ageLabel(patient.dob, 'years'), patient.sex].filter(Boolean).join(' · ')}</p>
 </header>
 
 <section class="mx-4 max-w-xl py-4 lg:mx-0">

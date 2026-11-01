@@ -25,7 +25,6 @@
 		<p class="mt-2 font-semibold"><Mention text={order.prescriber} /></p>
 		<p>{order.specialty} · NPI on file for e-sign</p>
 		<p class="mt-2">{order.facility}</p>
-		{#if order.pharmacy}<p>{order.pharmacy}</p>{/if}
 		{#if order.course_label}<p class="mt-2 text-[#64748B]">{liveCopy(order.course_label)}</p>{/if}
 	</article>
 	{#each order.photos as photo}

@@ -3,7 +3,7 @@
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { CLINIC_DAY, ageOn, dayRelation, formatLongDate, formatTime, initials } from '#lib/format';
+	import { CLINIC_DAY, ageLabel, dayRelation, formatLongDate, formatTime, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -66,7 +66,7 @@
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="flex items-start justify-between gap-2">
-								<h3 class="font-semibold">{visit.first_name} {visit.last_name}, {ageOn(visit.dob)}y</h3>
+								<h3 class="font-semibold">{visit.first_name} {visit.last_name}{ageLabel(visit.dob) ? `, ${ageLabel(visit.dob)}` : ''}</h3>
 								<span class="nums text-sm font-semibold text-brand">{formatTime(visit.starts_at)}</span>
 							</div>
 							<p class="text-sm font-medium text-[#0F172A]">{visit.title}</p>

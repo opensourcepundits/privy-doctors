@@ -13,14 +13,13 @@
 	$effect.pre(() => {
 		if (loadedCode === data.consult.code) return;
 		loadedCode = data.consult.code;
-		modality = data.consult.modality || 'in_person';
+		modality = data.consult.modality === 'telehealth' ? 'telehealth' : 'in_person';
 		narrative = data.consult.narrative ?? '';
 	});
 
 	const modes = [
 		['in_person', 'In-Person', 'stethoscope'],
-		['telehealth', 'Telehealth', 'videocam'],
-		['follow_up', 'Follow-up', 'history']
+		['telehealth', 'Telehealth', 'videocam']
 	] as const;
 
 	const chips = ['Symptom', 'Vital Sign', 'Observation'] as const;
@@ -58,7 +57,15 @@
 			<span class="rounded-full border border-[#E2E8F0] bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-medium text-[#64748B]">{data.consult.code}</span>
 		</div>
 		<p class="mt-1 text-xs font-medium text-[#64748B]">
-			Age {ageOn(data.patient.dob)} · {data.patient.sex} · DOB {formatDate(data.patient.dob)}{data.patient.nic ? ` · NIC ${data.patient.nic}` : ''}{data.patient.passport ? ` · Passport ${data.patient.passport}` : ''}
+			{[
+				data.patient.dob ? `Age ${ageOn(data.patient.dob)}` : '',
+				data.patient.sex,
+				data.patient.dob ? `DOB ${formatDate(data.patient.dob)}` : '',
+				data.patient.nic ? `NIC ${data.patient.nic}` : '',
+				data.patient.passport ? `Passport ${data.patient.passport}` : ''
+			]
+				.filter(Boolean)
+				.join(' · ')}
 		</p>
 		{#if data.referral}
 			<p class="mt-3 rounded-xl bg-brand-wash px-3 py-2 text-sm">
@@ -66,7 +73,7 @@
 				{#if data.referral.note}<span class="text-[#64748B]"> {data.referral.note}</span>{/if}
 			</p>
 		{/if}
-		<div class="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-[#F1F5F9] p-1 text-center text-xs">
+		<div class="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-[#F1F5F9] p-1 text-center text-xs">
 			{#each modes as [value, label, icon]}
 				<label class="flex cursor-pointer items-center justify-center gap-1 rounded-lg px-1 py-2 text-[11px] sm:text-xs {modality === value ? 'border border-[#E2E8F0] bg-white font-semibold text-brand shadow-sm' : 'text-[#64748B]'}">
 					<input class="sr-only" type="radio" name="modality" value={value} form="continue" checked={modality === value} onchange={() => (modality = value)} />

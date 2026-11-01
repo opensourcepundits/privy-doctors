@@ -64,10 +64,6 @@ function insuranceOf(patient: PatientRow) {
 		.join(' · ');
 }
 
-function pharmacyOf(patient: PatientRow) {
-	return [patient.pharmacy_name, patient.pharmacy_address, patient.pharmacy_phone].filter(Boolean).join(' · ');
-}
-
 function surgeriesOf(value: unknown) {
 	if (!Array.isArray(value)) return [];
 	return value.flatMap((item) => {
@@ -175,8 +171,7 @@ function reportFrom(
 			allergies: strings(patient.allergies),
 			conditions: strings(patient.conditions),
 			surgeries: surgeriesOf(patient.surgeries),
-			insurance: insuranceOf(patient),
-			pharmacy: pharmacyOf(patient)
+			insurance: insuranceOf(patient)
 		},
 		clinician: {
 			name: clinician.name,

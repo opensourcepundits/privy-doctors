@@ -3,7 +3,7 @@
 	import TaskChecklist from '#lib/components/TaskChecklist.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
-	import { ageOn, formatDate } from '#lib/format';
+	import { ageLabel, formatDate } from '#lib/format';
 	import { historyEvents, type HistorySlice, type TimelineEvent } from '#lib/history';
 	import type { PageProps } from './$types';
 
@@ -128,14 +128,21 @@
 		</div>
 		<div>
 			<h1 class="display text-2xl font-bold">{data.patient.first_name} {data.patient.last_name}</h1>
-			<p class="text-sm text-[#64748B]">{data.patient.pid} · {ageOn(data.patient.dob)}y · {data.patient.sex}{#if data.patient.blood_type} · Blood {data.patient.blood_type}{/if}{#if data.patient.nic} · NIC {data.patient.nic}{/if}{#if data.patient.passport} · Passport {data.patient.passport}{/if}</p>
+			<p class="text-sm text-[#64748B]">{[
+				data.patient.pid,
+				ageLabel(data.patient.dob),
+				data.patient.sex,
+				data.patient.blood_type ? `Blood ${data.patient.blood_type}` : '',
+				data.patient.nic ? `NIC ${data.patient.nic}` : '',
+				data.patient.passport ? `Passport ${data.patient.passport}` : ''
+			].filter(Boolean).join(' · ')}</p>
 		</div>
 	</div>
 	<a class="btn mt-4" href="/doctor/patients/{data.patient.pid}/consult">
 		<span class="material-symbols-outlined text-lg">play_arrow</span>
 		Start consultation
 	</a>
-	<p class="mt-3 text-sm">DOB {formatDate(data.patient.dob)}</p>
+	{#if data.patient.dob}<p class="mt-3 text-sm">DOB {formatDate(data.patient.dob)}</p>{/if}
 	{#if data.patient.allergies.length}
 		<p class="mt-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-700">Critical allergies: {data.patient.allergies.join(', ')}</p>
 	{/if}

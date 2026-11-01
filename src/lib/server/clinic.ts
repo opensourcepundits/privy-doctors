@@ -14,7 +14,7 @@ export type PatientRow = {
 	record_token: string | null;
 	first_name: string;
 	last_name: string;
-	dob: Date;
+	dob: Date | null;
 	sex: string;
 	blood_type: string | null;
 	allergies: string[];
@@ -125,7 +125,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 		if (field === 'dob') {
 			if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) return { error: 'Enter a valid date of birth.' };
 			if (value < '1900-01-01' || value > liveDay()) return { error: 'Enter a date of birth on or before today.' };
-			const current = String(patient.dob).slice(0, 10);
+			const current = patient.dob ? String(patient.dob).slice(0, 10) : '';
 			if (value === current) return { error: 'That is already on file.' };
 			await client`UPDATE patients SET dob = ${value} WHERE id = ${patientId}`;
 			return { ok: true as const };
@@ -578,6 +578,18 @@ export async function taskVisits(patientId: number) {
 	}));
 }
 
+let optionalDob: Promise<void> | null = null;
+
+function ensureOptionalDob() {
+	optionalDob ??= client`ALTER TABLE patients ALTER COLUMN dob DROP NOT NULL`
+		.then(() => undefined)
+		.catch((error) => {
+			optionalDob = null;
+			throw error;
+		});
+	return optionalDob;
+}
+
 export async function createWalkInPatient(
 	doctorId: number,
 	input: {
@@ -590,6 +602,7 @@ export async function createWalkInPatient(
 		passport: string;
 	}
 ) {
+	await ensureOptionalDob();
 	const recordToken = randomBytes(24).toString('hex');
 	const [patient] = await client`
 		INSERT INTO patients (
@@ -605,7 +618,7 @@ export async function createWalkInPatient(
 			${recordToken},
 			${input.firstName},
 			${input.lastName},
-			${input.dob},
+			${input.dob || null},
 			${input.sex},
 			${input.phone || null},
 			${input.nic || null},
@@ -1814,7 +1827,7 @@ export type IncomingReferral = {
 	pid: string;
 	first_name: string;
 	last_name: string;
-	dob: Date | string;
+	dob: Date | string | null;
 	sex: string;
 	from_name: string;
 	from_id: number;

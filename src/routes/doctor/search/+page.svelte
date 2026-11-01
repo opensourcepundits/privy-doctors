@@ -1,7 +1,7 @@
 <script lang="ts">
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { ageOn, initials } from '#lib/format';
+	import { ageLabel, initials } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -54,28 +54,28 @@
 	<form class="card mx-4 mt-4 space-y-3 lg:mx-0 lg:max-w-xl" method="POST" action="?intent=consult&/register">
 		<div>
 			<h2 class="display text-base font-bold">New patient</h2>
-			<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit. Enter a NIC, a passport number, or both.</p>
+			<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit. Fields marked with a red asterisk are required.</p>
 		</div>
 		{#if form?.message && form?.offerNew}
 			<p class="text-sm text-red-600">{form.message}</p>
 		{/if}
 		<div class="grid gap-3 sm:grid-cols-2">
 			<label class="block text-sm font-semibold" for="first-name">
-				First name
+				First name <span class="text-red-600" aria-hidden="true">*</span>
 				<input class="field mt-1" id="first-name" name="first_name" required autocomplete="off" value={form?.firstName ?? ''} />
 			</label>
 			<label class="block text-sm font-semibold" for="last-name">
-				Last name
+				Last name <span class="text-red-600" aria-hidden="true">*</span>
 				<input class="field mt-1" id="last-name" name="last_name" required autocomplete="off" value={form?.lastName ?? ''} />
 			</label>
 		</div>
 		<div class="grid gap-3 sm:grid-cols-2">
 			<label class="block text-sm font-semibold" for="dob">
 				Date of birth
-				<input class="field mt-1" id="dob" name="dob" type="date" required value={form?.dob ?? ''} />
+				<input class="field mt-1" id="dob" name="dob" type="date" value={form?.dob ?? ''} />
 			</label>
 			<label class="block text-sm font-semibold" for="sex">
-				Sex
+				Sex <span class="text-red-600" aria-hidden="true">*</span>
 				<select class="field mt-1" id="sex" name="sex" required>
 					<option value="" selected={!form?.sex}>Select</option>
 					<option value="Female" selected={form?.sex === 'Female'}>Female</option>
@@ -92,8 +92,8 @@
 			<input class="field mt-1" id="passport" name="passport" autocomplete="off" value={form?.passport ?? ''} placeholder="Passport number" />
 		</label>
 		<label class="block text-sm font-semibold" for="phone">
-			Phone
-			<input class="field mt-1" id="phone" name="phone" type="tel" autocomplete="off" value={form?.phone ?? ''} placeholder="Optional" />
+			Phone <span class="text-red-600" aria-hidden="true">*</span>
+			<input class="field mt-1" id="phone" name="phone" type="tel" required autocomplete="off" value={form?.phone ?? ''} />
 		</label>
 		<button class="btn btn-block" type="submit">
 			<span class="material-symbols-outlined text-lg">person_add</span>
@@ -134,7 +134,7 @@
 					</div>
 					<div class="min-w-0">
 						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
-						<p class="text-sm text-[#64748B]">{ageOn(patient.dob)}y · {patient.sex} · {patient.pid}</p>
+						<p class="text-sm text-[#64748B]">{[ageLabel(patient.dob), patient.sex, patient.pid].filter(Boolean).join(' · ')}</p>
 						<p class="text-sm">{identity(patient)}</p>
 					</div>
 				</div>
@@ -181,7 +181,7 @@
 					</div>
 					<div>
 						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
-						<p class="text-sm text-[#64748B]">{patient.pid} • {ageOn(patient.dob)}y • {patient.sex}</p>
+						<p class="text-sm text-[#64748B]">{[patient.pid, ageLabel(patient.dob), patient.sex].filter(Boolean).join(' • ')}</p>
 						{#if patient.access === 'granted'}
 							{#if patient.nic || patient.passport}
 								<p class="text-sm text-[#64748B]">{patient.nic ? `NIC ${patient.nic}` : ''}{patient.nic && patient.passport ? ' · ' : ''}{patient.passport ? `Passport ${patient.passport}` : ''}</p>

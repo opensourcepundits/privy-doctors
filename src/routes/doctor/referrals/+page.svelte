@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Mention from '#lib/components/Mention.svelte';
-	import { ageOn, formatDate } from '#lib/format';
+	import { ageLabel, formatDate } from '#lib/format';
 	import type { IncomingReferral } from '#lib/server/clinic';
 	import type { PageProps } from './$types';
 
@@ -38,7 +38,7 @@
 							<div class="flex items-start justify-between gap-3">
 								<div class="min-w-0">
 									<h3 class="font-semibold">{referral.first_name} {referral.last_name}</h3>
-									<p class="text-sm text-[#64748B]">{referral.pid} · {ageOn(referral.dob)}y · {referral.sex}</p>
+									<p class="text-sm text-[#64748B]">{[referral.pid, ageLabel(referral.dob), referral.sex].filter(Boolean).join(' · ')}</p>
 								</div>
 								<p class="shrink-0 text-xs text-[#64748B]">{formatDate(referral.created_at)}</p>
 							</div>

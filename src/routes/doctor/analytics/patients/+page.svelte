@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ageOn, initials } from '#lib/format';
+	import { ageLabel, initials } from '#lib/format';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
 
@@ -35,7 +35,7 @@
 					</div>
 					<div class="min-w-0">
 						<p class="font-semibold">{patient.first_name} {patient.last_name}</p>
-						<p class="text-sm text-[#64748B]">{ageOn(patient.dob)}y · {patient.sex} · {patient.pid}</p>
+						<p class="text-sm text-[#64748B]">{[ageLabel(patient.dob), patient.sex, patient.pid].filter(Boolean).join(' · ')}</p>
 					</div>
 				</div>
 				{#if patient.conditions.length}

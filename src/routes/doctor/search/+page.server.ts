@@ -1,4 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { liveDay } from '#lib/format';
 import { createWalkInPatient, doctorForUser, draftConsult, patientByPid, requestChartAccess, searchPatients, type PatientRow } from '#lib/server/clinic';
 
 const sexes = ['Female', 'Male'] as const;
@@ -95,16 +96,16 @@ export const actions = {
 		const entered = { offerNew: true, firstName, lastName, dob, sex, phone, nic, passport, name: `${firstName} ${lastName}`.trim() };
 
 		if (!firstName || !lastName) return fail(400, { ...entered, message: 'Enter a first and last name.' });
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob))) {
-			return fail(400, { ...entered, message: 'Enter a valid date of birth.' });
+		if (dob && (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || dob < '1900-01-01' || dob > liveDay())) {
+			return fail(400, { ...entered, message: 'Enter a valid date of birth on or before today.' });
 		}
 		if (!sexes.includes(sex as (typeof sexes)[number])) {
 			return fail(400, { ...entered, message: 'Choose Female or Male.' });
 		}
-		const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
-		if (!nic && !passport) {
-			return fail(400, { ...entered, message: 'Enter a NIC or a passport number.' });
+		if (!phone || phone.length > 40 || !/^[+0-9()\-.\s]+$/.test(phone)) {
+			return fail(400, { ...entered, message: 'Enter a phone number using digits, spaces, and + ( ) - .' });
 		}
+		const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
 		if (nic && !identity.test(nic)) {
 			return fail(400, { ...entered, message: 'Enter a NIC using letters and numbers.' });
 		}
