@@ -104,13 +104,15 @@ npm run db:setup
 
 ## Sign in
 
+Patients sign in at `/login` and create an account at `/register`. Doctors sign in at `/doctors/login`. Doctor accounts are added after verification. There is no doctor registration page.
+
 The demo accounts use the password `clinic-demo`.
 
-| Portal | Email | Button on the sign-in page |
+| Portal | Page | Email |
 | --- | --- | --- |
-| General practitioner | `irfan.ameerudden@clinica.privata` | Continue as Dr. Irfan Ameerudden |
-| Patient | `noor.yadallee@clinica.privata` | Continue as Noor Yadallee |
-| Cardiologist | `sarah.jensen@clinica.privata` | Continue as Dr. Sarah Jensen, cardiologist |
+| Patient | `/login` | `noor.yadallee@clinica.privata` |
+| General practitioner | `/doctors/login` | `irfan.ameerudden@clinica.privata` |
+| Cardiologist | `/doctors/login` | `sarah.jensen@clinica.privata` |
 
 The doctor can also open Noor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
 
@@ -121,20 +123,17 @@ These are the codes the app prints on charts, orders, bills, PDFs, and QR codes.
 | Code | Example | When it is created |
 | --- | --- | --- |
 | `PID-` | `PID-1001` | A walk-in chart is registered. The number is one higher than the largest existing `PID-` number. With an empty database the first chart is `PID-1001`. |
-| `ENC-` | `ENC-3` | A consultation is opened. The digits are that patient’s database id, so every consultation for the same patient carries the same `ENC-` code. It is the code on the visit screen and on the PDF. |
-| `VIS-` | `VIS-4` | A signed visit is reopened so its prescription can be edited. The digits are the encounter id. This working copy stays off the history export list. |
-| `CON-` | `CON-A1B2C3` | A consultation is opened. Six random hexadecimal characters. Labs, checklist tasks, and care orders use it to point back at the consultation. |
-| `ORD-` | `ORD-9F03C1` | A medication, referral, or diagnostic is added during a consultation. |
-| `TSK-` | `TSK-44AB10` | That diagnostic is placed on the patient’s checklist. |
-| `CRD-` | `CRD-8810DE` | The consultation is signed and a diagnostic becomes a care order. |
-| `LAB-` | `LAB-C03A19` | A laboratory panel is ordered from the chart. |
-| `RX-` | `RX-12` | The consultation is signed and a prescription is filed. The digits are the consultation’s database id. |
+| `CON-` | `CON-2-4089-4` | A consultation is opened. The numbers are the doctor id, the chart number from the patient’s `PID-`, and the consultation id. This is the code on the visit screen and on the PDF. A signed visit reopened only so its prescription can be edited gets a `CON-` code too, and that working copy stays off the history export list. |
+| `ORD-` | `ORD-2-4089-27` | A medication, referral, or diagnostic is added during a consultation. The last number is the order id. |
+| `TSK-` | `TSK-2-4089-30` | That diagnostic is placed on the patient’s checklist. The last number is the task id. |
+| `LAB-` | `LAB-2-4089-8` | A laboratory panel is ordered from the chart. The last number is the lab id. |
+| `RX-` | `RX-2-4089-4` | The consultation is signed and a prescription is filed. The last number is the consultation id. |
 | `OTC-SELF` | `OTC-SELF` | The patient logs a supplement. Each patient has one list with this code. |
-| `INV-` | `INV-12` | The consultation is signed and the bill is saved. The digits are the consultation’s database id. The PDF prints this bill at the top. |
+| `INV-` | `INV-2-4089-4` | The consultation is signed and the bill is saved. The last number is the consultation id. The PDF prints this bill at the top. |
 | Access code | `K7NP-2Q4M` | The patient generates a code from the profile. Eight letters or digits, shown as four and four. `I`, `O`, `0`, and `1` are left out. It works once and expires in 24 hours. Generating another code replaces it. |
 | Record token | 48 hexadecimal characters | The chart is created. It is the value inside the QR code. |
 
-`CON-`, `ORD-`, `TSK-`, `CRD-`, and `LAB-` are six hexadecimal characters from three random bytes. A seeded row that was stored without one of these ids receives one the first time that chart is opened. That fill-in is `PREFIX-` plus the first six characters of an MD5 of the prefix and the row id, so the same row keeps the same code.
+`CON-`, `ORD-`, `TSK-`, `LAB-`, `RX-`, and `INV-` share one shape: the prefix, the doctor’s id, the digits of the patient’s `PID-`, then the record id. `RX-` and `INV-` use the consultation id, because that is how the prescription and the bill point at the visit. A row stored with an older generated code receives this form the first time a chart is opened.
 
 Files stored for uploads use a separate name, built from the record they belong to:
 

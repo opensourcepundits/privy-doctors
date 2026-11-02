@@ -2,10 +2,10 @@ import { redirect } from '@sveltejs/kit';
 import { clinicianDirectory, doctorForUser, incomingReferrals, notificationsFor, openConsultsForDoctor } from '#lib/server/clinic';
 
 export async function load({ locals }) {
-	if (!locals.user) redirect(303, '/login');
+	if (!locals.user) redirect(303, '/doctors/login');
 	if (locals.user.role !== 'doctor') redirect(303, '/patient');
 	const doctor = await doctorForUser(locals.user.id);
-	if (!doctor) redirect(303, '/login');
+	if (!doctor) redirect(303, '/doctors/login');
 	const [directory, incoming, openConsults, notifications] = await Promise.all([
 		clinicianDirectory(),
 		incomingReferrals(doctor.id),

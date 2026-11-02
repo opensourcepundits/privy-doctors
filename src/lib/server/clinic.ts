@@ -631,6 +631,54 @@ export async function createWalkInPatient(
 	return patient;
 }
 
+export async function registerPatient(input: {
+	email: string;
+	passwordHash: string;
+	firstName: string;
+	lastName: string;
+	sex: string;
+	dob: string;
+	phone: string;
+}) {
+	await ensureOptionalDob();
+	const recordToken = randomBytes(24).toString('hex');
+	try {
+		return await client.begin(async (sql) => {
+			const [user] = await sql<{ id: number }[]>`
+				INSERT INTO users (email, password_hash, role, name)
+				VALUES (${input.email}, ${input.passwordHash}, 'patient', ${`${input.firstName} ${input.lastName}`})
+				RETURNING id
+			`;
+			await sql`
+				INSERT INTO patients (
+					user_id, pid, record_token, first_name, last_name, dob, sex, phone, concierge_note
+				)
+				VALUES (
+					${user.id},
+					(
+						SELECT 'PID-' || (COALESCE(MAX(CAST(SUBSTRING(pid FROM 5) AS int)), 1000) + 1)
+						FROM patients
+						WHERE pid ~ '^PID-[0-9]+$'
+					),
+					${recordToken},
+					${input.firstName},
+					${input.lastName},
+					${input.dob || null},
+					${input.sex},
+					${input.phone || null},
+					'Registered from the patient portal.'
+				)
+			`;
+			return { userId: user.id as number };
+		});
+	} catch (error) {
+		if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+			return { error: 'An account already uses that email.' };
+		}
+		throw error;
+	}
+}
+
 export async function searchPatients(doctorId: number, query: string) {
 	const q = `%${query.trim()}%`;
 	return client<(PatientRow & { access: string })[]>`
@@ -762,9 +810,11 @@ async function prescriptionsOnVisit(patientId: number, day: string, doctorName: 
 
 async function photosByPatient(patientId: number) {
 	return client<{ id: number; file_name: string; content_type: string; code: string }[]>`
-		SELECT ph.id, ph.file_name, ph.content_type, ('RX-' || ph.consultation_id::text) AS code
+		SELECT ph.id, ph.file_name, ph.content_type,
+			('RX-' || c.doctor_id::text || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id::text) AS code
 		FROM prescription_photos ph
 		JOIN consultations c ON c.id = ph.consultation_id
+		JOIN patients p ON p.id = c.patient_id
 		WHERE c.patient_id = ${patientId}
 		ORDER BY ph.id
 	`;
@@ -1284,6 +1334,7 @@ export type ConsultHistoryItem = {
 };
 
 export async function consultHistory(doctorId: number) {
+	await migrateChartCodes();
 	const consults = await client<
 		{
 			id: number;
@@ -1302,7 +1353,7 @@ export async function consultHistory(doctorId: number) {
 		JOIN doctors d ON d.id = c.doctor_id
 		WHERE c.doctor_id = ${doctorId}
 		  AND c.status = 'signed'
-		  AND c.code NOT LIKE 'VIS-%'
+		  AND c.edit_copy = false
 		  AND EXISTS (
 			SELECT 1 FROM patient_access a
 			WHERE a.patient_id = c.patient_id AND a.doctor_id = ${doctorId} AND a.status = 'granted'
@@ -1332,7 +1383,7 @@ export async function consultHistory(doctorId: number) {
 				WHERE c.id = e.consultation_id
 				  AND c.doctor_id = ${doctorId}
 				  AND c.status = 'signed'
-				  AND c.code NOT LIKE 'VIS-%'
+				  AND c.edit_copy = false
 			)
 		  )
 		  AND EXISTS (
@@ -1413,6 +1464,7 @@ export async function cancelConsult(consultId: number, doctorId: number) {
 }
 
 export async function draftConsult(patientId: number, doctorId: number) {
+	await migrateChartCodes();
 	await ensureChartLinks(patientId);
 	let [consult] = await client`
 		SELECT * FROM consultations
@@ -1430,12 +1482,16 @@ export async function draftConsult(patientId: number, doctorId: number) {
 		if (refreshed) consult = refreshed;
 	}
 	if (!consult) {
+		const [created] = await client<{ id: number }[]>`
+			INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at, edit_copy)
+			VALUES (${patientId}, ${doctorId}, 'pending', 'in_session', 'in_person', '', NULL, NOW(), false)
+			RETURNING id
+		`;
+		const pid = await patientPid(patientId);
+		if (!pid) throw new Error('Patient not found.');
+		const code = chartCode('CON', doctorId, pid, created.id);
 		[consult] = await client`
-			INSERT INTO consultations (patient_id, doctor_id, code, uid, status, modality, narrative, pharmacy, started_at)
-			VALUES (
-				${patientId}, ${doctorId}, ${'ENC-' + patientId}, ${recordUid('CON')}, 'in_session', 'in_person', '',
-				NULL, NOW()
-			)
+			UPDATE consultations SET code = ${code}, uid = ${code} WHERE id = ${created.id}
 			RETURNING *
 		`;
 	}
@@ -1477,9 +1533,11 @@ export async function setConsultCompletion(consultId: number, completesOn: strin
 
 export async function setFiledCompletion(consultId: number, completesOn: string | null) {
 	await client`UPDATE consultations SET completes_on = ${completesOn} WHERE id = ${consultId}`;
+	const code = await chartCodeForConsult('RX', consultId);
+	if (!code) return;
 	await client`
 		UPDATE prescriptions SET completes_on = ${completesOn}
-		WHERE code = ${'RX-' + consultId}
+		WHERE code = ${code}
 	`;
 }
 
@@ -1507,8 +1565,25 @@ export async function clinicianById(id: number) {
 	return { ...doctor, hours, bookable: hours.length > 0 };
 }
 
-function recordUid(prefix: string) {
-	return `${prefix}-${randomBytes(3).toString('hex').toUpperCase()}`;
+function chartCode(prefix: string, doctorId: number, pid: string, rowId: number) {
+	const chart = pid.replace(/^PID-/, '');
+	return `${prefix}-${doctorId}-${chart}-${rowId}`;
+}
+
+async function patientPid(patientId: number) {
+	const [patient] = await client<{ pid: string }[]>`SELECT pid FROM patients WHERE id = ${patientId}`;
+	return patient?.pid ?? null;
+}
+
+export async function chartCodeForConsult(prefix: string, consultId: number) {
+	const [row] = await client<{ doctor_id: number; pid: string }[]>`
+		SELECT c.doctor_id, p.pid
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE c.id = ${consultId}
+	`;
+	if (!row) return null;
+	return chartCode(prefix, row.doctor_id, row.pid, consultId);
 }
 
 function linkWords(value: string) {
@@ -1535,12 +1610,160 @@ function doctorNamed(orderedBy: string, doctorName: string) {
 	return Boolean(last && last.length > 2 && orderedBy.toLowerCase().includes(last));
 }
 
+let chartCodesReady: Promise<void> | null = null;
+
+async function applyChartCodes() {
+	await client`ALTER TABLE consultations ADD COLUMN IF NOT EXISTS edit_copy boolean NOT NULL DEFAULT false`;
+	await client`UPDATE consultations SET edit_copy = true WHERE code LIKE 'VIS-%' AND edit_copy = false`;
+	await client`
+		UPDATE care_orders co
+		SET consultation_uid = 'CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE co.consultation_uid = c.uid
+		  AND c.uid IS NOT NULL
+		  AND c.uid !~ '^CON-[0-9]+-[0-9]+-[0-9]+$'
+	`;
+	await client`
+		UPDATE labs l
+		SET consultation_uid = 'CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE l.consultation_uid = c.uid
+		  AND c.uid IS NOT NULL
+		  AND c.uid !~ '^CON-[0-9]+-[0-9]+-[0-9]+$'
+	`;
+	await client`
+		UPDATE patient_tasks t
+		SET order_uid = 'ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		JOIN patients p ON p.id = c.patient_id
+		WHERE t.order_id = o.id
+		  AND (
+			o.uid IS NULL
+			OR o.uid !~ '^ORD-[0-9]+-[0-9]+-[0-9]+$'
+			OR t.order_uid IS DISTINCT FROM ('ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id)
+		  )
+	`;
+	await client`
+		UPDATE patient_tasks t
+		SET order_uid = 'ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		JOIN patients p ON p.id = c.patient_id
+		WHERE t.order_id IS NULL
+		  AND t.order_uid = o.uid
+		  AND o.uid IS NOT NULL
+		  AND o.uid !~ '^ORD-[0-9]+-[0-9]+-[0-9]+$'
+	`;
+	await client`
+		UPDATE care_orders co
+		SET order_uid = 'ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		JOIN patients p ON p.id = c.patient_id
+		WHERE co.order_uid = o.uid
+		  AND o.uid IS NOT NULL
+		  AND o.uid !~ '^ORD-[0-9]+-[0-9]+-[0-9]+$'
+	`;
+	await client`
+		UPDATE labs l
+		SET order_uid = 'ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		JOIN patients p ON p.id = c.patient_id
+		WHERE l.order_uid = o.uid
+		  AND o.uid IS NOT NULL
+		  AND o.uid !~ '^ORD-[0-9]+-[0-9]+-[0-9]+$'
+	`;
+	await client`
+		UPDATE consultations c
+		SET uid = 'CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id,
+			code = 'CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id
+		FROM patients p
+		WHERE p.id = c.patient_id
+		  AND (
+			c.uid IS NULL
+			OR c.uid IS DISTINCT FROM ('CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id)
+			OR c.code IS DISTINCT FROM ('CON-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id)
+		  )
+	`;
+	await client`
+		UPDATE consultation_orders o
+		SET uid = 'ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE o.consultation_id = c.id
+		  AND (
+			o.uid IS NULL
+			OR o.uid IS DISTINCT FROM ('ORD-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || o.id)
+		  )
+	`;
+	await client`
+		UPDATE patient_tasks t
+		SET uid = 'TSK-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || t.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE t.consultation_id = c.id
+		  AND (
+			t.uid IS NULL
+			OR t.uid IS DISTINCT FROM ('TSK-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || t.id)
+		  )
+	`;
+	await client`
+		UPDATE labs l
+		SET uid = 'LAB-' || COALESCE(
+			(
+				SELECT d.id FROM doctors d
+				WHERE l.ordering_md ILIKE d.name || '%'
+				ORDER BY length(d.name) DESC
+				LIMIT 1
+			),
+			p.primary_doctor_id
+		) || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || l.id
+		FROM patients p
+		WHERE l.patient_id = p.id
+		  AND COALESCE(
+			(
+				SELECT d.id FROM doctors d
+				WHERE l.ordering_md ILIKE d.name || '%'
+				ORDER BY length(d.name) DESC
+				LIMIT 1
+			),
+			p.primary_doctor_id
+		  ) IS NOT NULL
+		  AND (l.uid IS NULL OR l.uid !~ '^LAB-[0-9]+-[0-9]+-[0-9]+$')
+	`;
+	await client`
+		UPDATE prescriptions rx
+		SET code = 'RX-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE rx.patient_id = c.patient_id
+		  AND rx.code = 'RX-' || c.id::text
+	`;
+	await client`
+		UPDATE invoices i
+		SET code = 'INV-' || c.doctor_id || '-' || regexp_replace(p.pid, '^PID-', '') || '-' || c.id
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE i.patient_id = c.patient_id
+		  AND i.code = 'INV-' || c.id::text
+	`;
+	await client`UPDATE care_orders SET uid = NULL WHERE uid IS NOT NULL`;
+}
+
+export function migrateChartCodes() {
+	chartCodesReady ??= applyChartCodes().catch((error) => {
+		chartCodesReady = null;
+		throw error;
+	});
+	return chartCodesReady;
+}
+
 async function fillRecordUids() {
-	await client`UPDATE consultations SET uid = 'CON-' || upper(substr(md5('CON' || id::text), 1, 6)) WHERE uid IS NULL`;
-	await client`UPDATE consultation_orders SET uid = 'ORD-' || upper(substr(md5('ORD' || id::text), 1, 6)) WHERE uid IS NULL`;
-	await client`UPDATE patient_tasks SET uid = 'TSK-' || upper(substr(md5('TSK' || id::text), 1, 6)) WHERE uid IS NULL`;
-	await client`UPDATE care_orders SET uid = 'CRD-' || upper(substr(md5('CRD' || id::text), 1, 6)) WHERE uid IS NULL`;
-	await client`UPDATE labs SET uid = 'LAB-' || upper(substr(md5('LAB' || id::text), 1, 6)) WHERE uid IS NULL`;
+	await migrateChartCodes();
 }
 
 export async function ensureChartLinks(patientId: number, taskId?: number, fileName?: string) {
@@ -1598,10 +1821,24 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 	}
 	for (const order of orders) {
 		if (taken.has(order.id)) continue;
-		await client`
-			INSERT INTO patient_tasks (patient_id, consultation_id, uid, order_id, order_uid, title, status)
-			VALUES (${patientId}, ${order.consultation_id}, ${recordUid('TSK')}, ${order.id}, ${order.uid}, ${order.title}, 'open')
+		const [link] = await client<{ doctor_id: number; pid: string }[]>`
+			SELECT c.doctor_id, p.pid
+			FROM consultations c
+			JOIN patients p ON p.id = c.patient_id
+			WHERE c.id = ${order.consultation_id}
 		`;
+		const [task] = await client<{ id: number }[]>`
+			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, status)
+			VALUES (${patientId}, ${order.consultation_id}, ${order.id}, ${order.uid}, ${order.title}, 'open')
+			RETURNING id
+		`;
+		if (link) {
+			await client`
+				UPDATE patient_tasks
+				SET uid = ${chartCode('TSK', link.doctor_id, link.pid, task.id)}
+				WHERE id = ${task.id}
+			`;
+		}
 		taken.add(order.id);
 	}
 	const consults = await client<{ id: number; uid: string; name: string }[]>`
@@ -1773,29 +2010,40 @@ export async function addConsultOrder(
 	completesOn: string | null = null,
 	tags = ''
 ) {
-	const orderUid = recordUid('ORD');
-	const [order] = await client`
-		INSERT INTO consultation_orders (consultation_id, uid, kind, title, detail, note, completes_on, tags)
-		VALUES (${consultId}, ${orderUid}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn}, ${tags || null})
+	const [order] = await client<{ id: number }[]>`
+		INSERT INTO consultation_orders (consultation_id, kind, title, detail, note, completes_on, tags)
+		VALUES (${consultId}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn}, ${tags || null})
 		RETURNING id
 	`;
+	const [consult] = await client<{ patient_id: number; doctor_id: number; uid: string | null; pid: string }[]>`
+		SELECT c.patient_id, c.doctor_id, c.uid, p.pid
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE c.id = ${consultId}
+	`;
+	if (!consult) return;
+	const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
+	await client`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
 	const label = title.trim();
 	if (kind === 'test' && label) {
-		const [consult] = await client`SELECT patient_id, uid FROM consultations WHERE id = ${consultId}`;
-		if (consult) {
+		const [task] = await client<{ id: number }[]>`
+			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, detail, note, status)
+			VALUES (${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid}, ${label}, ${detail}, ${note}, 'open')
+			RETURNING id
+		`;
+		await client`
+			UPDATE patient_tasks
+			SET uid = ${chartCode('TSK', consult.doctor_id, consult.pid, task.id)}
+			WHERE id = ${task.id}
+		`;
+		if (consult.uid) {
 			await client`
-				INSERT INTO patient_tasks (patient_id, consultation_id, uid, order_id, order_uid, title, detail, note, status)
-				VALUES (${consult.patient_id}, ${consultId}, ${recordUid('TSK')}, ${order.id}, ${orderUid}, ${label}, ${detail}, ${note}, 'open')
+				UPDATE care_orders
+				SET consultation_uid = ${consult.uid}, order_uid = ${orderUid}
+				WHERE patient_id = ${consult.patient_id}
+				  AND consultation_uid IS NULL
+				  AND title = ${label}
 			`;
-			if (consult.uid) {
-				await client`
-					UPDATE care_orders
-					SET consultation_uid = ${consult.uid}, order_uid = ${orderUid}
-					WHERE patient_id = ${consult.patient_id}
-					  AND consultation_uid IS NULL
-					  AND title = ${label}
-				`;
-			}
 		}
 	}
 }
@@ -1932,6 +2180,7 @@ export async function startConsultForReferral(referralId: number, doctorId: numb
 }
 
 export async function consultForEncounterEdit(patientId: number, encounterId: number, doctorId: number) {
+	await migrateChartCodes();
 	const [visit] = await client<{
 		id: number;
 		consultation_id: number | null;
@@ -1955,16 +2204,20 @@ export async function consultForEncounterEdit(patientId: number, encounterId: nu
 		if (existing?.status === 'signed' && existing.doctor_id === doctorId) return { consultId: existing.id };
 		if (existing) return { error: 'Only the doctor who signed this consultation can edit the prescription.' as const };
 	}
-	const [consult] = await client<{ id: number }[]>`
-		INSERT INTO consultations (patient_id, doctor_id, code, uid, status, modality, narrative, pharmacy, started_at)
+	const [created] = await client<{ id: number }[]>`
+		INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at, edit_copy)
 		VALUES (
-			${patientId}, ${doctorId}, ${'VIS-' + visit.id}, ${recordUid('CON')}, 'signed', 'in_person',
-			${visit.findings ?? ''}, NULL, ${visit.occurred_on}
+			${patientId}, ${doctorId}, 'pending', 'signed', 'in_person',
+			${visit.findings ?? ''}, NULL, ${visit.occurred_on}, true
 		)
 		RETURNING id
 	`;
-	await client`UPDATE encounters SET consultation_id = ${consult.id} WHERE id = ${visit.id}`;
-	return { consultId: consult.id };
+	const pid = await patientPid(patientId);
+	if (!pid) throw new Error('Patient not found.');
+	const code = chartCode('CON', doctorId, pid, created.id);
+	await client`UPDATE consultations SET code = ${code}, uid = ${code} WHERE id = ${created.id}`;
+	await client`UPDATE encounters SET consultation_id = ${created.id} WHERE id = ${visit.id}`;
+	return { consultId: created.id };
 }
 
 export async function consultForChart(patientId: number, consultId: number) {
@@ -1999,9 +2252,14 @@ export async function prescriptionPhotoAccess(id: number) {
 }
 
 async function consultPrescriptionId(consultId: number, course: string, completesOn: string | null) {
-	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId}`;
+	const [consult] = await client<{ patient_id: number; doctor_id: number; pid: string }[]>`
+		SELECT c.patient_id, c.doctor_id, p.pid
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		WHERE c.id = ${consultId}
+	`;
 	if (!consult) return null;
-	const code = `RX-${consultId}`;
+	const code = chartCode('RX', consult.doctor_id, consult.pid, consultId);
 	const [existing] = await client<{ id: number }[]>`
 		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${code}
 	`;
@@ -2068,8 +2326,10 @@ async function pruneFiledPrescription(consultId: number) {
 		SELECT patient_id FROM consultations WHERE id = ${consultId}
 	`;
 	if (!consult) return;
+	const code = await chartCodeForConsult('RX', consultId);
+	if (!code) return;
 	const [rx] = await client<{ id: number }[]>`
-		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${'RX-' + consultId}
+		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${code}
 	`;
 	if (!rx) return;
 	const [left] = await client<{ count: number }[]>`
@@ -2094,8 +2354,10 @@ export async function dropFiledMedication(consultId: number, title: string) {
 		SELECT patient_id FROM consultations WHERE id = ${consultId}
 	`;
 	if (!consult) return;
+	const code = await chartCodeForConsult('RX', consultId);
+	if (!code) return;
 	const [rx] = await client<{ id: number }[]>`
-		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${'RX-' + consultId}
+		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${code}
 	`;
 	if (!rx) return;
 	const [item] = await client<{ id: number }[]>`
@@ -2212,6 +2474,12 @@ export async function finalizeConsult(
 		await client`UPDATE consultations SET completes_on = ${completion} WHERE id = ${consultId}`;
 	}
 	const [doctor] = await client`SELECT * FROM doctors WHERE id = ${consult.doctor_id}`;
+	const [chart] = await client<{ pid: string; insurance_name: string | null }[]>`
+		SELECT pid, insurance_name FROM patients WHERE id = ${consult.patient_id}
+	`;
+	if (!chart) throw new Error('Patient not found.');
+	const rxCode = chartCode('RX', Number(consult.doctor_id), chart.pid, Number(consult.id));
+	const billCode = chartCode('INV', Number(consult.doctor_id), chart.pid, Number(consult.id));
 	const { date, stamp } = nowLocal();
 	await client`
 		INSERT INTO encounters (patient_id, doctor_name, doctor_role, practice, occurred_on, kind, focus, findings, plan, location, status, consultation_id)
@@ -2227,7 +2495,7 @@ export async function finalizeConsult(
 				patient_id, code, prescriber, specialty, facility, pharmacy, ordered_at, status, course_label, completes_on
 			)
 			VALUES (
-				${consult.patient_id}, ${'RX-' + consult.id}, ${doctor.name}, ${doctor.specialty},
+				${consult.patient_id}, ${rxCode}, ${doctor.name}, ${doctor.specialty},
 				${doctor.location}, NULL, ${stamp}, 'active', 'Signed during consultation', ${completion}
 			)
 			RETURNING id
@@ -2255,19 +2523,18 @@ export async function finalizeConsult(
 	}
 	for (const order of orders.filter((item) => item.kind === 'test')) {
 		await client`
-			INSERT INTO care_orders (patient_id, uid, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
+			INSERT INTO care_orders (patient_id, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
 			VALUES (
-				${consult.patient_id}, ${recordUid('CRD')}, ${consult.uid}, ${order.uid}, 'diagnostic', ${order.title}, ${doctor.name}, ${order.detail},
+				${consult.patient_id}, ${consult.uid}, ${order.uid}, 'diagnostic', ${order.title}, ${doctor.name}, ${order.detail},
 				${'Ordered ' + formatDate(date)}, ${order.note}
 			)
 		`;
 	}
-	const [chart] = await client`SELECT insurance_name FROM patients WHERE id = ${consult.patient_id}`;
 	const fee = Math.round(charges.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
 	const [invoice] = await client`
 		INSERT INTO invoices (patient_id, code, title, issued_on, due_on, status, insurance_note, patient_due)
 		VALUES (
-			${consult.patient_id}, ${'INV-' + consult.id}, 'Clinic consultation', ${date}, ${addDays(date, 30)},
+			${consult.patient_id}, ${billCode}, 'Clinic consultation', ${date}, ${addDays(date, 30)},
 			'pending', ${chart?.insurance_name ? `Billed to ${chart.insurance_name}` : 'Due from the patient'}, ${fee}
 		)
 		RETURNING id
@@ -2348,11 +2615,16 @@ export async function acknowledgeLab(id: number, patientId: number) {
 	`;
 }
 
-export async function orderLab(patientId: number, name: string, facility: string, orderingMd: string) {
-	await client`
-		INSERT INTO labs (patient_id, uid, name, category, status, facility, ordering_md, acknowledged)
-		VALUES (${patientId}, ${recordUid('LAB')}, ${name}, 'Ordered', 'pending', ${facility}, ${orderingMd}, false)
+export async function orderLab(patientId: number, doctorId: number, name: string, facility: string, orderingMd: string) {
+	await migrateChartCodes();
+	const [lab] = await client<{ id: number }[]>`
+		INSERT INTO labs (patient_id, name, category, status, facility, ordering_md, acknowledged)
+		VALUES (${patientId}, ${name}, 'Ordered', 'pending', ${facility}, ${orderingMd}, false)
+		RETURNING id
 	`;
+	const pid = await patientPid(patientId);
+	if (!pid) throw new Error('Patient not found.');
+	await client`UPDATE labs SET uid = ${chartCode('LAB', doctorId, pid, lab.id)} WHERE id = ${lab.id}`;
 	await ensureChartLinks(patientId);
 }
 

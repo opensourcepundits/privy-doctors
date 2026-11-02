@@ -22,7 +22,7 @@ export async function load({ params, parent }) {
 
 export const actions = {
 	request: async ({ params, locals }) => {
-		if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+		if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 		const doctor = await doctorForUser(locals.user.id);
 		const patient = await patientByPid(params.pid);
 		if (!doctor || !patient) error(404, 'Record not found');

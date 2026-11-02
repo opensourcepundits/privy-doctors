@@ -27,7 +27,7 @@ export const actions = {
 		const facility = String(data.get('facility') ?? '').trim();
 		if (!name) return { message: 'Name the laboratory panel.' };
 		const orderedBy = `${doctor.name}, ${doctor.credentials}`;
-		await orderLab(patient.id, name, facility || 'Quest Diagnostics', orderedBy);
+		await orderLab(patient.id, doctor.id, name, facility || 'Quest Diagnostics', orderedBy);
 		redirect(303, `/doctor/patients/${params.pid}?tab=labs&notice=${encodeURIComponent('Laboratory order saved')}`);
 	}
 };

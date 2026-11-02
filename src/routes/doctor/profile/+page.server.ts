@@ -2,9 +2,9 @@ import { fail, redirect } from '@sveltejs/kit';
 import { doctorForUser, doctorSchedule, removeAvailability, setDayAvailability, updateDoctorProfile } from '#lib/server/clinic';
 
 async function requireDoctor(locals: App.Locals) {
-	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 	const doctor = await doctorForUser(locals.user.id);
-	if (!doctor) redirect(303, '/login');
+	if (!doctor) redirect(303, '/doctors/login');
 	return doctor;
 }
 

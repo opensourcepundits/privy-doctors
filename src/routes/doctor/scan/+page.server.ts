@@ -2,9 +2,9 @@ import { fail, redirect } from '@sveltejs/kit';
 import { doctorForUser, redeemAccessCode, redeemRecordToken } from '#lib/server/clinic';
 
 async function doctor(locals: App.Locals) {
-	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 	const row = await doctorForUser(locals.user.id);
-	if (!row) redirect(303, '/login');
+	if (!row) redirect(303, '/doctors/login');
 	return row;
 }
 

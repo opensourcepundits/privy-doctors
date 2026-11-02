@@ -5,7 +5,7 @@ import { createWalkInPatient, doctorForUser, draftConsult, patientByPid, request
 const sexes = ['Female', 'Male'] as const;
 
 function doctorFrom(locals: App.Locals) {
-	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 	return doctorForUser(locals.user.id);
 }
 
@@ -57,7 +57,7 @@ async function openOrAsk(doctorId: number, pid: string) {
 export const actions = {
 	start: async ({ request, locals }) => {
 		const doctor = await doctorFrom(locals);
-		if (!doctor) redirect(303, '/login');
+		if (!doctor) redirect(303, '/doctors/login');
 
 		const data = await request.formData();
 		const pid = String(data.get('pid') ?? '').trim();
@@ -71,7 +71,7 @@ export const actions = {
 	},
 	request: async ({ request, locals }) => {
 		const doctor = await doctorFrom(locals);
-		if (!doctor) redirect(303, '/login');
+		if (!doctor) redirect(303, '/doctors/login');
 		const data = await request.formData();
 		const pid = String(data.get('pid') ?? '').trim();
 		if (!pid) return fail(400, { message: 'Select a registered patient.' });
@@ -83,7 +83,7 @@ export const actions = {
 	},
 	register: async ({ request, locals }) => {
 		const doctor = await doctorFrom(locals);
-		if (!doctor) redirect(303, '/login');
+		if (!doctor) redirect(303, '/doctors/login');
 
 		const data = await request.formData();
 		const firstName = String(data.get('first_name') ?? '').trim();

@@ -8,11 +8,11 @@
 	let modality = $state('in_person');
 	let kind = $state('Vital Sign');
 	let narrative = $state('');
-	let loadedCode = '';
+	let loadedId = 0;
 
 	$effect.pre(() => {
-		if (loadedCode === data.consult.code) return;
-		loadedCode = data.consult.code;
+		if (loadedId === data.consult.id) return;
+		loadedId = data.consult.id;
 		modality = data.consult.modality === 'telehealth' ? 'telehealth' : 'in_person';
 		narrative = data.consult.narrative ?? '';
 	});

@@ -7,9 +7,9 @@ export function load() {
 
 export const actions = {
 	cancel: async ({ request, locals }) => {
-		if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+		if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 		const doctor = await doctorForUser(locals.user.id);
-		if (!doctor) redirect(303, '/login');
+		if (!doctor) redirect(303, '/doctors/login');
 		const data = await request.formData();
 		const id = Number(data.get('id'));
 		const raw = String(data.get('return') ?? '');

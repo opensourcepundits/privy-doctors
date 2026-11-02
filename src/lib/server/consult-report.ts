@@ -1,5 +1,7 @@
 import { formatDate } from '#lib/format';
 import {
+	chartCodeForConsult,
+	migrateChartCodes,
 	patientByPid,
 	prescriptionPhotoBytes,
 	visitByConsult,
@@ -226,6 +228,8 @@ function reportFrom(
 
 async function billFor(patientId: number, consultId: number | null) {
 	if (!consultId) return null;
+	const code = await chartCodeForConsult('INV', consultId);
+	if (!code) return null;
 	const [invoice] = await client<
 		{
 			id: number;
@@ -237,7 +241,7 @@ async function billFor(patientId: number, consultId: number | null) {
 	>`
 		SELECT id, code, due_on, insurance_note, patient_due
 		FROM invoices
-		WHERE patient_id = ${patientId} AND code = ${'INV-' + consultId}
+		WHERE patient_id = ${patientId} AND code = ${code}
 		ORDER BY id DESC
 		LIMIT 1
 	`;
@@ -261,6 +265,7 @@ async function billFor(patientId: number, consultId: number | null) {
 }
 
 export async function loadConsultationReport(clinician: Clinician, kind: string, rawId: string): Promise<ConsultationReport | null> {
+	await migrateChartCodes();
 	const id = Number(rawId);
 	if (!Number.isInteger(id) || id <= 0) return null;
 	if (kind === 'consult') return consultReport(clinician, id);
@@ -278,7 +283,7 @@ async function consultReport(clinician: Clinician, id: number) {
 		WHERE c.id = ${id}
 		  AND c.doctor_id = ${clinician.id}
 		  AND c.status = 'signed'
-		  AND c.code NOT LIKE 'VIS-%'
+		  AND c.edit_copy = false
 		  AND EXISTS (
 			SELECT 1 FROM patient_access a
 			WHERE a.patient_id = c.patient_id AND a.doctor_id = ${clinician.id} AND a.status = 'granted'
@@ -316,7 +321,7 @@ async function encounterReport(clinician: Clinician, id: number) {
 				WHERE c.id = e.consultation_id
 				  AND c.doctor_id = ${clinician.id}
 				  AND c.status = 'signed'
-				  AND c.code NOT LIKE 'VIS-%'
+				  AND c.edit_copy = false
 			)
 		  )
 		  AND EXISTS (

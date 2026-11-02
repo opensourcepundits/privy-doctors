@@ -18,9 +18,9 @@ async function clinicSchedule(locals: App.Locals) {
 }
 
 async function reply(request: Request, locals: App.Locals, action: 'accept' | 'decline' | 'reschedule') {
-	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/login');
+	if (!locals.user || locals.user.role !== 'doctor') redirect(303, '/doctors/login');
 	const doctor = await doctorForUser(locals.user.id);
-	if (!doctor) redirect(303, '/login');
+	if (!doctor) redirect(303, '/doctors/login');
 	const data = await request.formData();
 	const result = await respondToAppointment(doctor.id, Number(data.get('id')), action, {
 		note: String(data.get('note') ?? ''),

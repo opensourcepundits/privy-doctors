@@ -247,6 +247,7 @@ CREATE TABLE consultations (
   patient_id int NOT NULL REFERENCES patients(id),
   doctor_id int NOT NULL REFERENCES doctors(id),
   code text NOT NULL,
+  edit_copy boolean NOT NULL DEFAULT false,
   status text NOT NULL,
   modality text NOT NULL,
   narrative text,
@@ -458,7 +459,7 @@ INSERT INTO appointments ("id", "patient_id", "doctor_id", "starts_at", "duratio
 INSERT INTO appointments ("id", "patient_id", "doctor_id", "starts_at", "duration_min", "title", "reason", "status", "location", "last_visit_label") VALUES (6, 6, 1, '2024-11-17 17:45:00', 30, 'Post-Procedure', 'Post-angioplasty 30-day assessment & dual antiplatelet check', 'scheduled', 'Suite 210, St. Jude Family Clinic', 'Last visit: 1 month ago');
 INSERT INTO appointments ("id", "patient_id", "doctor_id", "starts_at", "duration_min", "title", "reason", "status", "location", "last_visit_label") VALUES (7, 7, 1, '2024-11-17 18:30:00', 20, 'Device Check', 'ICD interrogation & battery review', 'scheduled', 'Suite 210, St. Jude Family Clinic', 'Last visit: 6 months ago');
 INSERT INTO appointments ("id", "patient_id", "doctor_id", "starts_at", "duration_min", "title", "reason", "status", "location", "last_visit_label") VALUES (8, 1, 2, '2024-11-21 14:15:00', 45, 'Arrhythmia Follow-up & 12-Lead ECG Review', 'Holter placement and rhythm review', 'scheduled', 'Suite 410, St. Jude Heart Pavilion (Valet parking at West Gate)', 'Referred by Dr. Irfan Ameerudden');
-INSERT INTO consultations ("id", "patient_id", "doctor_id", "code", "status", "modality", "narrative", "pharmacy", "started_at", "completes_on") VALUES (4, 1, 2, 'ENC-1', 'in_session', 'in_person', '', NULL, '2026-10-28 14:30:24', NULL);
+INSERT INTO consultations ("id", "patient_id", "doctor_id", "code", "status", "modality", "narrative", "pharmacy", "started_at", "completes_on") VALUES (4, 1, 2, 'CON-2-4089-4', 'in_session', 'in_person', '', NULL, '2026-10-28 14:30:24', NULL);
 INSERT INTO encounters ("id", "patient_id", "doctor_name", "doctor_role", "practice", "occurred_on", "kind", "focus", "findings", "plan", "location", "status", "consultation_id") VALUES (1, 1, 'Dr. Irfan Ameerudden, MBBS', 'General Practice', 'St. Jude Family Clinic', '2024-11-14', 'General Practice', 'Routine health maintenance', 'Blood pressure 124/80 mmHg. Patient reports reduced palpitations and stable recovery. General status excellent.', 'Continue current medication plan; routine metabolic panel reassessment in 6 months. Referred to Dr. Sarah Jensen for cardiology review.', 'Suite 210, St. Jude Family Clinic', 'finalized', NULL);
 INSERT INTO encounters ("id", "patient_id", "doctor_name", "doctor_role", "practice", "occurred_on", "kind", "focus", "findings", "plan", "location", "status", "consultation_id") VALUES (2, 1, 'Dr. Sarah Jensen, MD', 'Cardiology Consult', 'Cardiology & Concierge Solo Practice', '2024-10-24', 'Cardiology Consult', 'Palpitation evaluation & EKG', 'Sinus rhythm with premature atrial contractions (PACs).', 'Initiated metoprolol succinate 25 mg daily for palpitation suppression. Ordered 12-lead Holter monitoring (48-hr).', 'Cardiology Suite #4', 'finalized', NULL);
 INSERT INTO encounters ("id", "patient_id", "doctor_name", "doctor_role", "practice", "occurred_on", "kind", "focus", "findings", "plan", "location", "status", "consultation_id") VALUES (3, 1, 'Dr. Emily Watson, MD', 'Primary Care / PCP', 'Comprehensive Family & Preventive Health', '2024-09-28', 'Primary Care / PCP', 'Annual comprehensive wellness & lipid evaluation', 'Mild hyperlipidemia, elevated LDL (142 mg/dL).', 'Prescribed atorvastatin 20 mg daily at bedtime. Structured dietary counseling and cardiovascular lifestyle guidelines provided.', 'Wellness Clinic', 'finalized', NULL);
@@ -632,6 +633,8 @@ SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST(COALESCE((SELECT M
 SELECT setval(pg_get_serial_sequence('vitals', 'id'), GREATEST(COALESCE((SELECT MAX("id") FROM vitals), 1), 1));
 
 ALTER TABLE consultations ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS edit_copy boolean NOT NULL DEFAULT false;
+UPDATE consultations SET uid = code WHERE uid IS NULL AND code ~ '^CON-[0-9]+-[0-9]+-[0-9]+$';
 ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS uid text;
 ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS tags text;
 ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS uid text;

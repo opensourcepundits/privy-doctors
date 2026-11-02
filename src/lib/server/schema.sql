@@ -240,6 +240,7 @@ CREATE TABLE consultations (
   patient_id int NOT NULL REFERENCES patients(id),
   doctor_id int NOT NULL REFERENCES doctors(id),
   code text NOT NULL,
+  edit_copy boolean NOT NULL DEFAULT false,
   status text NOT NULL,
   modality text NOT NULL,
   narrative text,
@@ -403,6 +404,7 @@ ALTER TABLE appointments ADD COLUMN IF NOT EXISTS response_note text;
 ALTER TABLE appointments ADD COLUMN IF NOT EXISTS responded_at timestamp;
 
 ALTER TABLE consultations ADD COLUMN IF NOT EXISTS uid text;
+ALTER TABLE consultations ADD COLUMN IF NOT EXISTS edit_copy boolean NOT NULL DEFAULT false;
 ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS uid text;
 ALTER TABLE consultation_orders ADD COLUMN IF NOT EXISTS tags text;
 ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS uid text;

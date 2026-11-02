@@ -261,6 +261,7 @@ export const consultations = pgTable('consultations', {
 	patientId: integer('patient_id').notNull(),
 	doctorId: integer('doctor_id').notNull(),
 	code: text('code').notNull(),
+	editCopy: boolean('edit_copy').notNull().default(false),
 	uid: text('uid'),
 	status: text('status').notNull(),
 	modality: text('modality').notNull(),
