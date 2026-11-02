@@ -519,6 +519,26 @@ for (const [name, description, doctors] of medicines) {
 	`;
 }
 
+const catalogNames = readFileSync(new URL('../meds.csv', import.meta.url), 'utf8')
+	.replace(/^\uFEFF/, '')
+	.split(/\r?\n/)
+	.slice(1)
+	.map((line) => {
+		const trimmed = line.trim();
+		if (!trimmed) return '';
+		const quoted = trimmed.startsWith('"') && trimmed.endsWith('"') ? trimmed.slice(1, -1) : trimmed;
+		return quoted.replace(/""/g, '"').trim();
+	})
+	.filter(Boolean);
+
+for (const name of catalogNames) {
+	await sql`
+		INSERT INTO medicines (name, description, doctors)
+		VALUES (${name}, '', '{}'::jsonb)
+		ON CONFLICT ((lower(name))) DO NOTHING
+	`;
+}
+
 await sql`
 	INSERT INTO dose_logs (patient_id, item_name, slot, label, status, log_date) VALUES
 	(${ids['PID-4089']}, 'Morning medicines', 'morning', 'Morning 8:00 AM • Done', 'taken', DATE '2024-11-17'),
