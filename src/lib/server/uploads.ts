@@ -17,6 +17,10 @@ export async function readTaskPdf(id: number) {
 	return readFile(taskPdfPath(id));
 }
 
+export async function deleteTaskPdf(id: number) {
+	await rm(taskPdfPath(id), { force: true });
+}
+
 export function sniffDocument(bytes: Buffer) {
 	if (bytes.subarray(0, 5).toString('utf8') === '%PDF-') return { ext: 'pdf', type: 'application/pdf' };
 	if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return { ext: 'jpg', type: 'image/jpeg' };
