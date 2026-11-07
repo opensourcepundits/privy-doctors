@@ -256,8 +256,4 @@
 		</form>
 	</article>
 	{/if}
-
-	<div class="lg:col-span-2">
-		<a class="btn" href="/patient">Open Noor Yadallee's patient view</a>
-	</div>
 </section>
