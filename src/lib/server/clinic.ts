@@ -906,6 +906,31 @@ async function certificatesOnVisit(consultId: number | null) {
 	`;
 }
 
+export type PatientCertificate = {
+	id: number;
+	code: string | null;
+	reason: string;
+	rest_from: Date | string;
+	rest_until: Date | string;
+	issued_on: Date | string;
+	status: string;
+	doctor_name: string;
+	credentials: string;
+	specialty: string;
+};
+
+export async function certificatesForPatient(patientId: number) {
+	await ensureMedicalCertificateStore();
+	return client<PatientCertificate[]>`
+		SELECT mc.id, mc.code, mc.reason, mc.rest_from, mc.rest_until, mc.issued_on, mc.status,
+			d.name AS doctor_name, d.credentials, d.specialty
+		FROM medical_certificates mc
+		JOIN doctors d ON d.id = mc.doctor_id
+		WHERE mc.patient_id = ${patientId} AND mc.status = 'issued'
+		ORDER BY mc.issued_on DESC, mc.id DESC
+	`;
+}
+
 export async function consultCertificate(consultId: number) {
 	const [row] = await certificatesOnVisit(consultId);
 	if (!row) return null;

@@ -5,7 +5,7 @@
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
-	import { appointmentStatus, dayRelation, formatDate, formatLongDate, formatTime, initials, liveCopy } from '#lib/format';
+	import { appointmentStatus, dayRelation, formatDate, formatLongDate, formatTime, initials, isoDate, liveCopy, restDays } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -48,6 +48,26 @@
 {:then home}
 	{@const meds = home.active.flatMap((order) => order.items.map((item) => ({ ...item, prescriber: order.prescriber })))}
 	{@const checked = home.vital ? `${formatTime(home.vital.recorded_at)} · ${formatDate(home.vital.recorded_at)}` : 'No reading filed'}
+{#if home.certificates.length}
+	<section class="space-y-3 px-4 pt-4 lg:px-0">
+		<div class="flex items-center justify-between gap-3">
+			<h2 class="display text-lg font-semibold">Medical certificate</h2>
+			<a class="btn-sm" href="/patient/certificates">My certificates</a>
+		</div>
+		{#each home.certificates as certificate}
+			{@const days = restDays(isoDate(certificate.rest_from), isoDate(certificate.rest_until))}
+			<a class="card block" href="/patient/certificates/{certificate.id}">
+				<p class="kicker">Active{certificate.code ? ` · ${certificate.code}` : ''}</p>
+				<p class="mt-1 font-semibold">{certificate.reason}</p>
+				<p class="mt-1 text-sm text-[#64748B]">
+					Certified rest {formatDate(certificate.rest_from)} – {formatDate(certificate.rest_until)}
+					{#if days} · {days} {days === 1 ? 'day' : 'days'}{/if}
+				</p>
+				<p class="text-sm text-[#64748B]">{certificate.doctor_name}{certificate.credentials ? `, ${certificate.credentials}` : ''} · {certificate.specialty}</p>
+			</a>
+		{/each}
+	</section>
+{/if}
 {#if home.requests.length}
 	<section class="grid gap-3 px-4 pt-4 lg:px-0">
 		<h2 class="display text-lg font-semibold">Allow record access</h2>

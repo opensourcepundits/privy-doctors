@@ -102,6 +102,13 @@ export function restDays(from: string, until: string) {
 	return Math.round((end - start) / 86_400_000) + 1;
 }
 
+export function certificateActive(from: Date | string | null | undefined, until: Date | string | null | undefined, today = liveDay()) {
+	if (!from || !until) return false;
+	const start = isoDate(toLive(from));
+	const end = isoDate(toLive(until));
+	return Boolean(start && end && start <= today && today <= end);
+}
+
 export function formatLongDate(value: Date | string) {
 	return new Intl.DateTimeFormat('en-US', {
 		weekday: 'long',

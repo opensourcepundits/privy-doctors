@@ -174,14 +174,10 @@
 			<span class="material-symbols-outlined text-lg">stethoscope</span>
 			My physicians
 		</a>
-		{#if !data.preview}
-			<form method="POST" action="?/code">
-				<button class="btn" type="submit">
-					<span class="material-symbols-outlined text-lg">pin</span>
-					Generate code
-				</button>
-			</form>
-		{/if}
+		<a class="btn" href="/patient/certificates">
+			<span class="material-symbols-outlined text-lg">article</span>
+			My certificates
+		</a>
 	</div>
 </header>
 
