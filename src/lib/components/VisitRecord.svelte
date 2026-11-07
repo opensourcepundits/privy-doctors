@@ -1,7 +1,7 @@
 <script lang="ts">
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
-	import { formatDate, formatTime, liveCopy } from '#lib/format';
+	import { formatDate, formatTime, isoDate, liveCopy, restDays } from '#lib/format';
 	import type { VisitRecord } from '#lib/server/clinic';
 
 	let {
@@ -56,6 +56,20 @@
 	{/if}
 	{#if portal === 'doctor' && record.editHref}
 		<a class="btn mt-4" href={record.editHref}>Edit prescription</a>
+	{/if}
+	{#if portal === 'doctor' && record.deleteId}
+		<form
+			method="POST"
+			action="/doctor/patients/{pid}/consults/{record.deleteId}?/delete"
+			onsubmit={(event) => {
+				const message = record.keepsChartVisit
+					? 'Delete this consultation? Prescriptions, orders, tasks, referrals, medical certificates, and files added for it will be removed. The original visit note stays on the chart. This cannot be undone.'
+					: 'Delete this consultation and everything filed with it? Notes, prescriptions, orders, tasks, referrals, the medical certificate, the bill, and uploaded files will be removed. This cannot be undone.';
+				if (!confirm(message)) event.preventDefault();
+			}}
+		>
+			<button class="btn-danger mt-4" type="submit">Delete consultation</button>
+		</form>
 	{/if}
 </header>
 
@@ -164,6 +178,38 @@
 			</ul>
 		{/if}
 	</article>
+
+	{#if record.certificates.length}
+		<article class="card">
+			<p class="kicker">Medical certificate</p>
+			<ul class="mt-3 space-y-3">
+				{#each record.certificates as certificate}
+					{@const days = restDays(isoDate(certificate.rest_from), isoDate(certificate.rest_until))}
+					<li class="rounded-xl border border-[#E2E8F0] p-3 text-sm">
+						<p class="font-semibold">{certificate.code || 'Draft certificate'}</p>
+						<p class="mt-1">{certificate.reason}</p>
+						<p class="mt-1 text-[#64748B]">
+							Certified rest {formatDate(certificate.rest_from)} – {formatDate(certificate.rest_until)}
+							{#if days} · {days} {days === 1 ? 'day' : 'days'}{/if}
+						</p>
+						<p class="text-[#64748B]">Certificate date {formatDate(certificate.issued_on)}</p>
+						{#if certificate.status === 'issued'}
+							<a
+								class="btn-sm mt-2"
+								href={portal === 'patient'
+									? `/patient/certificates/${certificate.id}`
+									: `/doctor/patients/${pid}/certificates/${certificate.id}`}
+							>
+								Open certificate
+							</a>
+						{:else}
+							<p class="mt-2 text-xs text-[#64748B]">Draft. It is issued when this consultation is finalized.</p>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		</article>
+	{/if}
 
 	<article class="card">
 		<p class="kicker">Referrals</p>

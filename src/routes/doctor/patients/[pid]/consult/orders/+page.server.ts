@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { frequencyTags, mealTags } from '#lib/doses';
-import { addConsultOrder, addPrescriptionPhoto, addReferral, draftConsult, finalizeConsult, medicinesCatalog, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultOrder, removePrescriptionPhoto, setConsultCompletion } from '#lib/server/clinic';
+import { liveDay, restDays } from '#lib/format';
+import { addConsultOrder, addPrescriptionPhoto, addReferral, consultCertificate, draftConsult, finalizeConsult, medicinesCatalog, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultCertificate, removeConsultOrder, removePrescriptionPhoto, saveConsultCertificate, setConsultCompletion } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 import { acceptPrescriptionPhoto } from '#lib/server/uploads';
 
@@ -33,6 +34,29 @@ function billDraft(data: FormData) {
 	};
 }
 
+function certificateFields(data: FormData) {
+	const reason = String(data.get('reason') ?? '').trim();
+	const restFrom = completionDate(data.get('rest_from'));
+	const restUntil = completionDate(data.get('rest_until'));
+	const issuedOn = completionDate(data.get('issued_on'));
+	const draft = {
+		reason,
+		restFrom: typeof restFrom === 'string' ? restFrom : '',
+		restUntil: typeof restUntil === 'string' ? restUntil : '',
+		issuedOn: typeof issuedOn === 'string' ? issuedOn : ''
+	};
+	if (!reason || reason.length > 500) {
+		return { ...draft, error: 'Enter the reason in 500 characters or fewer.' };
+	}
+	if (restFrom === false || !restFrom) return { ...draft, error: 'Enter the first day of certified rest.' };
+	if (restUntil === false || !restUntil) return { ...draft, error: 'Enter the last day of certified rest.' };
+	if (issuedOn === false || !issuedOn) return { ...draft, error: 'Enter the certificate date.' };
+	const days = restDays(restFrom, restUntil);
+	if (!days) return { ...draft, error: 'The rest period must end on or after it starts.' };
+	if (days > 366) return { ...draft, error: 'Certified rest can cover at most one year.' };
+	return { ...draft, days };
+}
+
 function chargesFrom(data: FormData) {
 	const draft = billDraft(data);
 	if (draft.billMode === 'items') {
@@ -58,6 +82,19 @@ function chargesFrom(data: FormData) {
 	return { ...draft, lines: [{ description: 'Consultation', amount }] };
 }
 
+function filedNotice(filed: { medications?: number; photos?: number; certificate?: boolean } | undefined) {
+	if (filed?.medications && filed.certificate) {
+		return 'Consultation, prescriptions, medical certificate, and bill saved to this patient record';
+	}
+	if (filed?.medications) return 'Consultation, prescriptions, and bill saved to this patient record';
+	if (filed?.photos && filed.certificate) {
+		return 'Consultation saved with a photograph of the prescription and a medical certificate';
+	}
+	if (filed?.photos) return 'Consultation saved with a photograph of the prescription';
+	if (filed?.certificate) return 'Consultation, medical certificate, and bill saved to this patient record';
+	return 'Consultation and bill saved to this patient record';
+}
+
 async function context(locals: App.Locals, pid: string) {
 	const { doctor, patient } = await requireChart(locals, pid);
 	const consult = await draftConsult(patient.id, doctor.id);
@@ -67,12 +104,13 @@ async function context(locals: App.Locals, pid: string) {
 export async function load({ parent }) {
 	const { doctor, patient } = await parent();
 	const consult = await draftConsult(patient.id, doctor.id);
-	const [doctors, medicines, photos] = await Promise.all([
+	const [doctors, medicines, photos, certificate] = await Promise.all([
 		referralDoctors().then((rows) => rows.filter((item) => item.id !== doctor.id)),
 		medicinesCatalog(),
-		prescriptionPhotos(consult.id)
+		prescriptionPhotos(consult.id),
+		consultCertificate(consult.id)
 	]);
-	return { doctor, patient, consult, doctors, medicines, photos };
+	return { doctor, patient, consult, doctors, medicines, photos, certificate, today: liveDay() };
 }
 
 export const actions = {
@@ -144,6 +182,31 @@ export const actions = {
 		}
 		return { saved: true };
 	},
+	certificate: async ({ request, params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		const data = await request.formData();
+		const draft = certificateFields(data);
+		const kept = {
+			reason: draft.reason,
+			restFrom: draft.restFrom,
+			restUntil: draft.restUntil,
+			issuedOn: draft.issuedOn
+		};
+		if ('error' in draft) return { message: draft.error, certificateOpen: true, certificateDraft: kept };
+		const saved = await saveConsultCertificate(consult.id, {
+			reason: draft.reason,
+			restFrom: draft.restFrom,
+			restUntil: draft.restUntil,
+			issuedOn: draft.issuedOn
+		});
+		if (saved && 'error' in saved) return { message: saved.error, certificateOpen: true, certificateDraft: kept };
+		return { certificateSaved: true };
+	},
+	removeCertificate: async ({ params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		await removeConsultCertificate(consult.id);
+		return { saved: true };
+	},
 	removePhoto: async ({ request, params, locals }) => {
 		const { consult } = await context(locals, params.pid);
 		const data = await request.formData();
@@ -160,11 +223,7 @@ export const actions = {
 		if ('error' in draft) return { message: draft.error, completesOn: completes ?? '', ...kept };
 		const filed = await finalizeConsult(consult.id, completes, draft.lines);
 		if (filed && 'error' in filed) return { message: filed.error, completesOn: completes ?? '', ...kept };
-		const notice = filed?.medications
-			? 'Consultation, prescriptions, and bill saved to this patient record'
-			: filed?.photos
-				? 'Consultation saved with a photograph of the prescription'
-				: 'Consultation and bill saved to this patient record';
+		const notice = filedNotice(filed);
 		redirect(303, `/doctor/patients/${patient.pid}?tab=consults&notice=${notice}`);
 	}
 };

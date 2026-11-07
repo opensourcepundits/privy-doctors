@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { tagsFrom } from '#lib/doses';
 import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
-import { client } from './db';
+import { client, type ClinicSql } from './db';
 import { resolveImagePaths } from './storage';
-import { deletePrescriptionPhoto } from './uploads';
+import { deletePrescriptionPhoto, deleteTaskPdf } from './uploads';
 
 export type PatientRow = {
 	id: number;
@@ -769,12 +769,25 @@ export type VisitRecord = {
 	narrative: string;
 	continueHref: string;
 	editHref: string;
+	deleteId: number;
+	keepsChartVisit: boolean;
 	photos: { id: number; file_name: string; content_type: string }[];
+	certificates: VisitCertificate[];
 	entries: VisitEntry[];
 	orders: VisitOrder[];
 	tasks: VisitTask[];
 	prescriptions: Awaited<ReturnType<typeof prescriptionsFor>>;
 	referrals: VisitReferral[];
+};
+
+export type VisitCertificate = {
+	id: number;
+	code: string | null;
+	reason: string;
+	rest_from: Date | string;
+	rest_until: Date | string;
+	issued_on: Date | string;
+	status: string;
 };
 
 async function prescriptionsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
@@ -853,6 +866,183 @@ export async function prescriptionPhotos(consultId: number) {
 	`;
 }
 
+let medicalCertificateStore: Promise<void> | null = null;
+
+function ensureMedicalCertificateStore() {
+	medicalCertificateStore ??= client`
+		CREATE TABLE IF NOT EXISTS medical_certificates (
+			id serial PRIMARY KEY,
+			consultation_id int NOT NULL UNIQUE REFERENCES consultations(id) ON DELETE CASCADE,
+			patient_id int NOT NULL REFERENCES patients(id),
+			doctor_id int NOT NULL REFERENCES doctors(id),
+			code text,
+			reason text NOT NULL,
+			rest_from date NOT NULL,
+			rest_until date NOT NULL,
+			issued_on date NOT NULL,
+			status text NOT NULL,
+			created_at timestamp NOT NULL
+		)
+	`
+		.then(() =>
+			client`CREATE UNIQUE INDEX IF NOT EXISTS medical_certificates_code_key ON medical_certificates (code) WHERE code IS NOT NULL`
+		)
+		.then(() => undefined)
+		.catch((error) => {
+			medicalCertificateStore = null;
+			throw error;
+		});
+	return medicalCertificateStore;
+}
+
+async function certificatesOnVisit(consultId: number | null) {
+	if (!consultId) return [];
+	await ensureMedicalCertificateStore();
+	return client<VisitCertificate[]>`
+		SELECT id, code, reason, rest_from, rest_until, issued_on, status
+		FROM medical_certificates
+		WHERE consultation_id = ${consultId}
+		ORDER BY id
+	`;
+}
+
+export async function consultCertificate(consultId: number) {
+	const [row] = await certificatesOnVisit(consultId);
+	if (!row) return null;
+	return {
+		id: row.id,
+		code: row.code,
+		reason: row.reason,
+		restFrom: isoDate(row.rest_from),
+		restUntil: isoDate(row.rest_until),
+		issuedOn: isoDate(row.issued_on),
+		status: row.status
+	};
+}
+
+export async function saveConsultCertificate(
+	consultId: number,
+	fields: { reason: string; restFrom: string; restUntil: string; issuedOn: string }
+) {
+	await ensureMedicalCertificateStore();
+	const [consult] = await client<{ id: number; patient_id: number; doctor_id: number; status: string }[]>`
+		SELECT id, patient_id, doctor_id, status FROM consultations WHERE id = ${consultId}
+	`;
+	if (!consult || consult.status !== 'in_session') return { error: 'This consultation is no longer open.' as const };
+	const [existing] = await client<{ status: string }[]>`
+		SELECT status FROM medical_certificates WHERE consultation_id = ${consultId}
+	`;
+	if (existing?.status === 'issued') return { error: 'This certificate has already been issued.' as const };
+	await client`
+		INSERT INTO medical_certificates (
+			consultation_id, patient_id, doctor_id, reason, rest_from, rest_until, issued_on, status, created_at
+		) VALUES (
+			${consultId}, ${consult.patient_id}, ${consult.doctor_id}, ${fields.reason},
+			${fields.restFrom}, ${fields.restUntil}, ${fields.issuedOn}, 'draft', ${nowLocal().stamp}
+		)
+		ON CONFLICT (consultation_id) DO UPDATE SET
+			reason = EXCLUDED.reason,
+			rest_from = EXCLUDED.rest_from,
+			rest_until = EXCLUDED.rest_until,
+			issued_on = EXCLUDED.issued_on
+		WHERE medical_certificates.status = 'draft'
+	`;
+	return { saved: true as const };
+}
+
+export async function removeConsultCertificate(consultId: number) {
+	await ensureMedicalCertificateStore();
+	await client`
+		DELETE FROM medical_certificates
+		WHERE consultation_id = ${consultId} AND status = 'draft'
+	`;
+}
+
+export async function issueConsultCertificate(consultId: number) {
+	await ensureMedicalCertificateStore();
+	const [row] = await client<
+		{
+			id: number;
+			patient_id: number;
+			doctor_id: number;
+			status: string;
+			code: string | null;
+			rest_from: Date | string;
+			rest_until: Date | string;
+		}[]
+	>`
+		SELECT id, patient_id, doctor_id, status, code, rest_from, rest_until
+		FROM medical_certificates
+		WHERE consultation_id = ${consultId}
+	`;
+	if (!row) return null;
+	if (row.status === 'issued') return row;
+	const pid = await patientPid(row.patient_id);
+	if (!pid) return null;
+	const code = chartCode('MC', row.doctor_id, pid, row.id);
+	const [issued] = await client<typeof row[]>`
+		UPDATE medical_certificates
+		SET status = 'issued', code = ${code}
+		WHERE id = ${row.id} AND status = 'draft'
+		RETURNING id, patient_id, doctor_id, status, code, rest_from, rest_until
+	`;
+	return issued ?? { ...row, status: 'issued', code };
+}
+
+export type CertificateDocument = {
+	id: number;
+	consultation_id: number;
+	patient_id: number;
+	doctor_id: number;
+	code: string | null;
+	reason: string;
+	rest_from: Date | string;
+	rest_until: Date | string;
+	issued_on: Date | string;
+	status: string;
+	consult_code: string;
+	consult_status: string;
+	encounter_id: number | null;
+	first_name: string;
+	last_name: string;
+	pid: string;
+	dob: Date | string | null;
+	sex: string;
+	nic: string | null;
+	passport: string | null;
+	doctor_name: string;
+	credentials: string;
+	specialty: string;
+	practice: string;
+	location: string;
+	npi: string | null;
+	phone: string | null;
+};
+
+export async function medicalCertificateView(id: number, patientId: number) {
+	if (!Number.isInteger(id) || id <= 0) return null;
+	await ensureMedicalCertificateStore();
+	const [row] = await client<CertificateDocument[]>`
+		SELECT mc.id, mc.consultation_id, mc.patient_id, mc.doctor_id, mc.code, mc.reason,
+			mc.rest_from, mc.rest_until, mc.issued_on, mc.status,
+			c.code AS consult_code, c.status AS consult_status,
+			(
+				SELECT e.id FROM encounters e
+				WHERE e.consultation_id = mc.consultation_id
+				ORDER BY e.id DESC
+				LIMIT 1
+			) AS encounter_id,
+			p.first_name, p.last_name, p.pid, p.dob, p.sex, p.nic, p.passport,
+			d.name AS doctor_name, d.credentials, d.specialty, d.practice, d.location, d.npi, d.phone
+		FROM medical_certificates mc
+		JOIN consultations c ON c.id = mc.consultation_id
+		JOIN patients p ON p.id = mc.patient_id
+		JOIN doctors d ON d.id = mc.doctor_id
+		WHERE mc.id = ${id} AND mc.patient_id = ${patientId}
+	`;
+	return row ?? null;
+}
+
 export async function prescriptionPhotoBytes(id: number) {
 	await ensurePrescriptionPhotoStore();
 	const [row] = await client<{ encoded: string | null; stored_name: string }[]>`
@@ -928,10 +1118,11 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 	const linked = visit.consultation_id ? await consultParts(patientId, visit.consultation_id) : null;
 	const day = isoDate(visit.occurred_on);
 	const consultId = linked?.consult.id ?? null;
-	const [prescriptions, referrals, photos] = await Promise.all([
+	const [prescriptions, referrals, photos, certificates] = await Promise.all([
 		prescriptionsOnVisit(patientId, day, visit.doctor_name, consultId),
 		referralsOnVisit(patientId, day, visit.doctor_name, consultId),
-		consultId ? prescriptionPhotos(consultId) : Promise.resolve([])
+		consultId ? prescriptionPhotos(consultId) : Promise.resolve([]),
+		certificatesOnVisit(consultId)
 	]);
 	const open = linked?.consult.status === 'in_session' && linked.consult.doctor_id === doctorId;
 	const editable = Boolean(linked && linked.consult.status === 'signed' && linked.consult.doctor_id === doctorId);
@@ -958,7 +1149,10 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 				: ownsEncounter
 					? `/doctor/patients/${pid}/visits/${visit.id}/prescription`
 					: '',
-			photos
+			deleteId: linked && linked.consult.doctor_id === doctorId ? linked.consult.id : 0,
+			keepsChartVisit: Boolean(linked?.consult.edit_copy),
+			photos,
+			certificates
 		},
 		linked ?? { entries: [], orders: [], tasks: [] },
 		prescriptions,
@@ -972,10 +1166,11 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 	const { consult, entries, orders, tasks } = linked;
 	const doctor = [consult.doctor_name, consult.credentials].filter(Boolean).join(', ');
 	const day = isoDate(consult.started_at);
-	const [prescriptions, referrals, photos] = await Promise.all([
+	const [prescriptions, referrals, photos, certificates] = await Promise.all([
 		prescriptionsOnVisit(patientId, day, doctor, consult.id),
 		referralsOnVisit(patientId, day, consult.doctor_name, consult.id),
-		prescriptionPhotos(consult.id)
+		prescriptionPhotos(consult.id),
+		certificatesOnVisit(consult.id)
 	]);
 	const open = consult.status === 'in_session' && consult.doctor_id === doctorId;
 	const editable = consult.status === 'signed' && consult.doctor_id === doctorId;
@@ -996,7 +1191,10 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 			narrative: consult.narrative ?? '',
 			continueHref: open ? `/doctor/patients/${pid}/consult` : '',
 			editHref: editable ? `/doctor/patients/${pid}/consults/${consult.id}/prescription` : '',
-			photos
+			deleteId: consult.doctor_id === doctorId ? consult.id : 0,
+			keepsChartVisit: Boolean(consult.edit_copy),
+			photos,
+			certificates
 		},
 		{ entries, orders, tasks },
 		prescriptions,
@@ -1434,33 +1632,180 @@ export async function openConsultsForDoctor(doctorId: number) {
 
 export async function cancelConsult(consultId: number, doctorId: number) {
 	const [consult] = await client`
-		SELECT c.id, p.pid
-		FROM consultations c
-		JOIN patients p ON p.id = c.patient_id
-		WHERE c.id = ${consultId} AND c.doctor_id = ${doctorId} AND c.status = 'in_session'
+		SELECT id FROM consultations
+		WHERE id = ${consultId} AND doctor_id = ${doctorId} AND status = 'in_session'
 	`;
 	if (!consult) return { error: 'That consultation is not open.' };
-	await client`
-		UPDATE referrals SET status = 'incoming', follow_consult_id = NULL
-		WHERE follow_consult_id = ${consultId} AND status = 'in_session'
-	`;
-	const sourced = await client<
-		{ id: number; user_id: number; first_name: string; last_name: string; pid: string; from_name: string }[]
-	>`
-		SELECT r.id, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
-		FROM referrals r
-		JOIN doctors d ON d.id = r.to_doctor_id
-		JOIN doctors f ON f.id = r.from_doctor_id
-		JOIN patients p ON p.id = r.patient_id
-		WHERE r.source_consult_id = ${consultId} AND r.status = 'incoming'
-	`;
-	for (const referral of sourced) {
-		await client`DELETE FROM referrals WHERE id = ${referral.id}`;
-		const who = `${referral.first_name} ${referral.last_name} (${referral.pid})`;
-		await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`);
+	return deleteConsult(consultId, doctorId);
+}
+
+type ReferralNotice = {
+	user_id: number | null;
+	first_name: string;
+	last_name: string;
+	pid: string;
+	from_name: string;
+	status: string;
+};
+
+export async function deleteConsult(consultId: number, doctorId: number, patientId?: number) {
+	await migrateChartCodes();
+	await ensurePrescriptionPhotoStore();
+	const removed = await client.begin(async (sql) => {
+		const [consult] = await sql<
+			{
+				id: number;
+				patient_id: number;
+				doctor_id: number;
+				uid: string | null;
+				edit_copy: boolean;
+				pid: string;
+				user_id: number | null;
+				first_name: string;
+				last_name: string;
+				doctor_name: string;
+			}[]
+		>`
+			SELECT c.id, c.patient_id, c.doctor_id, c.uid, c.edit_copy,
+				p.pid, p.user_id, p.first_name, p.last_name, d.name AS doctor_name
+			FROM consultations c
+			JOIN patients p ON p.id = c.patient_id
+			JOIN doctors d ON d.id = c.doctor_id
+			WHERE c.id = ${consultId}
+			  AND c.doctor_id = ${doctorId}
+			  AND (${patientId ?? null}::int IS NULL OR c.patient_id = ${patientId ?? null})
+			FOR UPDATE OF c
+		`;
+		if (!consult) return null;
+		const meds = await sql<{ title: string }[]>`
+			SELECT title FROM consultation_orders
+			WHERE consultation_id = ${consultId} AND kind = 'medication'
+		`;
+		for (const med of meds) await applyMedicineUse(sql, doctorId, '', med.title, '', -1);
+		const photos = await sql<{ stored_name: string }[]>`
+			SELECT stored_name FROM prescription_photos WHERE consultation_id = ${consultId}
+		`;
+		const tasks = await sql<{ id: number }[]>`
+			SELECT id FROM patient_tasks
+			WHERE consultation_id = ${consultId} AND stored_name IS NOT NULL
+		`;
+		const followed = await sql<{ user_id: number | null; first_name: string; last_name: string; pid: string }[]>`
+			SELECT f.user_id, p.first_name, p.last_name, p.pid
+			FROM referrals r
+			JOIN doctors f ON f.id = r.from_doctor_id
+			JOIN patients p ON p.id = r.patient_id
+			WHERE r.follow_consult_id = ${consultId}
+		`;
+		await sql`
+			UPDATE referrals SET status = 'incoming', follow_consult_id = NULL
+			WHERE follow_consult_id = ${consultId}
+		`;
+		const sourced = await sql<ReferralNotice[]>`
+			SELECT d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name, r.status
+			FROM referrals r
+			JOIN doctors d ON d.id = r.to_doctor_id
+			JOIN doctors f ON f.id = r.from_doctor_id
+			JOIN patients p ON p.id = r.patient_id
+			WHERE r.source_consult_id = ${consultId}
+		`;
+		await sql`DELETE FROM referrals WHERE source_consult_id = ${consultId}`;
+		const rxCode = chartCode('RX', consult.doctor_id, consult.pid, consult.id);
+		const legacyRx = `RX-${consult.id}`;
+		const names = await sql<{ name: string }[]>`
+			SELECT DISTINCT i.name
+			FROM prescription_items i
+			JOIN prescriptions rx ON rx.id = i.prescription_id
+			WHERE rx.patient_id = ${consult.patient_id}
+			  AND rx.code IN (${rxCode}, ${legacyRx})
+		`;
+		for (const item of names) {
+			const [other] = await sql<{ id: number }[]>`
+				SELECT i.id
+				FROM prescription_items i
+				JOIN prescriptions rx ON rx.id = i.prescription_id
+				WHERE rx.patient_id = ${consult.patient_id}
+				  AND rx.code NOT IN (${rxCode}, ${legacyRx})
+				  AND lower(i.name) = lower(${item.name})
+				LIMIT 1
+			`;
+			if (!other) {
+				await sql`
+					DELETE FROM dose_logs
+					WHERE patient_id = ${consult.patient_id} AND lower(item_name) = lower(${item.name})
+				`;
+			}
+		}
+		await sql`
+			DELETE FROM refill_requests
+			WHERE prescription_id IN (
+				SELECT id FROM prescriptions
+				WHERE patient_id = ${consult.patient_id} AND code IN (${rxCode}, ${legacyRx})
+			)
+		`;
+		await sql`
+			DELETE FROM prescriptions
+			WHERE patient_id = ${consult.patient_id} AND code IN (${rxCode}, ${legacyRx})
+		`;
+		const billCode = chartCode('INV', consult.doctor_id, consult.pid, consult.id);
+		await sql`
+			DELETE FROM invoices
+			WHERE patient_id = ${consult.patient_id} AND code IN (${billCode}, ${`INV-${consult.id}`})
+		`;
+		await sql`
+			DELETE FROM labs
+			WHERE patient_id = ${consult.patient_id}
+			  AND order_uid IN (
+				SELECT uid FROM consultation_orders
+				WHERE consultation_id = ${consultId} AND uid IS NOT NULL
+			  )
+		`;
+		await sql`
+			DELETE FROM care_orders
+			WHERE patient_id = ${consult.patient_id}
+			  AND order_uid IN (
+				SELECT uid FROM consultation_orders
+				WHERE consultation_id = ${consultId} AND uid IS NOT NULL
+			  )
+		`;
+		if (consult.uid) {
+			await sql`
+				UPDATE labs SET consultation_uid = NULL
+				WHERE patient_id = ${consult.patient_id} AND consultation_uid = ${consult.uid}
+			`;
+			await sql`
+				UPDATE care_orders SET consultation_uid = NULL
+				WHERE patient_id = ${consult.patient_id} AND consultation_uid = ${consult.uid}
+			`;
+		}
+		if (!consult.edit_copy) await sql`DELETE FROM encounters WHERE consultation_id = ${consultId}`;
+		await sql`DELETE FROM consultations WHERE id = ${consultId} AND doctor_id = ${doctorId}`;
+		return { consult, photos, tasks, followed, sourced };
+	});
+	if (!removed) return { error: 'Only the doctor who signed this consultation can delete it.' };
+	for (const photo of removed.photos) await deletePrescriptionPhoto(photo.stored_name);
+	for (const task of removed.tasks) await deleteTaskPdf(task.id);
+	const who = `${removed.consult.first_name} ${removed.consult.last_name} (${removed.consult.pid})`;
+	await notify(
+		removed.consult.user_id,
+		'Consultation removed',
+		`${removed.consult.doctor_name} removed a consultation from your record, including the prescriptions, orders, and files filed with it.`
+	);
+	for (const referral of removed.followed) {
+		await notify(
+			referral.user_id,
+			'Consultation removed',
+			`${removed.consult.doctor_name} removed the consultation for ${who}. The referral is open again.`
+		);
 	}
-	await client`DELETE FROM consultations WHERE id = ${consultId} AND doctor_id = ${doctorId} AND status = 'in_session'`;
-	return { pid: consult.pid as string };
+	for (const referral of removed.sourced) {
+		const title = referral.status === 'incoming' ? 'Referral withdrawn' : 'Consultation removed';
+		const body =
+			referral.status === 'incoming'
+				? `${referral.from_name} withdrew the referral for ${who}.`
+				: `${referral.from_name} removed the consultation that referred ${who}.`;
+		await notify(referral.user_id, title, body);
+	}
+	return { pid: removed.consult.pid };
 }
 
 export async function draftConsult(patientId: number, doctorId: number) {
@@ -1961,36 +2306,45 @@ export async function medicinesCatalog() {
 	}));
 }
 
-async function writeMedicineUse(doctorId: number, doctorName: string, name: string, description: string, delta: 1 | -1) {
+async function applyMedicineUse(
+	sql: ClinicSql,
+	doctorId: number,
+	doctorName: string,
+	name: string,
+	description: string,
+	delta: 1 | -1
+) {
 	const label = name.trim();
 	if (!label || !doctorId) return;
-	await client.begin(async (sql) => {
-		const [existing] = await sql<{ id: number; description: string; doctors: unknown }[]>`
-			SELECT id, description, doctors FROM medicines WHERE lower(name) = lower(${label})
-		`;
-		const doctors = medicineDoctors(existing?.doctors);
-		const key = String(doctorId);
-		const next = (doctors[key]?.times ?? 0) + delta;
-		if (next > 0) doctors[key] = { name: doctorName || doctors[key]?.name || '', times: next };
-		else delete doctors[key];
-		const kept = existing?.description?.trim() ? existing.description : description.trim();
-		const usage = JSON.stringify(doctors);
-		const tx = sql as typeof sql & { unsafe: (query: string, args: unknown[]) => Promise<unknown> };
-		if (existing) {
-			await tx.unsafe('UPDATE medicines SET description = $1, doctors = $2::jsonb WHERE id = $3', [
-				kept,
-				usage,
-				existing.id
-			]);
-			return;
-		}
-		if (delta < 0) return;
-		await tx.unsafe('INSERT INTO medicines (name, description, doctors) VALUES ($1, $2, $3::jsonb)', [
-			label,
+	const [existing] = await sql<{ id: number; description: string; doctors: unknown }[]>`
+		SELECT id, description, doctors FROM medicines WHERE lower(name) = lower(${label})
+	`;
+	const doctors = medicineDoctors(existing?.doctors);
+	const key = String(doctorId);
+	const next = (doctors[key]?.times ?? 0) + delta;
+	if (next > 0) doctors[key] = { name: doctorName || doctors[key]?.name || '', times: next };
+	else delete doctors[key];
+	const kept = existing?.description?.trim() ? existing.description : description.trim();
+	const usage = JSON.stringify(doctors);
+	const tx = sql as typeof sql & { unsafe: (query: string, args: unknown[]) => Promise<unknown> };
+	if (existing) {
+		await tx.unsafe('UPDATE medicines SET description = $1, doctors = $2::jsonb WHERE id = $3', [
 			kept,
-			usage
+			usage,
+			existing.id
 		]);
-	});
+		return;
+	}
+	if (delta < 0) return;
+	await tx.unsafe('INSERT INTO medicines (name, description, doctors) VALUES ($1, $2, $3::jsonb)', [
+		label,
+		kept,
+		usage
+	]);
+}
+
+async function writeMedicineUse(doctorId: number, doctorName: string, name: string, description: string, delta: 1 | -1) {
+	await client.begin((sql) => applyMedicineUse(sql, doctorId, doctorName, name, description, delta));
 }
 
 export function recordMedicineUse(doctorId: number, doctorName: string, name: string, description: string) {
@@ -2469,13 +2823,12 @@ export async function finalizeConsult(
 	const orders = await client`SELECT * FROM consultation_orders WHERE consultation_id = ${consultId}`;
 	const meds = orders.filter((order) => order.kind === 'medication');
 	const completion = completesOn || isoDate(consult.completes_on) || null;
-	if (meds.length && !completion) return { error: 'Set a completion date for the prescription.' };
 	if (completion) {
 		await client`UPDATE consultations SET completes_on = ${completion} WHERE id = ${consultId}`;
 	}
 	const [doctor] = await client`SELECT * FROM doctors WHERE id = ${consult.doctor_id}`;
-	const [chart] = await client<{ pid: string; insurance_name: string | null }[]>`
-		SELECT pid, insurance_name FROM patients WHERE id = ${consult.patient_id}
+	const [chart] = await client<{ pid: string; insurance_name: string | null; user_id: number | null }[]>`
+		SELECT pid, insurance_name, user_id FROM patients WHERE id = ${consult.patient_id}
 	`;
 	if (!chart) throw new Error('Patient not found.');
 	const rxCode = chartCode('RX', Number(consult.doctor_id), chart.pid, Number(consult.id));
@@ -2545,12 +2898,20 @@ export async function finalizeConsult(
 			VALUES (${invoice.id}, ${line.description}, ${line.amount})
 		`;
 	}
+	const certificate = await issueConsultCertificate(consultId);
 	await client`UPDATE consultations SET status = 'signed' WHERE id = ${consultId}`;
 	await client`UPDATE referrals SET status = 'completed' WHERE follow_consult_id = ${consultId}`;
 	const [photoCount] = await client<{ count: number }[]>`
 		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
 	`;
-	return { medications: meds.length, photos: photoCount.count };
+	if (certificate) {
+		await notify(
+			chart.user_id,
+			'Medical certificate issued',
+			`${doctor.name} issued a medical certificate. Certified rest is ${formatDate(certificate.rest_from)} through ${formatDate(certificate.rest_until)}.`
+		);
+	}
+	return { medications: meds.length, photos: photoCount.count, certificate: Boolean(certificate) };
 }
 
 export async function logVital(patientId: number, systolic: number, diastolic: number, heartRate: number, source: string) {

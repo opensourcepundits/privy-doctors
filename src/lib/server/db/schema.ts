@@ -381,6 +381,20 @@ export const selfReportFiles = pgTable('self_report_files', {
 	createdAt: timestamp('created_at').notNull()
 });
 
+export const medicalCertificates = pgTable('medical_certificates', {
+	id: serial('id').primaryKey(),
+	consultationId: integer('consultation_id').notNull().unique(),
+	patientId: integer('patient_id').notNull(),
+	doctorId: integer('doctor_id').notNull(),
+	code: text('code'),
+	reason: text('reason').notNull(),
+	restFrom: date('rest_from').notNull(),
+	restUntil: date('rest_until').notNull(),
+	issuedOn: date('issued_on').notNull(),
+	status: text('status').notNull(),
+	createdAt: timestamp('created_at').notNull()
+});
+
 export const selfReportAlerts = pgTable('self_report_alerts', {
 	id: serial('id').primaryKey(),
 	reportId: integer('report_id').notNull(),

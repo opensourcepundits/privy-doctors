@@ -445,6 +445,22 @@ ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea;
 
 ALTER TABLE patients ALTER COLUMN dob DROP NOT NULL;
 
+CREATE TABLE IF NOT EXISTS medical_certificates (
+  id serial PRIMARY KEY,
+  consultation_id int NOT NULL UNIQUE REFERENCES consultations(id) ON DELETE CASCADE,
+  patient_id int NOT NULL REFERENCES patients(id),
+  doctor_id int NOT NULL REFERENCES doctors(id),
+  code text,
+  reason text NOT NULL,
+  rest_from date NOT NULL,
+  rest_until date NOT NULL,
+  issued_on date NOT NULL,
+  status text NOT NULL,
+  created_at timestamp NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS medical_certificates_code_key ON medical_certificates (code) WHERE code IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS self_report_alerts (
   id serial PRIMARY KEY,
   report_id int NOT NULL REFERENCES self_reports(id) ON DELETE CASCADE,

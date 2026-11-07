@@ -114,6 +114,11 @@ The demo accounts use the password `clinic-demo`.
 | General practitioner | `/doctors/login` | `irfan.ameerudden@clinica.privata` |
 | Cardiologist | `/doctors/login` | `sarah.jensen@clinica.privata` |
 
+Test doctor, at `/doctors/login`:
+
+- Email: `test.doctor@clinica.privata`
+- Password: `testdoctor`
+
 The doctor can also open Noor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
 
 ## Generated IDs

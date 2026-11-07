@@ -1,4 +1,4 @@
-import { ageOn, formatDate, formatLongDate, formatTime, liveCopy, liveProcedureYear, money } from '#lib/format';
+import { ageOn, formatDate, formatLongDate, formatTime, isoDate, liveCopy, liveProcedureYear, money, restDays } from '#lib/format';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 const PAGE_W = 612;
@@ -134,6 +134,14 @@ export type ConsultationReport = {
 		note: string;
 	}[];
 	photos: ReportPhoto[];
+	certificate: {
+		code: string;
+		reason: string;
+		restFrom: Date | string;
+		restUntil: Date | string;
+		issuedOn: Date | string;
+		days: number;
+	} | null;
 	bill: {
 		code: string;
 		dueOn: Date | string | null;
@@ -271,6 +279,7 @@ class Letter {
 		this.tests();
 		this.tasks();
 		this.otherOrders();
+		this.certificate();
 		this.signature();
 		this.finish();
 		return this.doc.save();
@@ -828,6 +837,22 @@ class Letter {
 		if (!this.report.otherOrders.length) return;
 		this.section('Orders');
 		for (const order of this.report.otherOrders) this.lineCard(order);
+	}
+
+	private certificate() {
+		const certificate = this.report.certificate;
+		if (!certificate) return;
+		this.section('Medical certificate');
+		const days = certificate.days || restDays(isoDate(certificate.restFrom), isoDate(certificate.restUntil));
+		const period = `${formatDate(certificate.restFrom)} to ${formatDate(certificate.restUntil)}${days ? ` (${days} ${days === 1 ? 'day' : 'days'})` : ''}`;
+		this.card(
+			filled([
+				{ text: certificate.code || 'Medical certificate', bold: true },
+				{ text: `Certificate date ${formatDate(certificate.issuedOn)}`, muted: true },
+				{ text: `Certified rest ${period}` },
+				{ text: certificate.reason }
+			])
+		);
 	}
 
 	private signature() {

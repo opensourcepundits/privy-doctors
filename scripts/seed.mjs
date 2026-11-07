@@ -85,6 +85,27 @@ for (const weekday of [1, 3, 5]) {
 	`;
 }
 
+const testPassword = hashPassword('testdoctor');
+const [testUser] = await sql`
+	INSERT INTO users (email, password_hash, role, name)
+	VALUES ('test.doctor@clinica.privata', ${testPassword}, 'doctor', 'Dr. Test Account')
+	RETURNING id
+`;
+const [testDoctor] = await sql`
+	INSERT INTO doctors (user_id, name, credentials, specialty, gender, practice, location, phone)
+	VALUES (
+		${testUser.id}, 'Dr. Test Account', 'MD', 'General Practice', 'Female',
+		'Test Practice', 'Suite 100, Test Clinic', '(555) 010-0000'
+	)
+	RETURNING id
+`;
+for (const weekday of [1, 2, 3, 4, 5]) {
+	await sql`
+		INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)
+		VALUES (${testDoctor.id}, 'clinic', ${weekday}, '09:00', '17:00')
+	`;
+}
+
 for (const weekday of [1, 2, 3, 4, 5]) {
 	await sql`
 		INSERT INTO availability (doctor_id, kind, weekday, start_time, end_time)

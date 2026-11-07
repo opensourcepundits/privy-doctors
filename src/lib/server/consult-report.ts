@@ -1,4 +1,4 @@
-import { formatDate } from '#lib/format';
+import { formatDate, isoDate, restDays } from '#lib/format';
 import {
 	chartCodeForConsult,
 	migrateChartCodes,
@@ -116,6 +116,21 @@ function prescriptionsOf(record: VisitRecord): ReportPrescription[] {
 	});
 }
 
+function certificateOf(record: VisitRecord): ConsultationReport['certificate'] {
+	const certificate = record.certificates.find((item) => item.status === 'issued') ?? null;
+	if (!certificate) return null;
+	const restFrom = isoDate(certificate.rest_from);
+	const restUntil = isoDate(certificate.rest_until);
+	return {
+		code: certificate.code ?? '',
+		reason: certificate.reason,
+		restFrom: certificate.rest_from,
+		restUntil: certificate.rest_until,
+		issuedOn: certificate.issued_on,
+		days: restDays(restFrom, restUntil)
+	};
+}
+
 function orderLine(order: VisitRecord['orders'][number]): ReportLine {
 	return {
 		title: order.title,
@@ -222,6 +237,7 @@ function reportFrom(
 			note: referral.note ?? ''
 		})),
 		photos: [],
+		certificate: certificateOf(record),
 		bill: null
 	};
 }

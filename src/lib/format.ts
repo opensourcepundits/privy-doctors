@@ -94,6 +94,14 @@ export function isoDate(value: Date | string | null | undefined) {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+export function restDays(from: string, until: string) {
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return 0;
+	const start = Date.parse(`${from}T00:00:00Z`);
+	const end = Date.parse(`${until}T00:00:00Z`);
+	if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+	return Math.round((end - start) / 86_400_000) + 1;
+}
+
 export function formatLongDate(value: Date | string) {
 	return new Intl.DateTimeFormat('en-US', {
 		weekday: 'long',

@@ -52,9 +52,6 @@ export const actions = {
 		if (completes === false) return { message: 'Enter a valid completion date for this medicine.' };
 		const prescriptionCompletes = completionDate(data.get('prescription_completes_on'));
 		if (prescriptionCompletes === false) return { message: 'Enter a valid completion date for the prescription.' };
-		if (!prescriptionCompletes && !consult.completes_on) {
-			return { message: 'Set a completion date for the prescription.' };
-		}
 		if (prescriptionCompletes) await setFiledCompletion(consult.id, prescriptionCompletes);
 		const chosen = [...data.getAll('frequency'), ...data.getAll('meal')].map(String);
 		const tags = [...frequencyTags, ...mealTags].filter((label) => chosen.includes(label));

@@ -5,11 +5,18 @@
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
-	import { formatDate, isoDate, money } from '#lib/format';
+	import { formatDate, isoDate, money, restDays } from '#lib/format';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	let open = $state<'medication' | 'referral' | 'test' | null>(null);
+	let certOpen = $state(false);
+	let certReason = $state('');
+	let certFrom = $state('');
+	let certUntil = $state('');
+	let certDate = $state('');
+	let certReady = false;
+	let closedSavedCertificate = false;
 	let specialist = $state('');
 	let picked = $state<number | null>(null);
 	let medQuery = $state('');
@@ -51,6 +58,58 @@
 	$effect.pre(() => {
 		if (form && 'referral' in form && form.referral) open = 'referral';
 	});
+
+	function postedCertificate() {
+		if (!form || !('certificateDraft' in form) || !form.certificateDraft) return null;
+		const draft = form.certificateDraft;
+		if (!draft || typeof draft !== 'object') return null;
+		return {
+			reason: String('reason' in draft ? draft.reason : ''),
+			restFrom: String('restFrom' in draft ? draft.restFrom : ''),
+			restUntil: String('restUntil' in draft ? draft.restUntil : ''),
+			issuedOn: String('issuedOn' in draft ? draft.issuedOn : '')
+		};
+	}
+
+	$effect.pre(() => {
+		const posted = postedCertificate();
+		const saved = Boolean(form && 'certificateSaved' in form && form.certificateSaved);
+		if (!saved) closedSavedCertificate = false;
+		if (posted) {
+			certReason = posted.reason;
+			certFrom = posted.restFrom;
+			certUntil = posted.restUntil;
+			certDate = posted.issuedOn;
+			certOpen = true;
+			certReady = true;
+			return;
+		}
+		if (saved && !closedSavedCertificate) {
+			closedSavedCertificate = true;
+			certOpen = false;
+			certReady = true;
+			if (data.certificate) {
+				certReason = data.certificate.reason;
+				certFrom = data.certificate.restFrom;
+				certUntil = data.certificate.restUntil;
+				certDate = data.certificate.issuedOn;
+			}
+			return;
+		}
+		if (certReady) return;
+		certReady = true;
+		if (data.certificate) {
+			certReason = data.certificate.reason;
+			certFrom = data.certificate.restFrom;
+			certUntil = data.certificate.restUntil;
+			certDate = data.certificate.issuedOn;
+			return;
+		}
+		certDate = data.today;
+		certFrom = data.today;
+	});
+
+	const certifiedDays = $derived(restDays(certFrom, certUntil));
 	let completesOn = $state('');
 	let frequency = $state('');
 	let meal = $state('');
@@ -309,13 +368,13 @@
 			</div>
 			<label class="block text-sm font-semibold" for="rx-complete">
 				Prescription completion date
+				<span class="font-normal text-[#64748B]">optional</span>
 				<input
 					class="field mt-1"
 					id="rx-complete"
 					name="completes_on"
 					type="date"
 					form="finalize"
-					required={meds.length > 0}
 					bind:value={completesOn}
 					onchange={rememberCompletion}
 				/>
@@ -504,6 +563,76 @@
 				Total <span class="text-red-600" aria-hidden="true">*</span>
 				<input class="field mt-1" id="bill-total" form="finalize" name="bill_total" type="number" inputmode="decimal" min="0" max="1000000" step="0.01" required bind:value={billTotal} placeholder="0.00" />
 			</label>
+		{/if}
+	</article>
+
+	<article class="card space-y-3">
+		<div class="flex items-start justify-between gap-3">
+			<div>
+				<h2 class="display flex items-center gap-2 text-sm font-bold">
+					<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
+						<span class="material-symbols-outlined text-[18px]">article</span>
+					</span>
+					Medical certificate
+				</h2>
+				<p class="mt-1 text-xs text-[#64748B]">Optional. Certify the reason, the rest or sick-leave period, and the date before you end this consultation.</p>
+			</div>
+			{#if !data.certificate || certOpen}
+				<button
+					class="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white"
+					type="button"
+					onclick={() => (certOpen = !certOpen)}
+				>
+					<span class="material-symbols-outlined text-base">{certOpen ? 'close' : 'add'}</span>
+					{certOpen ? 'Close' : 'Issue certificate'}
+				</button>
+			{/if}
+		</div>
+		{#if data.certificate && !certOpen}
+			<div class="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+				<p class="text-sm font-bold">Ready to issue</p>
+				<p class="mt-1 text-sm">{data.certificate.reason}</p>
+				<p class="mt-1 text-[11px] text-[#64748B]">
+					Certified rest {formatDate(data.certificate.restFrom)} – {formatDate(data.certificate.restUntil)}
+					{#if restDays(data.certificate.restFrom, data.certificate.restUntil)}
+						· {restDays(data.certificate.restFrom, data.certificate.restUntil)} days
+					{/if}
+				</p>
+				<p class="text-[11px] text-[#64748B]">Certificate date {formatDate(data.certificate.issuedOn)}</p>
+				<p class="mt-1 text-[11px] text-[#64748B]">It is filed on the chart when you finalize this consultation.</p>
+				<div class="mt-2 flex gap-2">
+					<button class="btn-sm" type="button" onclick={() => (certOpen = true)}>Edit</button>
+					<form method="POST" action="?/removeCertificate" onsubmit={(event) => { if (!confirm('Remove this medical certificate from the consultation?')) event.preventDefault(); }}>
+						<button class="btn-sm-line" type="submit">Remove</button>
+					</form>
+				</div>
+			</div>
+		{/if}
+		{#if certOpen}
+			<form class="space-y-3" method="POST" action="?/certificate">
+				<label class="block text-sm font-semibold" for="cert-reason">
+					Reason <span class="text-red-600" aria-hidden="true">*</span>
+					<textarea class="field mt-1" id="cert-reason" name="reason" rows="3" required maxlength="500" bind:value={certReason} placeholder="Unfit for work because of an acute illness"></textarea>
+				</label>
+				<div class="grid gap-3 sm:grid-cols-2">
+					<label class="block text-sm font-semibold" for="cert-from">
+						Rest starts <span class="text-red-600" aria-hidden="true">*</span>
+						<input class="field mt-1" id="cert-from" name="rest_from" type="date" required bind:value={certFrom} />
+					</label>
+					<label class="block text-sm font-semibold" for="cert-until">
+						Rest ends <span class="text-red-600" aria-hidden="true">*</span>
+						<input class="field mt-1" id="cert-until" name="rest_until" type="date" required bind:value={certUntil} />
+					</label>
+				</div>
+				{#if certifiedDays}
+					<p class="text-xs text-[#64748B]">{certifiedDays} {certifiedDays === 1 ? 'day' : 'days'} of certified rest, including both dates.</p>
+				{/if}
+				<label class="block text-sm font-semibold" for="cert-date">
+					Certificate date <span class="text-red-600" aria-hidden="true">*</span>
+					<input class="field mt-1" id="cert-date" name="issued_on" type="date" required bind:value={certDate} />
+				</label>
+				<button class="btn" type="submit">Save certificate</button>
+			</form>
 		{/if}
 	</article>
 

@@ -204,7 +204,8 @@
 				</label>
 				<label class="block text-sm font-semibold">
 					Prescription completion date
-					<input class="field mt-1" name="prescription_completes_on" type="date" required bind:value={completesOn} />
+					<span class="font-normal text-[#64748B]">optional</span>
+					<input class="field mt-1" name="prescription_completes_on" type="date" bind:value={completesOn} />
 				</label>
 				<button class="btn" type="submit">Save medication</button>
 			</form>
