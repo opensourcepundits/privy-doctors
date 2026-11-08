@@ -12,7 +12,7 @@ export async function load({ locals }) {
 	]);
 	return {
 		user: locals.user,
-		patient: { ...patient, record_token: null },
+		patient: { ...patient, record_token: null, invite_token: null },
 		preview,
 		directory,
 		notifications

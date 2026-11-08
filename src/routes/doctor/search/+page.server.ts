@@ -11,7 +11,7 @@ function doctorFrom(locals: App.Locals) {
 
 function forDoctor(patient: PatientRow & { access: string }) {
 	const hasPortal = Boolean(patient.user_id);
-	const shared = { ...patient, record_token: null, user_id: null, has_portal: hasPortal };
+	const shared = { ...patient, record_token: null, user_id: null, invite_token: null, has_portal: hasPortal };
 	if (patient.access === 'granted') return shared;
 	return {
 		...shared,
@@ -106,6 +106,9 @@ export const actions = {
 			return fail(400, { ...entered, message: 'Enter a phone number using digits, spaces, and + ( ) - .' });
 		}
 		const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
+		if (!nic && !passport) {
+			return fail(400, { ...entered, message: 'Enter a NIC or a passport number so later visits stay on one timeline.' });
+		}
 		if (nic && !identity.test(nic)) {
 			return fail(400, { ...entered, message: 'Enter a NIC using letters and numbers.' });
 		}
@@ -113,9 +116,9 @@ export const actions = {
 			return fail(400, { ...entered, message: 'Enter a passport number using letters and numbers.' });
 		}
 
-		let patient;
+		let created;
 		try {
-			patient = await createWalkInPatient(doctor.id, { firstName, lastName, dob, sex, phone, nic, passport });
+			created = await createWalkInPatient(doctor.id, { firstName, lastName, dob, sex, phone, nic, passport });
 		} catch (error) {
 			const constraint = error && typeof error === 'object' && 'constraint_name' in error ? String(error.constraint_name) : '';
 			if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
@@ -126,7 +129,11 @@ export const actions = {
 			}
 			throw error;
 		}
-		await draftConsult(patient.id, doctor.id);
-		redirect(303, `/doctor/patients/${patient.pid}/consult`);
+		if ('error' in created) return fail(409, { ...entered, message: created.error });
+		await draftConsult(created.patient.id, doctor.id);
+		const notice = created.continued
+			? 'This NIC or passport is already on an unsigned chart. This visit joins that timeline.'
+			: '';
+		redirect(303, `/doctor/patients/${created.patient.pid}/consult${notice ? `?notice=${encodeURIComponent(notice)}` : ''}`);
 	}
 };

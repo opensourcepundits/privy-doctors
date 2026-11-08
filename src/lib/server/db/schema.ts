@@ -57,7 +57,8 @@ export const patients = pgTable('patients', {
 	insuranceMember: text('insurance_member'),
 	pharmacyName: text('pharmacy_name'),
 	pharmacyAddress: text('pharmacy_address'),
-	pharmacyPhone: text('pharmacy_phone')
+	pharmacyPhone: text('pharmacy_phone'),
+	inviteToken: text('invite_token').unique()
 });
 
 export const appointments = pgTable('appointments', {

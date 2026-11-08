@@ -54,7 +54,7 @@
 	<form class="card mx-4 mt-4 space-y-3 lg:mx-0 lg:max-w-xl" method="POST" action="?intent=consult&/register">
 		<div>
 			<h2 class="display text-base font-bold">New patient</h2>
-			<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit. Fields marked with a red asterisk are required.</p>
+			<p class="mt-1 text-sm text-[#64748B]">No portal account is created. A clinic chart is saved for this visit. After the consultation, copy the signup link from the chart and send it to the patient. A NIC or passport number keeps every visit on one timeline until they sign up. Fields marked with a red asterisk are required.</p>
 		</div>
 		{#if form?.message && form?.offerNew}
 			<p class="text-sm text-red-600">{form.message}</p>
@@ -82,6 +82,10 @@
 					<option value="Male" selected={form?.sex === 'Male'}>Male</option>
 				</select>
 			</label>
+		</div>
+		<div>
+			<p class="text-sm font-semibold">NIC or passport <span class="text-red-600" aria-hidden="true">*</span></p>
+			<p class="mt-1 text-sm text-[#64748B]">Enter at least one. The same number attaches later consultations to this chart.</p>
 		</div>
 		<label class="block text-sm font-semibold" for="nic">
 			NIC
