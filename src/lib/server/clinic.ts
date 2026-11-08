@@ -590,6 +590,202 @@ function ensureOptionalDob() {
 	return optionalDob;
 }
 
+let inviteColumn: Promise<void> | null = null;
+
+function ensureInviteColumn() {
+	inviteColumn ??= client`ALTER TABLE patients ADD COLUMN IF NOT EXISTS invite_token text`
+		.then(() => client`CREATE UNIQUE INDEX IF NOT EXISTS patients_invite_token_key ON patients (invite_token)`)
+		.then(() =>
+			client`
+				CREATE TABLE IF NOT EXISTS signup_invites (
+					token text PRIMARY KEY,
+					patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+					created_at timestamp NOT NULL
+				)
+			`
+		)
+		.then(() => client`CREATE INDEX IF NOT EXISTS signup_invites_patient_id_idx ON signup_invites (patient_id)`)
+		.then(() => undefined)
+		.catch((error) => {
+			inviteColumn = null;
+			throw error;
+		});
+	return inviteColumn;
+}
+
+function identityKey(value: string | null | undefined) {
+	return (value ?? '').trim().toLowerCase();
+}
+
+function asList<T>(value: unknown): T[] {
+	if (Array.isArray(value)) return value;
+	if (typeof value === 'string') {
+		try {
+			const parsed = JSON.parse(value);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	}
+	return [];
+}
+
+function mergeTextLists(left: unknown, right: unknown) {
+	const seen = new Set<string>();
+	const items: string[] = [];
+	for (const item of [...asList<string>(left), ...asList<string>(right)]) {
+		const text = String(item).trim();
+		const key = text.toLowerCase();
+		if (!text || seen.has(key)) continue;
+		seen.add(key);
+		items.push(text);
+	}
+	return items;
+}
+
+function mergeSurgeries(left: unknown, right: unknown) {
+	const seen = new Set<string>();
+	const items: { year: string; name: string }[] = [];
+	for (const item of [...asList<{ year?: string; name?: string }>(left), ...asList<{ year?: string; name?: string }>(right)]) {
+		const year = String(item?.year ?? '').trim();
+		const name = String(item?.name ?? '').trim();
+		const key = `${year}|${name}`.toLowerCase();
+		if (!name || seen.has(key)) continue;
+		seen.add(key);
+		items.push({ year, name });
+	}
+	return items;
+}
+
+type IdentityChart = {
+	id: number;
+	pid: string;
+	user_id: number | null;
+	nic: string | null;
+	passport: string | null;
+};
+
+async function chartsForIdentity(nic: string, passport: string) {
+	await ensureInviteColumn();
+	const nicKey = nic.trim();
+	const passportKey = passport.trim();
+	if (!nicKey && !passportKey) return [] as IdentityChart[];
+	return client<IdentityChart[]>`
+		SELECT id, pid, user_id, nic, passport
+		FROM patients
+		WHERE (${nicKey} <> '' AND nic IS NOT NULL AND lower(trim(nic)) = lower(${nicKey}))
+		   OR (${passportKey} <> '' AND passport IS NOT NULL AND lower(trim(passport)) = lower(${passportKey}))
+	`;
+}
+
+function accountConflict(rows: IdentityChart[], nic: string, passport: string) {
+	const taken = rows.find((row) => row.user_id);
+	if (!taken) return null;
+	if (identityKey(taken.nic) && identityKey(taken.nic) === identityKey(nic)) {
+		return 'A patient with that NIC already has an account. Search for them and ask for access.';
+	}
+	if (identityKey(taken.passport) && identityKey(taken.passport) === identityKey(passport)) {
+		return 'A patient with that passport number already has an account. Search for them and ask for access.';
+	}
+	return 'That NIC or passport already belongs to an account. Search for the patient and ask for access.';
+}
+
+async function patientById(id: number) {
+	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE id = ${id}`;
+	return patient ?? null;
+}
+
+async function mergeUnsignedChart(sql: ClinicSql, keepId: number, dropId: number) {
+	if (keepId === dropId) return;
+	const [keep] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${keepId}`;
+	const [drop] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${dropId}`;
+	if (!keep || !drop || drop.user_id) return;
+	await sql`UPDATE appointments SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE encounters SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE vitals SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE prescriptions SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE dose_logs SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE labs SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE imaging_studies SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE care_orders SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE invoices SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE consultations SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE patient_tasks SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE refill_requests SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE referrals SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE access_codes SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE self_reports SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE medical_certificates SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`UPDATE signup_invites SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await sql`
+		INSERT INTO patient_access (patient_id, doctor_id, status, source, created_at)
+		SELECT ${keepId}, doctor_id, status, source, created_at
+		FROM patient_access
+		WHERE patient_id = ${dropId}
+		ON CONFLICT (patient_id, doctor_id) DO UPDATE
+		SET status = CASE
+			WHEN patient_access.status = 'granted' OR EXCLUDED.status = 'granted' THEN 'granted'
+			WHEN patient_access.status = 'pending' OR EXCLUDED.status = 'pending' THEN 'pending'
+			ELSE patient_access.status
+		END
+	`;
+	await sql`DELETE FROM patient_access WHERE patient_id = ${dropId}`;
+	await sql`
+		UPDATE patients
+		SET nic = NULL, passport = NULL, record_token = NULL, invite_token = NULL
+		WHERE id = ${dropId}
+	`;
+	await sql`
+		UPDATE patients
+		SET nic = ${keep.nic || drop.nic},
+			passport = ${keep.passport || drop.passport},
+			phone = ${keep.phone || drop.phone},
+			dob = ${keep.dob || drop.dob},
+			blood_type = ${keep.blood_type || drop.blood_type},
+			record_token = ${keep.record_token || drop.record_token},
+			allergies = ${JSON.stringify(mergeTextLists(keep.allergies, drop.allergies))}::jsonb,
+			conditions = ${JSON.stringify(mergeTextLists(keep.conditions, drop.conditions))}::jsonb,
+			surgeries = ${JSON.stringify(mergeSurgeries(keep.surgeries, drop.surgeries))}::jsonb
+		WHERE id = ${keepId}
+	`;
+	await sql`DELETE FROM patients WHERE id = ${dropId}`;
+}
+
+export async function ensureSignupInvite(patientId: number) {
+	await ensureInviteColumn();
+	const [row] = await client<{ invite_token: string | null; user_id: number | null }[]>`
+		SELECT invite_token, user_id FROM patients WHERE id = ${patientId}
+	`;
+	if (!row || row.user_id) return null;
+	if (row.invite_token) {
+		await client`
+			INSERT INTO signup_invites (token, patient_id, created_at)
+			VALUES (${row.invite_token}, ${patientId}, ${nowLocal().stamp})
+			ON CONFLICT (token) DO NOTHING
+		`;
+		return row.invite_token;
+	}
+	const token = randomBytes(24).toString('hex');
+	const [saved] = await client<{ invite_token: string }[]>`
+		UPDATE patients
+		SET invite_token = ${token}
+		WHERE id = ${patientId} AND user_id IS NULL AND invite_token IS NULL
+		RETURNING invite_token
+	`;
+	const [again] = saved?.invite_token
+		? [saved]
+		: await client<{ invite_token: string | null }[]>`
+			SELECT invite_token FROM patients WHERE id = ${patientId}
+		`;
+	if (!again?.invite_token) return null;
+	await client`
+		INSERT INTO signup_invites (token, patient_id, created_at)
+		VALUES (${again.invite_token}, ${patientId}, ${nowLocal().stamp})
+		ON CONFLICT (token) DO NOTHING
+	`;
+	return again.invite_token;
+}
+
 export async function createWalkInPatient(
 	doctorId: number,
 	input: {
@@ -603,10 +799,49 @@ export async function createWalkInPatient(
 	}
 ) {
 	await ensureOptionalDob();
+	await ensureInviteColumn();
+	const nic = input.nic.trim();
+	const passport = input.passport.trim();
+	if (!nic && !passport) return { error: 'Enter a NIC or a passport number.' as const };
+	const matches = await chartsForIdentity(nic, passport);
+	const blocked = accountConflict(matches, nic, passport);
+	if (blocked) return { error: blocked as string };
+	const unsigned = matches.filter((row) => !row.user_id);
+	if (unsigned.length) {
+		const ids = unsigned.map((row) => row.id);
+		const [primary] = await client<{ id: number }[]>`
+			SELECT p.id
+			FROM patients p
+			WHERE p.id = ANY(${ids})
+			ORDER BY (SELECT COUNT(*) FROM consultations c WHERE c.patient_id = p.id) DESC, p.id
+			LIMIT 1
+		`;
+		if (!primary) return { error: 'That chart could not be opened.' as const };
+		await ensureMedicalCertificateStore();
+		await client.begin(async (sql) => {
+			for (const row of unsigned) {
+				if (row.id !== primary.id) await mergeUnsignedChart(sql, primary.id, row.id);
+			}
+			await sql`
+				UPDATE patients
+				SET nic = COALESCE(nic, ${nic || null}),
+					passport = COALESCE(passport, ${passport || null}),
+					phone = COALESCE(phone, ${input.phone || null}),
+					dob = COALESCE(dob, ${input.dob || null})
+				WHERE id = ${primary.id}
+			`;
+		});
+		await grantAccess(primary.id, doctorId, 'registered');
+		await ensureSignupInvite(primary.id);
+		const patient = await patientById(primary.id);
+		if (!patient) return { error: 'That chart could not be opened.' as const };
+		return { patient, continued: true as const };
+	}
 	const recordToken = randomBytes(24).toString('hex');
-	const [patient] = await client`
+	const inviteToken = randomBytes(24).toString('hex');
+	const [patient] = await client<PatientRow[]>`
 		INSERT INTO patients (
-			primary_doctor_id, pid, record_token, first_name, last_name, dob, sex, phone, nic, passport, concierge_note
+			primary_doctor_id, pid, record_token, first_name, last_name, dob, sex, phone, nic, passport, concierge_note, invite_token
 		)
 		VALUES (
 			${doctorId},
@@ -621,14 +856,20 @@ export async function createWalkInPatient(
 			${input.dob || null},
 			${input.sex},
 			${input.phone || null},
-			${input.nic || null},
-			${input.passport || null},
-			'Added during a consultation. No portal account.'
+			${nic || null},
+			${passport || null},
+			'Added during a consultation. No portal account.',
+			${inviteToken}
 		)
 		RETURNING *
 	`;
 	await grantAccess(patient.id, doctorId, 'registered');
-	return patient;
+	await client`
+		INSERT INTO signup_invites (token, patient_id, created_at)
+		VALUES (${inviteToken}, ${patient.id}, ${nowLocal().stamp})
+		ON CONFLICT (token) DO NOTHING
+	`;
+	return { patient, continued: false as const };
 }
 
 export async function registerPatient(input: {
@@ -675,6 +916,125 @@ export async function registerPatient(input: {
 		if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
 			return { error: 'An account already uses that email.' };
 		}
+		throw error;
+	}
+}
+
+function duplicateIdentity(error: unknown) {
+	if (!error || typeof error !== 'object' || !('code' in error) || error.code !== '23505') return null;
+	const constraint = 'constraint_name' in error ? String(error.constraint_name) : '';
+	if (constraint.includes('email') || constraint.includes('users')) return 'An account already uses that email.';
+	if (constraint.includes('passport')) return 'A chart already uses that passport number.';
+	if (constraint.includes('nic')) return 'A chart already uses that NIC.';
+	return 'That detail is already on another chart.';
+}
+
+export async function signupPreview(token: string) {
+	if (!/^[a-f0-9]{32,64}$/.test(token)) return null;
+	await ensureInviteColumn();
+	const [chart] = await client<PatientRow[]>`
+		SELECT p.*
+		FROM signup_invites s
+		JOIN patients p ON p.id = s.patient_id
+		WHERE s.token = ${token} AND p.user_id IS NULL
+	`;
+	if (!chart) return null;
+	const nic = chart.nic ?? '';
+	const passport = chart.passport ?? '';
+	const [count] = await client<{ count: number }[]>`
+		SELECT COUNT(*)::int AS count
+		FROM encounters e
+		JOIN patients p ON p.id = e.patient_id
+		WHERE p.id = ${chart.id}
+		   OR (
+			p.user_id IS NULL
+			AND (
+				(${nic} <> '' AND p.nic IS NOT NULL AND lower(trim(p.nic)) = lower(${nic}))
+				OR (${passport} <> '' AND p.passport IS NOT NULL AND lower(trim(p.passport)) = lower(${passport}))
+			)
+		   )
+	`;
+	return {
+		firstName: chart.first_name,
+		lastName: chart.last_name,
+		dob: chart.dob,
+		sex: chart.sex,
+		phone: chart.phone ?? '',
+		nic,
+		passport,
+		consultations: count?.count ?? 0
+	};
+}
+
+export async function claimSignupInvite(
+	token: string,
+	input: { email: string; passwordHash: string; nic: string; passport: string; phone: string }
+) {
+	if (!/^[a-f0-9]{32,64}$/.test(token)) return { error: 'This signup link is not valid.' as const };
+	await ensureInviteColumn();
+	await ensureOptionalDob();
+	const [chart] = await client<PatientRow[]>`
+		SELECT p.*
+		FROM signup_invites s
+		JOIN patients p ON p.id = s.patient_id
+		WHERE s.token = ${token}
+	`;
+	if (!chart || chart.user_id) return { error: 'This signup link has already been used. Sign in instead.' as const };
+	const nic = input.nic.trim();
+	const passport = input.passport.trim();
+	const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
+	if (chart.nic && identityKey(nic) !== identityKey(chart.nic)) {
+		return { error: 'Enter the NIC recorded at the clinic.' as const };
+	}
+	if (chart.passport && identityKey(passport) !== identityKey(chart.passport)) {
+		return { error: 'Enter the passport number recorded at the clinic.' as const };
+	}
+	if (nic && !chart.nic && !identity.test(nic)) return { error: 'Enter a NIC using letters and numbers.' as const };
+	if (passport && !chart.passport && !identity.test(passport)) {
+		return { error: 'Enter a passport number using letters and numbers.' as const };
+	}
+	const nextNic = chart.nic || nic;
+	const nextPassport = chart.passport || passport;
+	const matches = await chartsForIdentity(nextNic, nextPassport);
+	const blocked = accountConflict(matches, nextNic, nextPassport);
+	if (blocked) return { error: blocked };
+	const phone = input.phone.trim();
+	if (phone && (phone.length > 40 || !/^[+0-9()\-.\s]+$/.test(phone))) {
+		return { error: 'Enter a phone number using digits, spaces, and + ( ) - .' as const };
+	}
+	try {
+		await ensureMedicalCertificateStore();
+		const userId = await client.begin(async (sql) => {
+			const [user] = await sql<{ id: number }[]>`
+				INSERT INTO users (email, password_hash, role, name)
+				VALUES (${input.email}, ${input.passwordHash}, 'patient', ${`${chart.first_name} ${chart.last_name}`})
+				RETURNING id
+			`;
+			for (const row of matches) {
+				if (!row.user_id && row.id !== chart.id) await mergeUnsignedChart(sql, chart.id, row.id);
+			}
+			const [claimed] = await sql<{ id: number }[]>`
+				UPDATE patients
+				SET user_id = ${user.id},
+					invite_token = NULL,
+					nic = ${nextNic || null},
+					passport = ${nextPassport || null},
+					phone = COALESCE(${phone || null}, phone),
+					concierge_note = 'Signed up from the consultation link.'
+				WHERE id = ${chart.id} AND user_id IS NULL
+				RETURNING id
+			`;
+			if (!claimed) throw new Error('signup-used');
+			await sql`DELETE FROM signup_invites WHERE patient_id = ${chart.id}`;
+			return user.id as number;
+		});
+		return { userId };
+	} catch (error) {
+		if (error instanceof Error && error.message === 'signup-used') {
+			return { error: 'This signup link has already been used. Sign in instead.' as const };
+		}
+		const message = duplicateIdentity(error);
+		if (message) return { error: message };
 		throw error;
 	}
 }

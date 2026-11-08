@@ -10,5 +10,5 @@ async function roster(locals: App.Locals, q: string) {
 	const doctor = await doctorForUser(locals.user.id);
 	if (!doctor) return [];
 	const rows = await patientsForDoctor(doctor.id, q);
-	return rows.map((patient) => ({ ...patient, record_token: null, user_id: null }));
+	return rows.map((patient) => ({ ...patient, record_token: null, user_id: null, invite_token: null }));
 }

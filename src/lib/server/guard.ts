@@ -9,5 +9,5 @@ export async function requireChart(locals: App.Locals, pid: string) {
 	if ((await accessStatus(patient.id, doctor.id)) !== 'granted') {
 		redirect(303, `/doctor/access/${patient.pid}`);
 	}
-	return { doctor, patient: { ...patient, record_token: null } };
+	return { doctor, patient: { ...patient, record_token: null, invite_token: null } };
 }

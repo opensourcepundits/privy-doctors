@@ -42,5 +42,6 @@
 		<p class="mt-6 text-sm text-[#64748B]">
 			Already registered? <a class="font-semibold text-brand" href="/login">Sign in</a>
 		</p>
+		<p class="mt-2 text-sm text-[#64748B]">Seen at the clinic already? Open the link your clinician sent. It keeps those consultations on your timeline.</p>
 	</div>
 </main>

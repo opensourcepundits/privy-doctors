@@ -445,6 +445,16 @@ ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea;
 
 ALTER TABLE patients ALTER COLUMN dob DROP NOT NULL;
 
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS invite_token text;
+CREATE UNIQUE INDEX IF NOT EXISTS patients_invite_token_key ON patients (invite_token);
+
+CREATE TABLE IF NOT EXISTS signup_invites (
+  token text PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  created_at timestamp NOT NULL
+);
+CREATE INDEX IF NOT EXISTS signup_invites_patient_id_idx ON signup_invites (patient_id);
+
 CREATE TABLE IF NOT EXISTS medical_certificates (
   id serial PRIMARY KEY,
   consultation_id int NOT NULL UNIQUE REFERENCES consultations(id) ON DELETE CASCADE,
