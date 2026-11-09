@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import SignupLink from '#lib/components/SignupLink.svelte';
 	import TaskChecklist from '#lib/components/TaskChecklist.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
@@ -8,16 +9,6 @@
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
-	let copied = $state(false);
-
-	async function copyLink(link: string) {
-		try {
-			await navigator.clipboard.writeText(link);
-			copied = true;
-		} catch {
-			copied = false;
-		}
-	}
 	const tab = $derived.by(() => {
 		const requested = page.url.searchParams.get('tab');
 		return requested === 'checkups' ? 'consults' : (requested ?? 'timeline');
@@ -148,27 +139,9 @@
 			].filter(Boolean).join(' · ')}</p>
 		</div>
 	</div>
-	{#await data.signupLink then link}
-		{#if link}
-			<article class="card mt-4 max-w-3xl">
-				<p class="kicker">No platform account</p>
-				<h2 class="display mt-1 text-lg font-bold">Send this link after the consultation</h2>
-				<p class="mt-1 text-sm text-[#64748B]">
-					{data.patient.first_name} is not signed up. Copy this link and send it so they can finish creating an account.
-					Consultations recorded under this NIC or passport stay on one timeline when they sign up.
-				</p>
-				<div class="mt-3 flex flex-col gap-2 sm:flex-row">
-					<input class="field" readonly value={link} aria-label="Signup link" onclick={(event) => { if (event.currentTarget instanceof HTMLInputElement) event.currentTarget.select(); }} />
-					<button class="btn shrink-0" type="button" onclick={() => copyLink(link)}>
-						<span class="material-symbols-outlined text-lg">{copied ? 'check' : 'content_copy'}</span>
-						{copied ? 'Copied' : 'Copy link'}
-					</button>
-				</div>
-			</article>
-		{/if}
-	{:catch}
-		<p class="mt-4 text-sm text-[#64748B]">The signup link could not be loaded.</p>
-	{/await}
+	<div class="mt-4">
+		<SignupLink link={data.signupLink} name={data.patient.first_name} />
+	</div>
 	<a class="btn mt-4" href="/doctor/patients/{data.patient.pid}/consult">
 		<span class="material-symbols-outlined text-lg">play_arrow</span>
 		Start consultation
