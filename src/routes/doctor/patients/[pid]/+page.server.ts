@@ -1,14 +1,9 @@
 import { redirect } from '@sveltejs/kit';
-import { consultationsFor, encountersFor, ensureSignupInvite, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient } from '#lib/server/clinic';
+import { consultationsFor, encountersFor, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
-export function load({ parent, url }: { parent: () => Promise<{ patient: { id: number; user_id: number | null } }>; url: URL }) {
+export function load({ parent }: { parent: () => Promise<{ patient: { id: number } }> }) {
 	return {
-		signupLink: parent().then(async ({ patient }) => {
-			if (patient.user_id) return null;
-			const token = await ensureSignupInvite(patient.id);
-			return token ? `${url.origin}/join/${token}` : null;
-		}),
 		chart: parent().then(async ({ patient }) => {
 			const [encounters, prescriptions, imaging, labs, tasks, reports, consultations] = await Promise.all([
 				encountersFor(patient.id),

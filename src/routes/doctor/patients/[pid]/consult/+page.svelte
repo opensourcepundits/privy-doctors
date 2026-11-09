@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
 	import Mention from '#lib/components/Mention.svelte';
+	import SignupLink from '#lib/components/SignupLink.svelte';
 	import { ageOn, formatDate } from '#lib/format';
 	import type { PageProps } from './$types';
 
@@ -50,6 +51,7 @@
 </header>
 
 <section class="space-y-4 px-4 py-4 lg:px-0">
+	<SignupLink link={data.signupLink} name={data.patient.first_name} />
 	<article class="card">
 		<div class="flex flex-wrap items-center gap-2">
 			<h2 class="display text-lg font-bold">{data.patient.first_name} {data.patient.last_name}</h2>
