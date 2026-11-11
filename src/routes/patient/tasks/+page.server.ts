@@ -1,6 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { actingPatient, rescheduleOwnAppointment, saveTaskResult, taskOwned, tasksForPatient, taskVisits } from '#lib/server/clinic';
-import { saveTaskPdf } from '#lib/server/uploads';
+import { actingPatient, patientForUser, recordOrderedVaccination, rescheduleOwnAppointment, saveTaskResult, taskOwned, tasksForPatient, taskVisits } from '#lib/server/clinic';
+import { optionalImage, saveTaskPdf } from '#lib/server/uploads';
 
 export function load({ locals }: { locals: App.Locals }) {
 	return { tasks: tasksFor(locals), visits: visitsFor(locals) };
@@ -37,6 +37,17 @@ export const actions = {
 		const name = file.name.replace(/[/\\]/g, '').slice(0, 120) || 'result.pdf';
 		await saveTaskResult(task.id, patient.id, name, stored);
 		return { uploaded: task.id };
+	},
+	vaccination: async ({ request, locals }) => {
+		if (!locals.user || locals.user.role !== 'patient') return fail(401, { message: 'Sign in as the patient to record a vaccination.' });
+		const patient = await patientForUser(locals.user.id);
+		if (!patient) return fail(401, { message: 'Sign in as the patient to record a vaccination.' });
+		const data = await request.formData();
+		const proof = await optionalImage(data.get('proof'));
+		if (proof && 'error' in proof) return fail(400, { message: proof.error });
+		const result = await recordOrderedVaccination(Number(data.get('task')), patient.id, String(data.get('given_on') ?? ''), proof);
+		if ('error' in result) return fail(400, { message: result.error });
+		redirect(303, '/patient/tasks?notice=Vaccination recorded on your card');
 	},
 	reschedule: async ({ request, locals }) => {
 		if (!locals.user) return fail(401, { message: 'Sign in required.' });

@@ -178,6 +178,10 @@
 			<span class="material-symbols-outlined text-lg">article</span>
 			My certificates
 		</a>
+		<a class="btn" href="/patient/vaccinations">
+			<span class="material-symbols-outlined text-lg">vaccines</span>
+			Vaxx card
+		</a>
 	</div>
 </header>
 

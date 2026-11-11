@@ -1,9 +1,9 @@
 import { redirect } from '@sveltejs/kit';
 import { frequencyTags, mealTags } from '#lib/doses';
 import { liveDay, restDays } from '#lib/format';
-import { addConsultOrder, addPrescriptionPhoto, addReferral, consultCertificate, draftConsult, finalizeConsult, medicinesCatalog, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultCertificate, removeConsultOrder, removePrescriptionPhoto, saveConsultCertificate, setConsultCompletion } from '#lib/server/clinic';
+import { addConsultOrder, addPrescriptionPhoto, addReferral, consultCertificate, draftConsult, finalizeConsult, giveVaccination, medicinesCatalog, orderVaccination, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultCertificate, removeConsultOrder, removePrescriptionPhoto, saveConsultCertificate, setConsultCompletion, vaccinationsForConsult } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
-import { acceptPrescriptionPhoto } from '#lib/server/uploads';
+import { acceptPrescriptionPhoto, optionalImage } from '#lib/server/uploads';
 
 function completionDate(value: FormDataEntryValue | null) {
 	const text = String(value ?? '').trim();
@@ -104,13 +104,14 @@ async function context(locals: App.Locals, pid: string) {
 export async function load({ parent }) {
 	const { doctor, patient } = await parent();
 	const consult = await draftConsult(patient.id, doctor.id);
-	const [doctors, medicines, photos, certificate] = await Promise.all([
+	const [doctors, medicines, photos, certificate, vaccines] = await Promise.all([
 		referralDoctors().then((rows) => rows.filter((item) => item.id !== doctor.id)),
 		medicinesCatalog(),
 		prescriptionPhotos(consult.id),
-		consultCertificate(consult.id)
+		consultCertificate(consult.id),
+		vaccinationsForConsult(consult.id)
 	]);
-	return { doctor, patient, consult, doctors, medicines, photos, certificate, today: liveDay() };
+	return { doctor, patient, consult, doctors, medicines, photos, certificate, vaccines, today: liveDay() };
 }
 
 export const actions = {
@@ -150,6 +151,37 @@ export const actions = {
 		const { consult } = await context(locals, params.pid);
 		const data = await request.formData();
 		await addConsultOrder(consult.id, 'test', String(data.get('title') ?? ''), String(data.get('detail') ?? ''), String(data.get('note') ?? ''));
+		return { saved: true };
+	},
+	give: async ({ request, params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		const data = await request.formData();
+		const proof = await optionalImage(data.get('proof'));
+		if (proof && 'error' in proof) return { message: proof.error, vaccine: 'give' as const };
+		const result = await giveVaccination(
+			consult.id,
+			{
+				name: String(data.get('name') ?? ''),
+				givenOn: String(data.get('given_on') ?? ''),
+				lot: String(data.get('lot') ?? ''),
+				site: String(data.get('site') ?? ''),
+				note: String(data.get('note') ?? '')
+			},
+			proof
+		);
+		if ('error' in result) return { message: result.error, vaccine: 'give' as const };
+		return { saved: true };
+	},
+	orderVaccine: async ({ request, params, locals }) => {
+		const { consult } = await context(locals, params.pid);
+		const data = await request.formData();
+		const result = await orderVaccination(
+			consult.id,
+			String(data.get('name') ?? ''),
+			String(data.get('detail') ?? ''),
+			String(data.get('note') ?? '')
+		);
+		if ('error' in result) return { message: result.error, vaccine: 'order' as const };
 		return { saved: true };
 	},
 	completion: async ({ request, params, locals }) => {

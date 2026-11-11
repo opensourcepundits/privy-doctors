@@ -478,3 +478,26 @@ CREATE TABLE IF NOT EXISTS self_report_alerts (
   created_at timestamp NOT NULL,
   UNIQUE (report_id, doctor_id)
 );
+
+CREATE TABLE IF NOT EXISTS vaccinations (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  consultation_id int REFERENCES consultations(id) ON DELETE CASCADE,
+  order_id int REFERENCES consultation_orders(id) ON DELETE SET NULL,
+  task_id int REFERENCES patient_tasks(id) ON DELETE SET NULL,
+  doctor_id int REFERENCES doctors(id) ON DELETE SET NULL,
+  name text NOT NULL,
+  given_on date,
+  source text NOT NULL CHECK (source IN ('given', 'ordered', 'self')),
+  status text NOT NULL CHECK (status IN ('done', 'ordered')),
+  note text,
+  lot text,
+  site text,
+  proof_name text,
+  proof_type text,
+  proof_bytes bytea,
+  created_at timestamp NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS vaccinations_patient_id_idx ON vaccinations (patient_id);
+CREATE UNIQUE INDEX IF NOT EXISTS vaccinations_task_id_key ON vaccinations (task_id) WHERE task_id IS NOT NULL;

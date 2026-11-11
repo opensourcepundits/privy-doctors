@@ -225,7 +225,8 @@ function reportFrom(
 		medications,
 		tests: record.orders.filter((order) => order.kind === 'test').map(orderLine),
 		referralOrders: record.orders.filter((order) => order.kind === 'referral').map(orderLine),
-		otherOrders: record.orders.filter((order) => !['medication', 'test', 'referral'].includes(order.kind)).map(orderLine),
+		vaccines: record.orders.filter((order) => order.kind === 'vaccine').map(orderLine),
+		otherOrders: record.orders.filter((order) => !['medication', 'test', 'referral', 'vaccine'].includes(order.kind)).map(orderLine),
 		tasks: record.tasks.map(taskLine),
 		referrals: record.referrals.map((referral) => ({
 			fromName: [referral.from_name, referral.from_credentials].filter(Boolean).join(', '),

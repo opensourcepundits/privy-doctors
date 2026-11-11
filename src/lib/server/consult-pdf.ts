@@ -122,6 +122,7 @@ export type ConsultationReport = {
 	medications: ReportLine[];
 	tests: ReportLine[];
 	referralOrders: ReportLine[];
+	vaccines: ReportLine[];
 	otherOrders: ReportLine[];
 	tasks: ReportLine[];
 	referrals: {
@@ -276,6 +277,7 @@ class Letter {
 		this.prescriptions();
 		await this.photos();
 		this.referrals();
+		this.vaccines();
 		this.tests();
 		this.tasks();
 		this.otherOrders();
@@ -819,6 +821,12 @@ class Letter {
 		if (!visits.length) {
 			for (const order of orders) this.lineCard(order);
 		}
+	}
+
+	private vaccines() {
+		if (!this.report.vaccines.length) return;
+		this.section('Vaccinations');
+		for (const order of this.report.vaccines) this.lineCard(order);
 	}
 
 	private tests() {
