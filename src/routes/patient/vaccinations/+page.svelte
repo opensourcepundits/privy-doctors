@@ -4,6 +4,7 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let proofName = $state('');
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
@@ -58,12 +59,23 @@
 					<span class="font-normal text-[#64748B]">optional</span>
 					<input class="field mt-1" id="vax-note" name="note" maxlength="500" autocomplete="off" value={form?.note ?? ''} placeholder="Pharmacy, clinic, or anything else to remember" />
 				</label>
-				<label class="block text-sm font-semibold" for="vax-proof">
-					Photo of the record
-					<span class="font-normal text-[#64748B]">optional</span>
-					<input class="mt-1 block w-full text-sm" id="vax-proof" name="proof" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
-					<span class="mt-1 block text-xs font-normal text-[#64748B]">JPEG, PNG, GIF, or WebP. 8 MB or smaller.</span>
-				</label>
+				<div>
+					<p class="text-sm font-semibold">
+						Photo of the record
+						<span class="font-normal text-[#64748B]">optional</span>
+					</p>
+					<label class="btn mt-1" for="vax-proof">Choose file</label>
+					<input
+						class="sr-only"
+						id="vax-proof"
+						name="proof"
+						type="file"
+						accept="image/jpeg,image/png,image/gif,image/webp"
+						onchange={(event) => (proofName = event.currentTarget.files?.[0]?.name ?? '')}
+					/>
+					{#if proofName}<p class="mt-1 text-xs text-[#64748B]">{proofName}</p>{/if}
+					<p class="mt-1 text-xs font-normal text-[#64748B]">JPEG, PNG, GIF, or WebP. 8 MB or smaller.</p>
+				</div>
 				<button class="btn" type="submit">
 					<span class="material-symbols-outlined text-lg">vaccines</span>
 					Add to my card
