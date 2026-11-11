@@ -75,6 +75,21 @@ export async function deletePrescriptionPhoto(storedName: string) {
 	await rm(path, { force: true });
 }
 
+export async function acceptImageFile(file: File, emptyError: string) {
+	if (!file || file.size === 0) return { error: emptyError };
+	if (file.size > 8 * 1024 * 1024) return { error: 'The photo must be 8 MB or smaller.' as const };
+	const bytes = Buffer.from(await file.arrayBuffer());
+	const kind = sniffDocument(bytes);
+	if (!kind || kind.ext === 'pdf') return { error: 'Attach a JPEG, PNG, GIF, or WebP photo.' as const };
+	const name = file.name.replace(/[/\\]/g, '').slice(0, 120) || `photo.${kind.ext}`;
+	return { name, bytes, ext: kind.ext, type: kind.type };
+}
+
+export async function optionalImage(file: unknown) {
+	if (!(file instanceof File) || file.size === 0) return null;
+	return acceptImageFile(file, 'Choose a photo of the vaccination record.');
+}
+
 export async function acceptPrescriptionPhoto(file: File) {
 	if (!file || file.size === 0) return { error: 'Choose a photo of the prescription.' as const };
 	if (file.size > 8 * 1024 * 1024) return { error: 'The photo must be 8 MB or smaller.' as const };

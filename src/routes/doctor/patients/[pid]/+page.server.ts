@@ -1,20 +1,21 @@
 import { redirect } from '@sveltejs/kit';
-import { consultationsFor, encountersFor, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient } from '#lib/server/clinic';
+import { consultationsFor, encountersFor, imagingFor, labsFor, orderLab, prescriptionsFor, selfReportsFor, tasksForPatient, vaccinationsForPatient } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 
 export function load({ parent }: { parent: () => Promise<{ patient: { id: number } }> }) {
 	return {
 		chart: parent().then(async ({ patient }) => {
-			const [encounters, prescriptions, imaging, labs, tasks, reports, consultations] = await Promise.all([
+			const [encounters, prescriptions, imaging, labs, tasks, reports, consultations, vaccinations] = await Promise.all([
 				encountersFor(patient.id),
 				prescriptionsFor(patient.id),
 				imagingFor(patient.id),
 				labsFor(patient.id),
 				tasksForPatient(patient.id),
 				selfReportsFor(patient.id),
-				consultationsFor(patient.id)
+				consultationsFor(patient.id),
+				vaccinationsForPatient(patient.id)
 			]);
-			return { encounters, prescriptions, imaging, labs, tasks, reports, consultations };
+			return { encounters, prescriptions, imaging, labs, tasks, reports, consultations, vaccinations };
 		})
 	};
 }

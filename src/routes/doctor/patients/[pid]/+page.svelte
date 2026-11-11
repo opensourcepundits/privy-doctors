@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import SignupLink from '#lib/components/SignupLink.svelte';
 	import TaskChecklist from '#lib/components/TaskChecklist.svelte';
+	import VaxxList from '#lib/components/VaxxList.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
 	import { ageLabel, formatDate } from '#lib/format';
@@ -169,7 +170,7 @@
 			<button class="btn" type="submit">Save order</button>
 		</form>
 	{:else if tab === 'tasks'}
-		<p class="mb-3 max-w-2xl text-sm text-[#64748B]">Tests ordered during a consultation. Each uploaded PDF stays with the consultation that created the checklist.</p>
+		<p class="mb-3 max-w-2xl text-sm text-[#64748B]">Tests and vaccinations ordered during a consultation. A test stays here until the patient uploads the PDF. A vaccination is recorded on the card, with an optional photo.</p>
 	{/if}
 	{#if chartFailed}
 		<p class="text-sm text-[#64748B]">The chart could not be loaded.</p>
@@ -180,6 +181,13 @@
 	{:else if tab === 'prescriptions'}
 		<Timeline events={prescriptionEvents} />
 	{:else if tab === 'tasks'}
+		<div class="mb-6 max-w-3xl space-y-3">
+			<div>
+				<h2 class="display text-lg font-semibold">Vaccination card</h2>
+				<p class="mt-1 text-sm text-[#64748B]">Vaccinations given in clinic, recorded after an order, or added by the patient.</p>
+			</div>
+			<VaxxList shots={chart.vaccinations} viewer="doctor" />
+		</div>
 		<div class="span-2">
 			<TaskChecklist tasks={chart.tasks} />
 		</div>

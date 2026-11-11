@@ -9,7 +9,7 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
-	let open = $state<'medication' | 'referral' | 'test' | null>(null);
+	let open = $state<'medication' | 'referral' | 'test' | 'give' | 'order' | null>(null);
 	let certOpen = $state(false);
 	let certReason = $state('');
 	let certFrom = $state('');
@@ -57,6 +57,7 @@
 
 	$effect.pre(() => {
 		if (form && 'referral' in form && form.referral) open = 'referral';
+		if (form && 'vaccine' in form && (form.vaccine === 'give' || form.vaccine === 'order')) open = form.vaccine;
 	});
 
 	function postedCertificate() {
@@ -157,6 +158,7 @@
 	const meds = $derived(data.consult.orders.filter((order) => order.kind === 'medication'));
 	const referrals = $derived(data.consult.orders.filter((order) => order.kind === 'referral'));
 	const tests = $derived(data.consult.orders.filter((order) => order.kind === 'test'));
+	const vaccines = $derived(data.consult.orders.filter((order) => order.kind === 'vaccine'));
 	const ready = $derived(Number(meds.length > 0) + Number(referrals.length > 0) + Number(tests.length > 0));
 
 	function rememberCompletion() {
@@ -517,6 +519,85 @@
 			</div>
 		</section>
 	</div>
+
+	<section class="space-y-2">
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<h2 class="display flex items-center gap-2 text-sm font-bold">
+				<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
+					<span class="material-symbols-outlined text-[18px]">vaccines</span>
+				</span>
+				Vaccinations
+			</h2>
+			<div class="flex flex-wrap gap-2">
+				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'give' ? null : 'give')}>
+					<span class="material-symbols-outlined text-base">vaccines</span>
+					Give vaccination
+				</button>
+				<button class="inline-flex h-8 items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs font-semibold" type="button" onclick={() => (open = open === 'order' ? null : 'order')}>
+					<span class="material-symbols-outlined text-base">add</span>
+					Order vaccination
+				</button>
+			</div>
+		</div>
+		<p class="text-xs text-[#64748B]">Giving one records it on the patient’s vaccination card now. Ordering one adds it to their to-do list. A photo of the record is optional when it is given.</p>
+		<div class="card space-y-2">
+			{#each vaccines as order}
+				{@const task = data.consult.tasks.find((item) => item.order_id === order.id)}
+				{@const shot = data.vaccines.find((item) => item.order_id === order.id)}
+				<div class="flex items-start justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
+					<div class="min-w-0">
+						<p class="text-sm font-bold">{order.title}</p>
+						{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
+						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
+						{#if task && task.status !== 'received'}
+							<p class="text-[11px] text-[#64748B]">On the patient to-do list</p>
+						{:else}
+							<p class="text-[11px] text-emerald-700">Recorded on the vaccination card</p>
+						{/if}
+						{#if shot?.proof_name}
+							<a class="mt-2 block overflow-hidden rounded-lg border border-[#E2E8F0]" href="/files/vaccinations/{shot.id}" target="_blank" rel="noreferrer">
+								<img class="max-h-40 w-full bg-white object-contain" src="/files/vaccinations/{shot.id}" alt="Proof for {order.title}" />
+							</a>
+						{/if}
+					</div>
+					<form method="POST" action="?/remove">
+						<input type="hidden" name="id" value={order.id} />
+						<button class="grid h-7 w-7 place-items-center rounded-lg text-[#64748B] hover:text-red-600" type="submit" aria-label="Remove vaccination">
+							<span class="material-symbols-outlined text-base">close</span>
+						</button>
+					</form>
+				</div>
+			{:else}
+				<p class="text-sm text-[#64748B]">No vaccinations given or ordered yet.</p>
+			{/each}
+			{#if open === 'give'}
+				<form class="space-y-2" method="POST" action="?/give" enctype="multipart/form-data">
+					<input class="field" name="name" placeholder="Vaccination" required maxlength="120" />
+					<label class="block text-sm font-semibold" for="vax-given">
+						Date given
+						<input class="field mt-1" id="vax-given" name="given_on" type="date" required max={data.today} value={data.today} />
+					</label>
+					<input class="field" name="site" placeholder="Site, such as left deltoid" maxlength="80" />
+					<input class="field" name="lot" placeholder="Lot, optional" maxlength="40" />
+					<input class="field" name="note" placeholder="Note, optional" maxlength="500" />
+					<label class="block text-sm font-semibold" for="vax-proof">
+						Photo of the record
+						<span class="font-normal text-[#64748B]">optional</span>
+						<input class="mt-1 block w-full text-sm" id="vax-proof" name="proof" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
+					</label>
+					<button class="btn" type="submit">Record vaccination</button>
+				</form>
+			{/if}
+			{#if open === 'order'}
+				<form class="space-y-2" method="POST" action="?/orderVaccine">
+					<input class="field" name="name" placeholder="Vaccination" required maxlength="120" />
+					<input class="field" name="detail" placeholder="Where to get it, or any timing" maxlength="160" />
+					<input class="field" name="note" placeholder="Note for the patient" maxlength="500" />
+					<button class="btn" type="submit">Add to patient to-do list</button>
+				</form>
+			{/if}
+		</div>
+	</section>
 
 	<article class="card space-y-3">
 		<div>

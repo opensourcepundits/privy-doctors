@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Mention from '#lib/components/Mention.svelte';
-	import { formatDate } from '#lib/format';
+	import { formatDate, liveDay } from '#lib/format';
 
 	type Task = {
 		id: number;
@@ -9,6 +9,9 @@
 		consultation_uid?: string | null;
 		uid?: string | null;
 		order_uid?: string | null;
+		order_kind?: string | null;
+		vaccination_id?: number | null;
+		has_proof?: boolean | null;
 		doctor_name: string;
 		started_at: Date | string;
 		title: string;
@@ -22,10 +25,12 @@
 	let {
 		tasks,
 		upload = false,
+		vaccinate = false,
 		message = ''
 	}: {
 		tasks: Task[];
 		upload?: boolean;
+		vaccinate?: boolean;
 		message?: string;
 	} = $props();
 
@@ -76,14 +81,16 @@
 				</p>
 				<ul class="mt-3 space-y-4">
 					{#each group.tasks as task}
+						{@const vaccine = task.order_kind === 'vaccine'}
+						{@const done = vaccine ? task.status === 'received' : Boolean(task.stored_name)}
 						<li class="flex gap-3">
 							<span
-								class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border {task.stored_name
+								class="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border {done
 									? 'border-emerald-600 bg-emerald-600 text-white'
 									: 'border-[#CBD5E1]'}"
 								aria-hidden="true"
 							>
-								{#if task.stored_name}
+								{#if done}
 									<span class="material-symbols-outlined text-[14px]">check</span>
 								{/if}
 							</span>
@@ -94,7 +101,35 @@
 								{/if}
 								{#if task.detail}<p class="text-sm text-brand">{task.detail}</p>{/if}
 								{#if task.note}<p class="text-sm text-[#64748B]">{task.note}</p>{/if}
-								{#if task.stored_name}
+								{#if vaccine && done}
+									<p class="mt-1 text-sm text-emerald-700">Recorded on the vaccination card</p>
+									{#if task.has_proof && task.vaccination_id}
+										<a class="mt-2 block overflow-hidden rounded-xl border border-[#E2E8F0]" href="/files/vaccinations/{task.vaccination_id}" target="_blank" rel="noreferrer">
+											<img class="max-h-64 w-full bg-white object-contain" src="/files/vaccinations/{task.vaccination_id}" alt="Proof for {task.title}" />
+										</a>
+									{:else}
+										<p class="mt-1 text-sm text-[#64748B]">No photo was attached.</p>
+									{/if}
+									{#if vaccinate}
+										<a class="btn mt-3" href="/patient/vaccinations">View on your vaccination card</a>
+									{/if}
+								{:else if vaccine && vaccinate}
+									<form class="mt-2 space-y-2" method="POST" action="?/vaccination" enctype="multipart/form-data">
+										<input type="hidden" name="task" value={task.id} />
+										<label class="block text-sm font-semibold" for="given-{task.id}">
+											Date given
+											<input class="field mt-1" id="given-{task.id}" name="given_on" type="date" required max={liveDay()} />
+										</label>
+										<label class="block text-sm font-semibold" for="proof-{task.id}">
+											Photo of the record
+											<span class="font-normal text-[#64748B]">optional</span>
+											<input class="mt-1 block w-full text-sm" id="proof-{task.id}" name="proof" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
+										</label>
+										<button class="btn" type="submit">Record on my vaccination card</button>
+									</form>
+								{:else if vaccine}
+									<p class="mt-1 text-sm text-[#64748B]">Waiting for the patient to record this vaccination.</p>
+								{:else if task.stored_name}
 									<p class="mt-1 text-sm text-emerald-700">Result received{task.file_name ? ` · ${task.file_name}` : ''}</p>
 									<iframe class="mt-2 h-72 w-full rounded-xl border border-[#E2E8F0] bg-white" title="{task.title} result" src="/files/tasks/{task.id}"></iframe>
 									<a class="btn mt-3" href="/files/tasks/{task.id}?download">Download PDF</a>
@@ -126,5 +161,5 @@
 		{/each}
 	</div>
 {:else}
-	<p class="card text-sm text-[#64748B]">No consultation has added tests to this checklist yet.</p>
+	<p class="card text-sm text-[#64748B]">No tests or vaccinations are on this checklist yet.</p>
 {/if}

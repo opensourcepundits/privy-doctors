@@ -35,6 +35,7 @@
 	const sameNote = $derived(record.narrative.trim() && record.narrative.trim() === record.findings.trim());
 	const medicines = $derived(record.orders.filter((order) => order.kind === 'medication'));
 	const tests = $derived(record.orders.filter((order) => order.kind === 'test'));
+	const vaccines = $derived(record.orders.filter((order) => order.kind === 'vaccine'));
 	const referralOrders = $derived(record.orders.filter((order) => order.kind === 'referral'));
 </script>
 
@@ -238,6 +239,21 @@
 			<p class="mt-2 text-sm text-[#64748B]">No referral was made from this consultation.</p>
 		{/if}
 	</article>
+
+	{#if vaccines.length}
+		<article class="card">
+			<p class="kicker">Vaccinations</p>
+			<ul class="mt-3 space-y-2">
+				{#each vaccines as order}
+					<li class="text-sm">
+						<p class="font-semibold">{order.title}</p>
+						{#if order.detail}<p>{order.detail}</p>{/if}
+						{#if order.note}<p class="text-[#64748B]">{order.note}</p>{/if}
+					</li>
+				{/each}
+			</ul>
+		</article>
+	{/if}
 
 	{#if tests.length}
 		<article class="card">

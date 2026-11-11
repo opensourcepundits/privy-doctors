@@ -13,7 +13,7 @@
 	<p class="kicker">From your consultations</p>
 	<h1 class="display text-2xl font-bold">To do</h1>
 	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
-		Upcoming consultations are listed here, along with tests from a consultation. You can move an approved visit to another open time, and the physician is notified.
+		Upcoming consultations are listed here, along with tests and vaccinations from a consultation. You can move an approved visit to another open time, and the physician is notified.
 	</p>
 </header>
 
@@ -45,10 +45,10 @@
 {#await data.tasks}
 	<div class="px-4 py-4 lg:px-0"><Skeleton count={3} /></div>
 {:then tasks}
-	{@const done = tasks.filter((task) => task.stored_name).length}
+	{@const done = tasks.filter((task) => (task.order_kind === 'vaccine' ? task.status === 'received' : task.stored_name)).length}
 	<p class="px-4 text-sm font-semibold lg:px-0">{done} of {tasks.length} complete</p>
 	<section class="px-4 py-4 lg:px-0">
-		<TaskChecklist {tasks} upload message={form && 'message' in form ? form.message : ''} />
+		<TaskChecklist {tasks} upload vaccinate={!data.preview} message={form && 'message' in form ? form.message : ''} />
 	</section>
 {:catch}
 	<p class="px-4 py-4 text-sm text-[#64748B] lg:px-0">The checklist could not be loaded.</p>

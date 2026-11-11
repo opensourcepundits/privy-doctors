@@ -711,6 +711,8 @@ async function mergeUnsignedChart(sql: ClinicSql, keepId: number, dropId: number
 	await sql`UPDATE invoices SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE consultations SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE patient_tasks SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
+	await ensureVaccinationStore();
+	await sql`UPDATE vaccinations SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE refill_requests SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE referrals SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE access_codes SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
@@ -2620,11 +2622,16 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 
 export async function tasksForPatient(patientId: number) {
 	await ensureChartLinks(patientId);
+	await ensureVaccinationStore();
 	return client`
-		SELECT t.*, c.code AS consultation_code, c.uid AS consultation_uid, c.started_at, d.name AS doctor_name, d.id AS doctor_id
+		SELECT t.*, c.code AS consultation_code, c.uid AS consultation_uid, c.started_at, d.name AS doctor_name, d.id AS doctor_id,
+			COALESCE(o.kind, CASE WHEN v.id IS NOT NULL THEN 'vaccine' END) AS order_kind,
+			v.id AS vaccination_id, (v.proof_name IS NOT NULL) AS has_proof
 		FROM patient_tasks t
 		JOIN consultations c ON c.id = t.consultation_id
 		JOIN doctors d ON d.id = c.doctor_id
+		LEFT JOIN consultation_orders o ON o.id = t.order_id
+		LEFT JOIN vaccinations v ON v.task_id = t.id
 		WHERE t.patient_id = ${patientId}
 		ORDER BY c.started_at DESC, t.consultation_id, t.id
 	`;
@@ -2785,6 +2792,315 @@ export async function addConsultOrder(
 			`;
 		}
 	}
+}
+
+let vaccinationStore: Promise<void> | null = null;
+
+function ensureVaccinationStore() {
+	vaccinationStore ??= client`
+		CREATE TABLE IF NOT EXISTS vaccinations (
+			id serial PRIMARY KEY,
+			patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+			consultation_id int REFERENCES consultations(id) ON DELETE CASCADE,
+			order_id int REFERENCES consultation_orders(id) ON DELETE SET NULL,
+			task_id int REFERENCES patient_tasks(id) ON DELETE SET NULL,
+			doctor_id int REFERENCES doctors(id) ON DELETE SET NULL,
+			name text NOT NULL,
+			given_on date,
+			source text NOT NULL CHECK (source IN ('given', 'ordered', 'self')),
+			status text NOT NULL CHECK (status IN ('done', 'ordered')),
+			note text,
+			lot text,
+			site text,
+			proof_name text,
+			proof_type text,
+			proof_bytes bytea,
+			created_at timestamp NOT NULL
+		)
+	`
+		.then(() => client`CREATE INDEX IF NOT EXISTS vaccinations_patient_id_idx ON vaccinations (patient_id)`)
+		.then(
+			() =>
+				client`CREATE UNIQUE INDEX IF NOT EXISTS vaccinations_task_id_key ON vaccinations (task_id) WHERE task_id IS NOT NULL`
+		)
+		.then(() => undefined)
+		.catch((error) => {
+			vaccinationStore = null;
+			throw error;
+		});
+	return vaccinationStore;
+}
+
+export type VaccinationCard = {
+	id: number;
+	name: string;
+	given_on: Date | string | null;
+	source: string;
+	status: string;
+	note: string | null;
+	lot: string | null;
+	site: string | null;
+	proof_name: string | null;
+	doctor_name: string | null;
+	credentials: string | null;
+	order_id: number | null;
+};
+
+type VaccineProof = { name: string; type: string; bytes: Buffer } | null;
+
+function vaccineLabel(value: string) {
+	const name = value.trim();
+	if (!name || name.length > 120) return null;
+	return name;
+}
+
+function limitedText(value: string, max: number) {
+	const text = value.trim();
+	if (text.length > max) return false as const;
+	return text;
+}
+
+function givenOnDate(value: string) {
+	const text = value.trim();
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+	if (Number(text.slice(0, 4)) < 1900 || text > liveDay()) return null;
+	return text;
+}
+
+async function openConsult(consultId: number) {
+	const [consult] = await client<
+		{
+			id: number;
+			patient_id: number;
+			doctor_id: number;
+			uid: string | null;
+			status: string;
+			pid: string;
+			user_id: number | null;
+			doctor_name: string;
+		}[]
+	>`
+		SELECT c.id, c.patient_id, c.doctor_id, c.uid, c.status, p.pid, p.user_id, d.name AS doctor_name
+		FROM consultations c
+		JOIN patients p ON p.id = c.patient_id
+		JOIN doctors d ON d.id = c.doctor_id
+		WHERE c.id = ${consultId} AND c.status = 'in_session'
+	`;
+	return consult ?? null;
+}
+
+function proofSql(proof: VaccineProof) {
+	return proof ? proof.bytes.toString('base64') : null;
+}
+
+export async function giveVaccination(
+	consultId: number,
+	input: { name: string; givenOn: string; lot: string; site: string; note: string },
+	proof: VaccineProof
+) {
+	await ensureVaccinationStore();
+	const name = vaccineLabel(input.name);
+	if (!name) return { error: 'Name the vaccination in 120 characters or fewer.' };
+	const givenOn = givenOnDate(input.givenOn);
+	if (!givenOn) return { error: 'Enter the date it was given. It cannot be in the future.' };
+	const lot = limitedText(input.lot, 40);
+	if (lot === false) return { error: 'Keep the lot number to 40 characters.' };
+	const site = limitedText(input.site, 80);
+	if (site === false) return { error: 'Keep the site to 80 characters.' };
+	const note = limitedText(input.note, 500);
+	if (note === false) return { error: 'Keep the note to 500 characters.' };
+	const consult = await openConsult(consultId);
+	if (!consult) return { error: 'This consultation is no longer open.' };
+	const detail = ['Given in clinic', givenOn, site, lot ? `Lot ${lot}` : ''].filter(Boolean).join(' · ');
+	const encoded = proofSql(proof);
+	await client.begin(async (sql) => {
+		const [order] = await sql<{ id: number }[]>`
+			INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
+			VALUES (${consultId}, 'vaccine', ${name}, ${detail}, ${note || null})
+			RETURNING id
+		`;
+		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
+		await sql`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
+		await sql`
+			INSERT INTO vaccinations (
+				patient_id, consultation_id, order_id, doctor_id, name, given_on, source, status,
+				note, lot, site, proof_name, proof_type, proof_bytes, created_at
+			) VALUES (
+				${consult.patient_id}, ${consultId}, ${order.id}, ${consult.doctor_id}, ${name}, ${givenOn},
+				'given', 'done', ${note || null}, ${lot || null}, ${site || null},
+				${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+			)
+		`;
+	});
+	await notify(consult.user_id, 'Vaccination recorded', `${consult.doctor_name} recorded ${name} on your vaccination card.`);
+	return { saved: true as const };
+}
+
+export async function orderVaccination(consultId: number, nameInput: string, detailInput: string, noteInput: string) {
+	await ensureVaccinationStore();
+	const name = vaccineLabel(nameInput);
+	if (!name) return { error: 'Name the vaccination in 120 characters or fewer.' };
+	const detail = limitedText(detailInput, 160);
+	if (detail === false) return { error: 'Keep the instructions to 160 characters.' };
+	const note = limitedText(noteInput, 500);
+	if (note === false) return { error: 'Keep the note to 500 characters.' };
+	const consult = await openConsult(consultId);
+	if (!consult) return { error: 'This consultation is no longer open.' };
+	await client.begin(async (sql) => {
+		const [order] = await sql<{ id: number }[]>`
+			INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
+			VALUES (${consultId}, 'vaccine', ${name}, ${detail || null}, ${note || null})
+			RETURNING id
+		`;
+		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
+		await sql`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
+		const [task] = await sql<{ id: number }[]>`
+			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, detail, note, status)
+			VALUES (${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid}, ${name}, ${detail || null}, ${note || null}, 'open')
+			RETURNING id
+		`;
+		await sql`
+			UPDATE patient_tasks
+			SET uid = ${chartCode('TSK', consult.doctor_id, consult.pid, task.id)}
+			WHERE id = ${task.id}
+		`;
+		await sql`
+			INSERT INTO vaccinations (
+				patient_id, consultation_id, order_id, task_id, doctor_id, name, source, status, note, created_at
+			) VALUES (
+				${consult.patient_id}, ${consultId}, ${order.id}, ${task.id}, ${consult.doctor_id},
+				${name}, 'ordered', 'ordered', ${note || null}, ${nowLocal().stamp}
+			)
+		`;
+	});
+	await notify(consult.user_id, 'Vaccination ordered', `${consult.doctor_name} ordered ${name}. It is on your to-do list.`);
+	return { saved: true as const };
+}
+
+export async function recordOrderedVaccination(taskId: number, patientId: number, givenOnInput: string, proof: VaccineProof) {
+	await ensureVaccinationStore();
+	const givenOn = givenOnDate(givenOnInput);
+	if (!givenOn) return { error: 'Enter the date it was given. It cannot be in the future.' };
+	const [task] = await client<
+		{ id: number; consultation_id: number; order_id: number | null; status: string; order_kind: string | null; doctor_id: number }[]
+	>`
+		SELECT t.id, t.consultation_id, t.order_id, t.status, o.kind AS order_kind, c.doctor_id
+		FROM patient_tasks t
+		JOIN consultations c ON c.id = t.consultation_id
+		LEFT JOIN consultation_orders o ON o.id = t.order_id
+		WHERE t.id = ${taskId} AND t.patient_id = ${patientId}
+	`;
+	if (!task || task.order_kind !== 'vaccine') return { error: 'That task is not a vaccination.' };
+	if (task.status === 'received') return { error: 'This vaccination is already on your card.' };
+	const encoded = proofSql(proof);
+	const saved = await client.begin(async (sql) => {
+		const [existing] = await sql<{ id: number; status: string }[]>`
+			SELECT id, status FROM vaccinations WHERE task_id = ${taskId} FOR UPDATE
+		`;
+		if (existing?.status === 'done') return false;
+		if (existing) {
+			await sql`
+				UPDATE vaccinations
+				SET status = 'done', given_on = ${givenOn},
+					proof_name = COALESCE(${proof?.name ?? null}, proof_name),
+					proof_type = COALESCE(${proof?.type ?? null}, proof_type),
+					proof_bytes = COALESCE(decode(${encoded}::text, 'base64'), proof_bytes)
+				WHERE id = ${existing.id} AND patient_id = ${patientId}
+			`;
+		} else {
+			await sql`
+				INSERT INTO vaccinations (
+					patient_id, consultation_id, order_id, task_id, doctor_id, name, given_on, source, status,
+					proof_name, proof_type, proof_bytes, created_at
+				)
+				SELECT ${patientId}, ${task.consultation_id}, ${task.order_id}, ${task.id}, ${task.doctor_id},
+					t.title, ${givenOn}, 'ordered', 'done',
+					${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+				FROM patient_tasks t
+				WHERE t.id = ${task.id}
+			`;
+		}
+		await sql`
+			UPDATE patient_tasks
+			SET status = 'received'
+			WHERE id = ${task.id} AND patient_id = ${patientId}
+		`;
+		return true;
+	});
+	if (!saved) return { error: 'This vaccination is already on your card.' };
+	return { saved: true as const };
+}
+
+export async function selfReportVaccination(
+	patientId: number,
+	input: { name: string; givenOn: string; lot: string; site: string; note: string },
+	proof: VaccineProof
+) {
+	await ensureVaccinationStore();
+	const name = vaccineLabel(input.name);
+	if (!name) return { error: 'Name the vaccination in 120 characters or fewer.' };
+	const givenOn = givenOnDate(input.givenOn);
+	if (!givenOn) return { error: 'Enter the date it was given. It cannot be in the future.' };
+	const lot = limitedText(input.lot, 40);
+	if (lot === false) return { error: 'Keep the lot number to 40 characters.' };
+	const site = limitedText(input.site, 80);
+	if (site === false) return { error: 'Keep the site to 80 characters.' };
+	const note = limitedText(input.note, 500);
+	if (note === false) return { error: 'Keep the note to 500 characters.' };
+	const encoded = proofSql(proof);
+	await client`
+		INSERT INTO vaccinations (
+			patient_id, name, given_on, source, status, note, lot, site, proof_name, proof_type, proof_bytes, created_at
+		) VALUES (
+			${patientId}, ${name}, ${givenOn}, 'self', 'done', ${note || null}, ${lot || null}, ${site || null},
+			${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+		)
+	`;
+	return { saved: true as const };
+}
+
+export async function vaccinationsForPatient(patientId: number) {
+	await ensureVaccinationStore();
+	return client<VaccinationCard[]>`
+		SELECT v.id, v.name, v.given_on, v.source, v.status, v.note, v.lot, v.site, v.proof_name, v.order_id,
+			d.name AS doctor_name, d.credentials
+		FROM vaccinations v
+		LEFT JOIN doctors d ON d.id = v.doctor_id
+		WHERE v.patient_id = ${patientId} AND v.status = 'done'
+		ORDER BY v.given_on DESC NULLS LAST, v.id DESC
+	`;
+}
+
+export async function vaccinationsForConsult(consultId: number) {
+	await ensureVaccinationStore();
+	return client<VaccinationCard[]>`
+		SELECT v.id, v.name, v.given_on, v.source, v.status, v.note, v.lot, v.site, v.proof_name, v.order_id,
+			d.name AS doctor_name, d.credentials
+		FROM vaccinations v
+		LEFT JOIN doctors d ON d.id = v.doctor_id
+		WHERE v.consultation_id = ${consultId}
+		ORDER BY v.id
+	`;
+}
+
+export async function vaccinationProof(id: number) {
+	await ensureVaccinationStore();
+	const [row] = await client<
+		{ id: number; patient_id: number; doctor_id: number | null; proof_name: string; proof_type: string; encoded: string | null }[]
+	>`
+		SELECT id, patient_id, doctor_id, proof_name, proof_type, encode(proof_bytes, 'base64') AS encoded
+		FROM vaccinations
+		WHERE id = ${id} AND proof_name IS NOT NULL
+	`;
+	if (!row?.encoded || !row.proof_type) return null;
+	return {
+		id: row.id,
+		patient_id: row.patient_id,
+		doctor_id: row.doctor_id,
+		proof_name: row.proof_name,
+		proof_type: row.proof_type,
+		bytes: Buffer.from(row.encoded, 'base64')
+	};
 }
 
 export async function referralDoctors() {
@@ -3176,7 +3492,8 @@ export async function removeConsultOrder(id: number, consultId?: number) {
 			await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`);
 		}
 	}
-	await client`DELETE FROM patient_tasks WHERE order_id = ${id} AND stored_name IS NULL`;
+	await client`DELETE FROM vaccinations WHERE order_id = ${id} AND (status = 'ordered' OR source = 'given')`;
+	await client`DELETE FROM patient_tasks WHERE order_id = ${id} AND stored_name IS NULL AND status = 'open'`;
 	if (order.kind === 'medication') {
 		const [consult] = await client<{ doctor_id: number; status: string }[]>`
 			SELECT doctor_id, status FROM consultations WHERE id = ${order.consultation_id}
