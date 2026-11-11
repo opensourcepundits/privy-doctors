@@ -10,6 +10,7 @@
 
 	let { data, form }: PageProps = $props();
 	let open = $state<'medication' | 'referral' | 'test' | 'give' | 'order' | null>(null);
+	let proofName = $state('');
 	let certOpen = $state(false);
 	let certReason = $state('');
 	let certFrom = $state('');
@@ -529,7 +530,14 @@
 				Vaccinations
 			</h2>
 			<div class="flex flex-wrap gap-2">
-				<button class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white" type="button" onclick={() => (open = open === 'give' ? null : 'give')}>
+				<button
+					class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white"
+					type="button"
+					onclick={() => {
+						proofName = '';
+						open = open === 'give' ? null : 'give';
+					}}
+				>
 					<span class="material-symbols-outlined text-base">vaccines</span>
 					Give vaccination
 				</button>
@@ -580,11 +588,22 @@
 					<input class="field" name="site" placeholder="Site, such as left deltoid" maxlength="80" />
 					<input class="field" name="lot" placeholder="Lot, optional" maxlength="40" />
 					<input class="field" name="note" placeholder="Note, optional" maxlength="500" />
-					<label class="block text-sm font-semibold" for="vax-proof">
-						Photo of the record
-						<span class="font-normal text-[#64748B]">optional</span>
-						<input class="mt-1 block w-full text-sm" id="vax-proof" name="proof" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
-					</label>
+					<div>
+						<p class="text-sm font-semibold">
+							Photo of the record
+							<span class="font-normal text-[#64748B]">optional</span>
+						</p>
+						<label class="btn mt-1" for="vax-proof">Choose file</label>
+						<input
+							class="sr-only"
+							id="vax-proof"
+							name="proof"
+							type="file"
+							accept="image/jpeg,image/png,image/gif,image/webp"
+							onchange={(event) => (proofName = event.currentTarget.files?.[0]?.name ?? '')}
+						/>
+						{#if proofName}<p class="mt-1 text-xs text-[#64748B]">{proofName}</p>{/if}
+					</div>
 					<button class="btn" type="submit">Record vaccination</button>
 				</form>
 			{/if}

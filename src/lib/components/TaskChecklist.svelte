@@ -120,11 +120,20 @@
 											Date given
 											<input class="field mt-1" id="given-{task.id}" name="given_on" type="date" required max={liveDay()} />
 										</label>
-										<label class="block text-sm font-semibold" for="proof-{task.id}">
+										<p class="text-sm font-semibold">
 											Photo of the record
 											<span class="font-normal text-[#64748B]">optional</span>
-											<input class="mt-1 block w-full text-sm" id="proof-{task.id}" name="proof" type="file" accept="image/jpeg,image/png,image/gif,image/webp" />
-										</label>
+										</p>
+										<label class="btn" for="proof-{task.id}">Choose file</label>
+										<input
+											class="sr-only"
+											id="proof-{task.id}"
+											name="proof"
+											type="file"
+											accept="image/jpeg,image/png,image/gif,image/webp"
+											onchange={(event) => remember(task.id, event.currentTarget)}
+										/>
+										{#if chosen[task.id]}<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>{/if}
 										<button class="btn" type="submit">Record on my vaccination card</button>
 									</form>
 								{:else if vaccine}

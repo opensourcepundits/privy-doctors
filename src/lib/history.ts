@@ -1,4 +1,4 @@
-import { formatDate, formatTime, liveProcedureYear, toLive } from '#lib/format';
+import { formatDate, formatTime, isoDate, liveProcedureYear, toLive } from '#lib/format';
 
 export type TimelineEvent = {
 	at: number;
@@ -94,24 +94,51 @@ type Study = {
 
 type Surgery = { year: string; name: string };
 
+type Vaccine = {
+	id: number;
+	name: string;
+	given_on: Date | string | null;
+	source: string;
+	note: string | null;
+	lot: string | null;
+	site: string | null;
+	proof_name: string | null;
+	doctor_name: string | null;
+	credentials: string | null;
+};
+
 export type HistorySource = {
 	encounters: Encounter[];
 	reports: Report[];
 	labs: Lab[];
 	imaging: Study[];
 	surgeries: Surgery[];
+	vaccinations?: Vaccine[];
 };
 
-export type HistorySlice = 'all' | 'consultations' | 'reports' | 'diagnostics' | 'images' | 'procedures';
+export type HistorySlice = 'all' | 'consultations' | 'reports' | 'diagnostics' | 'images' | 'procedures' | 'vaccinations';
 
-const parts: Record<HistorySlice, Array<'consultations' | 'reports' | 'diagnostics' | 'images' | 'procedures'>> = {
-	all: ['consultations', 'reports', 'diagnostics', 'images', 'procedures'],
+const parts: Record<HistorySlice, Array<'consultations' | 'reports' | 'diagnostics' | 'images' | 'procedures' | 'vaccinations'>> = {
+	all: ['consultations', 'reports', 'diagnostics', 'images', 'procedures', 'vaccinations'],
 	consultations: ['consultations'],
 	reports: ['reports'],
 	diagnostics: ['diagnostics'],
 	images: ['images'],
-	procedures: ['procedures']
+	procedures: ['procedures'],
+	vaccinations: ['vaccinations']
 };
+
+function vaccineWhen(value: Date | string | null) {
+	const iso = isoDate(value);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return { at: 0, day: 'Recorded', year: '' };
+	const [year, month, day] = iso.split('-').map(Number);
+	const date = new Date(year, month - 1, day);
+	return {
+		at: date.getTime(),
+		day: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
+		year: String(year)
+	};
+}
 
 function stamped(value: Date | string) {
 	const date = toLive(value);
@@ -131,6 +158,7 @@ export function historyEvents(
 		visit?: (id: number) => string;
 		report?: (id: number) => string;
 		procedure?: (item: Surgery) => string;
+		vaccine?: (id: number) => string;
 	}
 ) {
 	const include = new Set(parts[slice]);
@@ -208,6 +236,29 @@ export function historyEvents(
 				href: links.image(study.id),
 				link: 'View the scan',
 				image: study.image_path ?? ''
+			});
+		}
+	}
+	if (include.has('vaccinations')) {
+		for (const shot of source.vaccinations ?? []) {
+			const when = vaccineWhen(shot.given_on);
+			const sourceLabel = shot.source === 'given' ? 'Given in clinic' : shot.source === 'self' ? 'Added by the patient' : shot.source === 'ordered' ? 'Ordered, then recorded' : 'Recorded';
+			const clinician = [shot.doctor_name, shot.credentials].filter(Boolean).join(', ');
+			items.push({
+				...when,
+				at: when.at + shot.id,
+				kind: 'Vaccination',
+				tone: 'bg-teal-600',
+				title: shot.name,
+				meta: [sourceLabel, clinician].filter(Boolean).join(' · '),
+				body: [shot.site, shot.lot ? `Lot ${shot.lot}` : ''].filter(Boolean).join(' · '),
+				note: shot.note ?? '',
+				href: links.vaccine ? links.vaccine(shot.id) : '',
+				link: links.vaccine ? 'Open vaccination card' : '',
+				image: '',
+				files: shot.proof_name
+					? [{ href: `/files/vaccinations/${shot.id}`, name: shot.proof_name, image: true }]
+					: []
 			});
 		}
 	}
