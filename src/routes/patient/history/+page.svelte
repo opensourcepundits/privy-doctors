@@ -15,6 +15,7 @@
 		['diagnostics', 'Diagnostics'],
 		['images', 'Medical images'],
 		['procedures', 'Procedures'],
+		['vaccinations', 'Vaccinations'],
 		['hospital', 'Hospital visits']
 	] as const;
 </script>
@@ -45,7 +46,8 @@
 						reports: record.reports,
 						labs: record.labs,
 						imaging: record.imaging,
-						surgeries: data.patient.surgeries
+						surgeries: data.patient.surgeries,
+						vaccinations: record.vaccinations
 					},
 					view as HistorySlice,
 					{
@@ -53,7 +55,8 @@
 						image: (id) => `/patient/imaging/${id}`,
 						visit: (id) => `/patient/visits/${id}`,
 						report: (id) => `/patient/reports/${id}`,
-						procedure: (item) => `/patient/history/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`
+						procedure: (item) => `/patient/history/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`,
+						vaccine: () => '/patient/vaccinations'
 					}
 				)}
 		<Timeline {events} emptyHref={view !== 'all' ? '?view=all' : ''} />
