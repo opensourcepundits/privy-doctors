@@ -8,7 +8,7 @@
 	<div class="w-full max-w-[480px] rounded-3xl border border-[#E2E8F0] bg-white px-6 py-8 shadow-xl lg:px-10 lg:py-10">
 		<p class="kicker">Clinic</p>
 		<h1 class="display mt-2 text-3xl font-bold text-[#0F172A]">Doctor sign in</h1>
-		<p class="mt-2 text-sm text-[#64748B]">Use the email issued after your clinic account is verified.</p>
+		<p class="mt-2 text-sm text-[#64748B]">Use the email from your clinic account. If a colleague invited you, open the link in their message.</p>
 
 		<form method="POST" class="mt-8 space-y-3">
 			<label class="block text-sm font-semibold" for="email">Email</label>
