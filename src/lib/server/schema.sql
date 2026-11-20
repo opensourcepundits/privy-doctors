@@ -501,3 +501,13 @@ CREATE TABLE IF NOT EXISTS vaccinations (
 
 CREATE INDEX IF NOT EXISTS vaccinations_patient_id_idx ON vaccinations (patient_id);
 CREATE UNIQUE INDEX IF NOT EXISTS vaccinations_task_id_key ON vaccinations (task_id) WHERE task_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS colleague_invites (
+  token text PRIMARY KEY,
+  doctor_id int NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  created_at timestamp NOT NULL,
+  claimed_at timestamp,
+  claimed_doctor_id int REFERENCES doctors(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS colleague_invites_doctor_id_idx ON colleague_invites (doctor_id);
+CREATE UNIQUE INDEX IF NOT EXISTS colleague_invites_open_doctor_idx ON colleague_invites (doctor_id) WHERE claimed_at IS NULL;

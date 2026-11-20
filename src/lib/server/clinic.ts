@@ -1041,6 +1041,164 @@ export async function claimSignupInvite(
 	}
 }
 
+let colleagueInvites: Promise<void> | null = null;
+
+function ensureColleagueInvites() {
+	colleagueInvites ??= client`
+		CREATE TABLE IF NOT EXISTS colleague_invites (
+			token text PRIMARY KEY,
+			doctor_id int NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+			created_at timestamp NOT NULL,
+			claimed_at timestamp,
+			claimed_doctor_id int REFERENCES doctors(id) ON DELETE SET NULL
+		)
+	`
+		.then(() => client`CREATE INDEX IF NOT EXISTS colleague_invites_doctor_id_idx ON colleague_invites (doctor_id)`)
+		.then(
+			() => client`
+				CREATE UNIQUE INDEX IF NOT EXISTS colleague_invites_open_doctor_idx
+				ON colleague_invites (doctor_id) WHERE claimed_at IS NULL
+			`
+		)
+		.then(() => undefined)
+		.catch((error) => {
+			colleagueInvites = null;
+			throw error;
+		});
+	return colleagueInvites;
+}
+
+export async function issueColleagueInvite(doctorId: number, rotate = false) {
+	await ensureColleagueInvites();
+	if (rotate) {
+		await client`DELETE FROM colleague_invites WHERE doctor_id = ${doctorId} AND claimed_at IS NULL`;
+	}
+	const [open] = await client<{ token: string }[]>`
+		SELECT token FROM colleague_invites
+		WHERE doctor_id = ${doctorId} AND claimed_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 1
+	`;
+	if (open) return open.token;
+	const token = randomBytes(24).toString('hex');
+	try {
+		await client`
+			INSERT INTO colleague_invites (token, doctor_id, created_at)
+			VALUES (${token}, ${doctorId}, ${nowLocal().stamp})
+		`;
+		return token;
+	} catch (error) {
+		if (!error || typeof error !== 'object' || !('code' in error) || error.code !== '23505') throw error;
+		const [again] = await client<{ token: string }[]>`
+			SELECT token FROM colleague_invites
+			WHERE doctor_id = ${doctorId} AND claimed_at IS NULL
+			LIMIT 1
+		`;
+		if (again) return again.token;
+		throw error;
+	}
+}
+
+export async function colleagueInvitePreview(token: string) {
+	if (!/^[a-f0-9]{32,64}$/.test(token)) return null;
+	await ensureColleagueInvites();
+	const [row] = await client<
+		{ name: string; credentials: string; specialty: string; practice: string; location: string }[]
+	>`
+		SELECT d.name, d.credentials, d.specialty, d.practice, d.location
+		FROM colleague_invites i
+		JOIN doctors d ON d.id = i.doctor_id
+		WHERE i.token = ${token} AND i.claimed_at IS NULL
+	`;
+	return row ?? null;
+}
+
+export async function claimColleagueInvite(
+	token: string,
+	input: {
+		email: string;
+		passwordHash: string;
+		name: string;
+		credentials: string;
+		specialty: string;
+		gender: string;
+		practice: string;
+		location: string;
+		phone: string;
+	}
+) {
+	if (!/^[a-f0-9]{32,64}$/.test(token)) return { error: 'This invite link is not valid.' as const };
+	await ensureColleagueInvites();
+	const name = input.name.trim();
+	const credentials = input.credentials.trim();
+	const specialty = input.specialty.trim();
+	const practice = input.practice.trim();
+	const location = input.location.trim();
+	const phone = input.phone.trim();
+	const gender = input.gender === 'Female' || input.gender === 'Male' ? input.gender : '';
+	if (name.length < 2 || name.length > 80) return { error: 'Enter the name as it should appear on the profile.' as const };
+	if (credentials.length < 2 || credentials.length > 40) return { error: 'Enter the credentials, such as MD, FACC.' as const };
+	if (specialty.length < 2 || specialty.length > 80) return { error: 'Enter the specialty.' as const };
+	if (!gender) return { error: 'Choose a gender.' as const };
+	if (practice.length < 2 || practice.length > 160) return { error: 'Enter the practice name.' as const };
+	if (location.length < 2 || location.length > 160) return { error: 'Enter the practice location.' as const };
+	if (phone && (phone.length > 40 || !/^[+0-9()\-.\s]+$/.test(phone))) {
+		return { error: 'Enter a phone number using digits, spaces, and + ( ) - .' as const };
+	}
+	try {
+		const userId = await client.begin(async (sql) => {
+			const [invite] = await sql<{ doctor_id: number; claimed_at: Date | null; inviter_user_id: number | null }[]>`
+				SELECT i.doctor_id, i.claimed_at, d.user_id AS inviter_user_id
+				FROM colleague_invites i
+				JOIN doctors d ON d.id = i.doctor_id
+				WHERE i.token = ${token}
+				FOR UPDATE OF i
+			`;
+			if (!invite || invite.claimed_at) throw new Error('invite-used');
+			const [user] = await sql<{ id: number }[]>`
+				INSERT INTO users (email, password_hash, role, name)
+				VALUES (${input.email}, ${input.passwordHash}, 'doctor', ${name})
+				RETURNING id
+			`;
+			const [doctor] = await sql<{ id: number }[]>`
+				INSERT INTO doctors (user_id, name, credentials, specialty, gender, practice, location, phone)
+				VALUES (
+					${user.id}, ${name}, ${credentials}, ${specialty}, ${gender},
+					${practice}, ${location}, ${phone || null}
+				)
+				RETURNING id
+			`;
+			const [claimed] = await sql<{ token: string }[]>`
+				UPDATE colleague_invites
+				SET claimed_at = ${nowLocal().stamp}, claimed_doctor_id = ${doctor.id}
+				WHERE token = ${token} AND claimed_at IS NULL
+				RETURNING token
+			`;
+			if (!claimed) throw new Error('invite-used');
+			if (invite.inviter_user_id) {
+				await sql`
+					INSERT INTO notifications (user_id, title, body, created_at)
+					VALUES (
+						${invite.inviter_user_id},
+						'Colleague joined',
+						${`${name} joined careOS from your invite.`},
+						${nowLocal().stamp}
+					)
+				`;
+			}
+			return user.id as number;
+		});
+		return { userId };
+	} catch (error) {
+		if (error instanceof Error && error.message === 'invite-used') {
+			return { error: 'This invite link has already been used. Ask your colleague for a new one.' as const };
+		}
+		const message = duplicateIdentity(error);
+		if (message) return { error: message };
+		throw error;
+	}
+}
+
 export async function searchPatients(doctorId: number, query: string) {
 	const q = `%${query.trim()}%`;
 	return client<(PatientRow & { access: string })[]>`

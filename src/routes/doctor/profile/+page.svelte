@@ -1,4 +1,5 @@
 <script lang="ts">
+	import InviteColleague from '#lib/components/InviteColleague.svelte';
 	import { WEEKDAYS, formatClock, groupByWeekday } from '#lib/schedule';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
@@ -81,6 +82,10 @@
 		</button>
 	</form>
 </header>
+
+<div class="px-4 pt-4 lg:max-w-xs lg:px-0">
+	<InviteColleague name={data.doctor.name} />
+</div>
 
 {#if form?.message}
 	<p class="mx-4 mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:mx-0">{form.message}</p>

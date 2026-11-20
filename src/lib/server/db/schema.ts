@@ -444,3 +444,11 @@ export const sessions = pgTable('sessions', {
 	userId: integer('user_id').notNull(),
 	expiresAt: timestamp('expires_at').notNull()
 });
+
+export const colleagueInvites = pgTable('colleague_invites', {
+	token: text('token').primaryKey(),
+	doctorId: integer('doctor_id').notNull().references(() => doctors.id, { onDelete: 'cascade' }),
+	createdAt: timestamp('created_at').notNull(),
+	claimedAt: timestamp('claimed_at'),
+	claimedDoctorId: integer('claimed_doctor_id').references(() => doctors.id, { onDelete: 'set null' })
+});

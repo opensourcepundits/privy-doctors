@@ -381,6 +381,11 @@ textarea.field {
 		max-width: 42rem;
 	}
 
+	.action-row:has(> :nth-child(3)) {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		max-width: none;
+	}
+
 	.action-row .btn:not(.btn-block),
 	.action-row .btn-split,
 	.action-row .btn-line:not(.btn-block) {

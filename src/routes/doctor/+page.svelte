@@ -1,6 +1,7 @@
 <script lang="ts">
 	import BookingActions from '#lib/components/BookingActions.svelte';
 	import IncomingMenu from '#lib/components/IncomingMenu.svelte';
+	import InviteColleague from '#lib/components/InviteColleague.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import { CLINIC_DAY, ageLabel, dayRelation, formatLongDate, formatTime, initials } from '#lib/format';
@@ -33,6 +34,7 @@
 			<span class="material-symbols-outlined text-lg">qr_code_scanner</span>
 			Scan QR
 		</a>
+		<InviteColleague name={data.doctor.name} />
 	</div>
 </header>
 
