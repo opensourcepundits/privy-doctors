@@ -148,11 +148,18 @@ let pepper: Buffer | null = null;
 let ready = false;
 let pending: Promise<void> | null = null;
 
+function runtimeEnv(name: string) {
+	const value = process.env[name];
+	return typeof value === 'string' ? value.trim() : '';
+}
+
 export function dataKek() {
-	const configured = process.env.DATA_KEK?.trim() || DATA_KEK;
+	const configured = runtimeEnv('DATA_KEK') || DATA_KEK?.trim();
 	if (configured) return parseKey(configured);
 	if (process.env.NODE_ENV !== 'production') return DEV_KEK;
-	throw new Error('Set DATA_KEK to a 32-byte base64 or hex key.');
+	throw new Error(
+		'Set DATA_KEK in the Vercel project environment to a 32-byte base64 or hex key, for Production and Preview, then redeploy. The running server does not have that variable.'
+	);
 }
 
 export function identityIndex(value: string | null | undefined) {
@@ -680,7 +687,7 @@ async function chartState(patientId: number): Promise<ChartState> {
 }
 
 function keysDatabaseUrl() {
-	const configured = process.env.KEYS_DATABASE_URL?.trim() || KEYS_DATABASE_URL?.trim();
+	const configured = runtimeEnv('KEYS_DATABASE_URL') || KEYS_DATABASE_URL?.trim();
 	return configured || null;
 }
 
@@ -744,17 +751,32 @@ function revealNumber(state: ChartState, patientId: number, column: string, valu
 }
 
 function revealJson(state: ChartState, patientId: number, column: string, value: unknown) {
-	const empty = column === 'changes' ? [] : [];
-	if (state.shredded) return empty;
-	if (typeof value === 'string' && isSealedText(value)) {
-		if (!state.dek) return empty;
-		try {
-			return JSON.parse(openString(state.dek, patientId, column, value));
-		} catch {
-			return empty;
+	if (state.shredded || value == null) return [];
+	let current = value;
+	// jsonb stores the seal as a JSON string, so the driver can hand back
+	// "enc:v1:..." or a JSON string of the list. Peel those layers until an array remains.
+	for (let pass = 0; pass < 4 && typeof current === 'string'; pass++) {
+		const text = current.trim();
+		if (isSealedText(text)) {
+			if (!state.dek) return [];
+			try {
+				current = openString(state.dek, patientId, column, text);
+			} catch {
+				return [];
+			}
+			continue;
 		}
+		if (text.startsWith('[') || text.startsWith('{') || text.startsWith('"')) {
+			try {
+				current = JSON.parse(text) as unknown;
+			} catch {
+				return [];
+			}
+			continue;
+		}
+		return [];
 	}
-	return value;
+	return Array.isArray(current) ? current : [];
 }
 
 function tombstone(column: string) {
