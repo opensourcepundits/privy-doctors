@@ -20,13 +20,14 @@ export async function GET({ params, locals, url }) {
 		if (!granted && doctor.id !== file.doctor_id) error(403, 'That photo is not on a chart you can open');
 	}
 	const bytes = await prescriptionPhotoBytes(file.id);
-	if (!bytes) error(404, 'Prescription photo is missing');
+	if (!bytes) error(404, 'This medical record was deleted.');
 	const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
 	return new Response(new Uint8Array(bytes), {
 		headers: {
 			'Content-Type': file.content_type,
 			'Content-Disposition': `${disposition}; filename="${downloadName(file.file_name)}"`,
-			'Cache-Control': 'private, max-age=3600'
+			'Cache-Control': 'private, no-store',
+			'X-Content-Type-Options': 'nosniff'
 		}
 	});
 }

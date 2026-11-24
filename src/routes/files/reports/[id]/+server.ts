@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { openPatientFile } from '#lib/server/chart-crypto';
 import { accessStatus, doctorForUser, patientForUser, reportAlerted, reportFileFor } from '#lib/server/clinic';
 import { readReportFile } from '#lib/server/uploads';
 
@@ -21,17 +22,21 @@ export async function GET({ params, locals, url }) {
 		const alerted = await reportAlerted(file.report_id, doctor.id);
 		if (!granted && !alerted) error(403, 'That document is not on a chart you can open');
 	}
-	let bytes: Buffer;
+	let stored: Buffer;
 	try {
-		bytes = await readReportFile(file.stored_name);
+		stored = await readReportFile(file.stored_name);
 	} catch {
 		error(404, 'Document file is missing');
 	}
+	const bytes = await openPatientFile(file.patient_id, stored);
+	if (!bytes) error(404, 'This medical record was deleted.');
 	const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
 	return new Response(new Uint8Array(bytes), {
 		headers: {
 			'Content-Type': file.content_type,
-			'Content-Disposition': `${disposition}; filename="${downloadName(file.file_name)}"`
+			'Content-Disposition': `${disposition}; filename="${downloadName(file.file_name)}"`,
+			'Cache-Control': 'private, no-store',
+			'X-Content-Type-Options': 'nosniff'
 		}
 	});
 }

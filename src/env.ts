@@ -17,5 +17,14 @@ export const variables = defineEnvVars({
 	POSTGRES_URL: {
 		description: 'Legacy pooled URL also set by the Vercel Neon integration.',
 		schema: optional
+	},
+	DATA_KEK: {
+		description: '32-byte key, base64 or hex, that wraps each patient chart key. Required in production.',
+		schema: optional
+	},
+	KEYS_DATABASE_URL: {
+		description:
+			'Postgres URL for patient chart keys. Set this in the Vercel project environment. When unset, keys live in DATABASE_URL.',
+		schema: optional
 	}
 });

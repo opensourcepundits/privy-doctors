@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { createSession } from '#lib/server/auth';
+import { createSession, sessionCookie } from '#lib/server/auth';
 import { registerPatient } from '#lib/server/clinic';
 import { hashPassword } from '#lib/server/password';
 
@@ -11,7 +11,7 @@ export function load({ locals }) {
 }
 
 export const actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, url }) => {
 		const data = await request.formData();
 		const firstName = String(data.get('firstName') ?? '').trim();
 		const lastName = String(data.get('lastName') ?? '').trim();
@@ -36,7 +36,7 @@ export const actions = {
 		});
 		if ('error' in created) return fail(400, { ...entered, message: created.error });
 		const sid = await createSession(created.userId);
-		cookies.set('sid', sid, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 14 });
+		cookies.set('sid', sid, sessionCookie(url));
 		redirect(303, '/patient');
 	}
 };

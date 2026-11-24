@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { openPatientFile } from '#lib/server/chart-crypto';
 import { accessStatus, doctorForUser, patientForUser, vaccinationProof } from '#lib/server/clinic';
 
 function downloadName(name: string) {
@@ -19,12 +20,15 @@ export async function GET({ params, locals, url }) {
 		const granted = (await accessStatus(file.patient_id, doctor.id)) === 'granted';
 		if (!granted && doctor.id !== file.doctor_id) error(403, 'That photo is not on a chart you can open');
 	}
+	const bytes = await openPatientFile(file.patient_id, file.bytes);
+	if (!bytes) error(404, 'This medical record was deleted.');
 	const disposition = url.searchParams.has('download') ? 'attachment' : 'inline';
-	return new Response(new Uint8Array(file.bytes), {
+	return new Response(new Uint8Array(bytes), {
 		headers: {
 			'Content-Type': file.proof_type,
 			'Content-Disposition': `${disposition}; filename="${downloadName(file.proof_name)}"`,
-			'Cache-Control': 'private, max-age=3600'
+			'Cache-Control': 'private, no-store',
+			'X-Content-Type-Options': 'nosniff'
 		}
 	});
 }

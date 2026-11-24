@@ -102,22 +102,13 @@ npm run db:start
 npm run db:setup
 ```
 
-## Sign in
-
-Patients sign in at `/login` and create an account at `/register`. Doctors sign in at `/doctors/login`. Doctor accounts are added after verification. There is no doctor registration page.
-
-The demo accounts use the password `clinic-demo`.
+Test accounts use the password `testdoctor`.
 
 | Portal | Page | Email |
 | --- | --- | --- |
-| Patient | `/login` | `noor.yadallee@clinica.privata` |
-| General practitioner | `/doctors/login` | `irfan.ameerudden@clinica.privata` |
-| Cardiologist | `/doctors/login` | `sarah.jensen@clinica.privata` |
-
-Test doctor, at `/doctors/login`:
-
-- Email: `test.doctor@clinica.privata`
-- Password: `testdoctor`
+| General practitioner | `/doctors/login` | `testdoctor1@clinica.privata` |
+| Cardiologist | `/doctors/login` | `testdoctor2@clinica.privata` |
+| Patient | `/login` | `test.patient@clinica.privata` |
 
 The doctor can also open Noor’s portal from inside the clinic. Sign out from the profile page, or visit `/logout`.
 

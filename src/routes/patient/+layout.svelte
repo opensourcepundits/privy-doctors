@@ -35,6 +35,11 @@
 	notifications={data.notifications}
 	markSeen={data.preview ? '' : '/patient/notifications?/seen'}
 >
+	{#if data.patient.shredded}
+		<p class="mx-4 mt-4 rounded-xl bg-[#0F172A] px-3 py-2 text-sm text-white lg:mx-0">
+			This medical record was deleted. Clinical notes, results, and files can no longer be opened.
+		</p>
+	{/if}
 	{#if data.preview}
 		<p class="mx-4 mt-4 rounded-xl bg-[#0F172A] px-3 py-2 text-sm text-white lg:mx-0">
 			Viewing the patient portal as {data.patient.first_name} {data.patient.last_name}. <a class="underline" href="/doctor">Return to the clinic</a>

@@ -1,7 +1,8 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { createSession, userByEmail } from '#lib/server/auth';
+import { authenticate, createSession, sessionCookie } from '#lib/server/auth';
 import { doctorForUser } from '#lib/server/clinic';
-import { verifyPassword } from '#lib/server/password';
+
+const rejected = 'Those credentials are not recognized.';
 
 export function load({ locals }) {
 	if (locals.user?.role === 'doctor') redirect(303, '/doctor');
@@ -9,23 +10,16 @@ export function load({ locals }) {
 }
 
 export const actions = {
-	default: async ({ request, cookies }) => {
+	default: async ({ request, cookies, url }) => {
 		const data = await request.formData();
 		const email = String(data.get('email') ?? '').trim().toLowerCase();
 		const password = String(data.get('password') ?? '');
-		const user = await userByEmail(email);
-		if (user?.role === 'patient') {
-			return fail(400, { email, message: 'Patients sign in on the patient page.' });
-		}
-		if (!user || user.role !== 'doctor' || !verifyPassword(password, user.password_hash)) {
-			return fail(400, { email, message: 'Those credentials are not recognized.' });
-		}
+		const user = await authenticate(email, password, 'doctor');
+		if (!user) return fail(400, { email, message: rejected });
 		const doctor = await doctorForUser(user.id);
-		if (!doctor) {
-			return fail(400, { email, message: 'That account is not on the clinic roster.' });
-		}
+		if (!doctor) return fail(400, { email, message: rejected });
 		const sid = await createSession(user.id);
-		cookies.set('sid', sid, { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 60 * 60 * 24 * 14 });
+		cookies.set('sid', sid, sessionCookie(url));
 		redirect(303, '/doctor');
 	}
 };
