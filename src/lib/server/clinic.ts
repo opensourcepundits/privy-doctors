@@ -1,7 +1,28 @@
 import { randomBytes } from 'node:crypto';
+
+function sealText(patientId: unknown, column: string, value: string | null) {
+	if (typeof patientId !== 'number') throw new Error('Patient not found.');
+	return sealField(patientId, column, value);
+}
+
+function attach<T, E extends Record<string, unknown>>(row: T, extra: E): T & E {
+	return { ...(row as object), ...extra } as T & E;
+}
 import { tagsFrom } from '#lib/doses';
 import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
+import {
+	ChartDeleted,
+	discardDek,
+	identityIndex,
+	openPatientFile,
+	presentChart,
+	presentEach,
+	rebindChart,
+	sealPatientFile,
+	sealText as sealField,
+	shredPatient as shredPatientRecord
+} from './chart-crypto';
 import { client, type ClinicSql } from './db';
 import { resolveImagePaths } from './storage';
 import { deletePrescriptionPhoto, deleteTaskPdf } from './uploads';
@@ -14,7 +35,8 @@ export type PatientRow = {
 	record_token: string | null;
 	first_name: string;
 	last_name: string;
-	dob: Date | null;
+	dob: Date | string | null;
+	shredded?: boolean;
 	sex: string;
 	blood_type: string | null;
 	allergies: string[];
@@ -103,8 +125,10 @@ function listLines(value: string, limit: number) {
 
 export async function updatePatientField(patientId: number, field: string, raw: string) {
 	if (!patientFields.has(field)) return { error: 'Choose a detail to update.' };
-	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE id = ${patientId}`;
-	if (!patient) return { error: 'That chart could not be found.' };
+	const [stored] = await client<PatientRow[]>`SELECT * FROM patients WHERE id = ${patientId}`;
+	if (!stored) return { error: 'That chart could not be found.' };
+	const patient = await presentChart(stored.id, stored);
+	if (patient.shredded) return { error: 'This medical record was deleted.' };
 	const value = raw.trim();
 	const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
 
@@ -115,9 +139,9 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			const last = field === 'last_name' ? value : patient.last_name;
 			if (first === patient.first_name && last === patient.last_name) return { error: 'That is already on file.' };
 			await client.begin(async (sql) => {
-				if (field === 'first_name') await sql`UPDATE patients SET first_name = ${value} WHERE id = ${patientId}`;
-				else await sql`UPDATE patients SET last_name = ${value} WHERE id = ${patientId}`;
-				if (patient.user_id) await sql`UPDATE users SET name = ${`${first} ${last}`} WHERE id = ${patient.user_id}`;
+				if (field === 'first_name') await sql`UPDATE patients SET first_name = ${await sealText(patientId, 'first_name', value)} WHERE id = ${patientId}`;
+				else await sql`UPDATE patients SET last_name = ${await sealText(patientId, 'last_name', value)} WHERE id = ${patientId}`;
+				if (patient.user_id) await sql`UPDATE users SET name = 'Patient' WHERE id = ${patient.user_id} AND role = 'patient'`;
 			});
 			return { ok: true as const };
 		}
@@ -127,21 +151,21 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			if (value < '1900-01-01' || value > liveDay()) return { error: 'Enter a date of birth on or before today.' };
 			const current = patient.dob ? String(patient.dob).slice(0, 10) : '';
 			if (value === current) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET dob = ${value} WHERE id = ${patientId}`;
+			await client`UPDATE patients SET dob = ${await sealText(patientId, 'dob', value)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
 		if (field === 'sex') {
 			if (value !== 'Female' && value !== 'Male') return { error: 'Choose Female or Male.' };
 			if (value === patient.sex) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET sex = ${value} WHERE id = ${patientId}`;
+			await client`UPDATE patients SET sex = ${await sealText(patientId, 'sex', value)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
 		if (field === 'blood_type') {
 			if (value && !/^(A|B|AB|O)[+-]$/.test(value)) return { error: 'Enter a blood type such as A+ or O-.' };
 			if ((value || null) === (patient.blood_type ?? null)) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET blood_type = ${value || null} WHERE id = ${patientId}`;
+			await client`UPDATE patients SET blood_type = ${await sealText(patientId, 'blood_type', value || null)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -153,8 +177,11 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			if ((value || null) === ((field === 'nic' ? patient.nic : patient.passport) ?? null)) {
 				return { error: 'That is already on file.' };
 			}
-			if (field === 'nic') await client`UPDATE patients SET nic = ${value || null} WHERE id = ${patientId}`;
-			else await client`UPDATE patients SET passport = ${value || null} WHERE id = ${patientId}`;
+			if (field === 'nic') {
+				await client`UPDATE patients SET nic = ${await sealText(patientId, 'nic', value || null)}, nic_bidx = ${identityIndex(value)} WHERE id = ${patientId}`;
+			} else {
+				await client`UPDATE patients SET passport = ${await sealText(patientId, 'passport', value || null)}, passport_bidx = ${identityIndex(value)} WHERE id = ${patientId}`;
+			}
 			return { ok: true as const };
 		}
 
@@ -163,7 +190,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 				return { error: 'Enter a phone number using digits, spaces, and + ( ) - .' };
 			}
 			if ((value || null) === (patient.phone ?? null)) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET phone = ${value || null} WHERE id = ${patientId}`;
+			await client`UPDATE patients SET phone = ${await sealText(patientId, 'phone', value || null)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -183,8 +210,11 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			if ('error' in parsed) return parsed;
 			const current = field === 'conditions' ? patient.conditions : patient.allergies;
 			if (parsed.items.join('\n') === current.join('\n')) return { error: 'That is already on file.' };
-			if (field === 'conditions') await client`UPDATE patients SET conditions = ${JSON.stringify(parsed.items)}::jsonb WHERE id = ${patientId}`;
-			else await client`UPDATE patients SET allergies = ${JSON.stringify(parsed.items)}::jsonb WHERE id = ${patientId}`;
+			if (field === 'conditions') {
+				await client`UPDATE patients SET conditions = ${JSON.stringify(await sealText(patientId, 'conditions', JSON.stringify(parsed.items)))}::jsonb WHERE id = ${patientId}`;
+			} else {
+				await client`UPDATE patients SET allergies = ${JSON.stringify(await sealText(patientId, 'allergies', JSON.stringify(parsed.items)))}::jsonb WHERE id = ${patientId}`;
+			}
 			return { ok: true as const };
 		}
 
@@ -203,7 +233,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			const current = patient.surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
 			const next = surgeries.map((item) => `${item.year} — ${item.name}`).join('\n');
 			if (next === current) return { error: 'That is already on file.' };
-			await client`UPDATE patients SET surgeries = ${JSON.stringify(surgeries)}::jsonb WHERE id = ${patientId}`;
+			await client`UPDATE patients SET surgeries = ${JSON.stringify(await sealText(patientId, 'surgeries', JSON.stringify(surgeries)))}::jsonb WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -212,9 +242,9 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 			const current =
 				field === 'insurance_name' ? patient.insurance_name : field === 'insurance_group' ? patient.insurance_group : patient.insurance_member;
 			if ((value || null) === (current ?? null)) return { error: 'That is already on file.' };
-			if (field === 'insurance_name') await client`UPDATE patients SET insurance_name = ${value || null} WHERE id = ${patientId}`;
-			else if (field === 'insurance_group') await client`UPDATE patients SET insurance_group = ${value || null} WHERE id = ${patientId}`;
-			else await client`UPDATE patients SET insurance_member = ${value || null} WHERE id = ${patientId}`;
+			if (field === 'insurance_name') await client`UPDATE patients SET insurance_name = ${await sealText(patientId, 'insurance_name', value || null)} WHERE id = ${patientId}`;
+			else if (field === 'insurance_group') await client`UPDATE patients SET insurance_group = ${await sealText(patientId, 'insurance_group', value || null)} WHERE id = ${patientId}`;
+			else await client`UPDATE patients SET insurance_member = ${await sealText(patientId, 'insurance_member', value || null)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 	} catch (error) {
@@ -222,6 +252,7 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 		if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
 			return { error: constraint.includes('passport') ? 'A chart already uses that passport number.' : 'A chart already uses that NIC.' };
 		}
+		if (error instanceof ChartDeleted) return { error: 'This medical record was deleted.' };
 		throw error;
 	}
 
@@ -230,19 +261,19 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 
 export async function patientForUser(userId: number) {
 	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE user_id = ${userId}`;
-	return patient ?? null;
+	return patient ? presentChart(patient.id, patient) : null;
 }
 
 export async function patientByPid(pid: string) {
 	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE pid = ${pid}`;
-	return patient ?? null;
+	return patient ? presentChart(patient.id, patient) : null;
 }
 
 export async function portalPatient() {
 	const [patient] = await client<PatientRow[]>`
 		SELECT * FROM patients WHERE pid = 'PID-4089'
 	`;
-	return patient;
+	return patient ? presentChart(patient.id, patient) : patient;
 }
 
 export async function actingPatient(user: { id: number; role: 'doctor' | 'patient' }) {
@@ -251,7 +282,7 @@ export async function actingPatient(user: { id: number; role: 'doctor' | 'patien
 }
 
 export async function todayAppointments(doctorId: number) {
-	return client`
+	const rows = await client`
 		SELECT a.*, p.first_name, p.last_name, p.pid, p.dob, p.sex
 		FROM appointments a
 		JOIN patients p ON p.id = a.patient_id
@@ -260,6 +291,7 @@ export async function todayAppointments(doctorId: number) {
 		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
+	return presentEach(rows);
 }
 
 export async function patientAppointments(patientId: number) {
@@ -281,7 +313,7 @@ export async function patientAppointments(patientId: number) {
 }
 
 export async function upcomingForDoctor(doctorId: number) {
-	return client`
+	const rows = await client`
 		SELECT a.*, p.first_name, p.last_name, p.pid
 		FROM appointments a
 		JOIN patients p ON p.id = a.patient_id
@@ -290,6 +322,7 @@ export async function upcomingForDoctor(doctorId: number) {
 		  AND a.status NOT IN ('cancelled', 'declined')
 		ORDER BY a.starts_at
 	`;
+	return presentEach(rows);
 }
 
 type AvailabilityRow = WindowRow & { id: number; doctor_id: number };
@@ -440,6 +473,7 @@ export async function respondToAppointment(
 	const [row] = await client<
 		{
 			id: number;
+			patient_id: number;
 			starts_at: Date | string;
 			location: string | null;
 			status: string;
@@ -447,7 +481,7 @@ export async function respondToAppointment(
 			doctor_name: string;
 		}[]
 	>`
-		SELECT a.id, a.starts_at, a.location, a.status, p.user_id, d.name AS doctor_name
+		SELECT a.id, a.patient_id, a.starts_at, a.location, a.status, p.user_id, d.name AS doctor_name
 		FROM appointments a
 		JOIN patients p ON p.id = a.patient_id
 		JOIN doctors d ON d.id = a.doctor_id
@@ -461,7 +495,7 @@ export async function respondToAppointment(
 			UPDATE appointments SET status = 'accepted', responded_at = ${nowLocal().stamp}
 			WHERE id = ${id}
 		`;
-		await notify(row.user_id, 'Appointment approved', `${row.doctor_name} approved your visit on ${when}.`);
+		await notify(row.user_id, 'Appointment approved', `${row.doctor_name} approved your visit on ${when}.`, row.patient_id);
 		return { ok: true as const };
 	}
 	if (action === 'decline') {
@@ -474,7 +508,8 @@ export async function respondToAppointment(
 		await notify(
 			row.user_id,
 			'Appointment declined',
-			`${row.doctor_name} declined your visit on ${when}.${note ? ` ${note}` : ''}`
+			`${row.doctor_name} declined your visit on ${when}.${note ? ` ${note}` : ''}`,
+			row.patient_id
 		);
 		return { ok: true as const };
 	}
@@ -492,7 +527,7 @@ export async function respondToAppointment(
 		WHERE id = ${id}
 	`;
 	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
-	await notify(row.user_id, 'Appointment rescheduled', `${row.doctor_name} moved your visit from ${when} to ${next}.`);
+	await notify(row.user_id, 'Appointment rescheduled', `${row.doctor_name} moved your visit from ${when} to ${next}.`, row.patient_id);
 	return { ok: true as const };
 }
 
@@ -532,13 +567,15 @@ export async function rescheduleOwnAppointment(patientId: number, id: number, st
 		SET starts_at = ${startsAt}, status = 'rescheduled', responded_at = ${nowLocal().stamp}
 		WHERE id = ${id}
 	`;
+	const open = await presentChart(patientId, row);
 	const when = `${formatLongDate(row.starts_at)} at ${formatTime(row.starts_at)}`;
 	const next = `${formatLongDate(startsAt)} at ${formatTime(startsAt)}`;
 	const approved = row.status === 'accepted' || row.status === 'confirmed';
 	await notify(
 		row.doctor_user_id,
 		'Appointment rescheduled',
-		`${row.first_name} ${row.last_name} moved ${approved ? 'an approved visit' : 'a visit'} from ${when} to ${next}.`
+		`${open.first_name} ${open.last_name} moved ${approved ? 'an approved visit' : 'a visit'} from ${when} to ${next}.`,
+		patientId
 	);
 	return { ok: true as const };
 }
@@ -670,21 +707,23 @@ async function chartsForIdentity(nic: string, passport: string) {
 	const nicKey = nic.trim();
 	const passportKey = passport.trim();
 	if (!nicKey && !passportKey) return [] as IdentityChart[];
+	const nicIdx = identityIndex(nicKey);
+	const passportIdx = identityIndex(passportKey);
 	return client<IdentityChart[]>`
-		SELECT id, pid, user_id, nic, passport
+		SELECT id, pid, user_id, nic_bidx AS nic, passport_bidx AS passport
 		FROM patients
-		WHERE (${nicKey} <> '' AND nic IS NOT NULL AND lower(trim(nic)) = lower(${nicKey}))
-		   OR (${passportKey} <> '' AND passport IS NOT NULL AND lower(trim(passport)) = lower(${passportKey}))
+		WHERE (${nicIdx}::text IS NOT NULL AND nic_bidx = ${nicIdx})
+		   OR (${passportIdx}::text IS NOT NULL AND passport_bidx = ${passportIdx})
 	`;
 }
 
 function accountConflict(rows: IdentityChart[], nic: string, passport: string) {
 	const taken = rows.find((row) => row.user_id);
 	if (!taken) return null;
-	if (identityKey(taken.nic) && identityKey(taken.nic) === identityKey(nic)) {
+	if (identityIndex(nic) && taken.nic === identityIndex(nic)) {
 		return 'A patient with that NIC already has an account. Search for them and ask for access.';
 	}
-	if (identityKey(taken.passport) && identityKey(taken.passport) === identityKey(passport)) {
+	if (identityIndex(passport) && taken.passport === identityIndex(passport)) {
 		return 'A patient with that passport number already has an account. Search for them and ask for access.';
 	}
 	return 'That NIC or passport already belongs to an account. Search for the patient and ask for access.';
@@ -692,14 +731,17 @@ function accountConflict(rows: IdentityChart[], nic: string, passport: string) {
 
 async function patientById(id: number) {
 	const [patient] = await client<PatientRow[]>`SELECT * FROM patients WHERE id = ${id}`;
-	return patient ?? null;
+	return patient ? presentChart(patient.id, patient) : null;
 }
 
-async function mergeUnsignedChart(sql: ClinicSql, keepId: number, dropId: number) {
+async function mergeUnsignedChart(sql: ClinicSql, keepId: number, dropId: number, dropped: number[]) {
 	if (keepId === dropId) return;
-	const [keep] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${keepId}`;
-	const [drop] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${dropId}`;
-	if (!keep || !drop || drop.user_id) return;
+	const [keepRow] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${keepId}`;
+	const [dropRow] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${dropId}`;
+	if (!keepRow || !dropRow || dropRow.user_id) return;
+	await rebindChart(sql, dropId, keepId);
+	const keep = await presentChart(keepId, keepRow);
+	const drop = await presentChart(dropId, dropRow);
 	await sql`UPDATE appointments SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE encounters SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
 	await sql`UPDATE vitals SET patient_id = ${keepId} WHERE patient_id = ${dropId}`;
@@ -734,23 +776,31 @@ async function mergeUnsignedChart(sql: ClinicSql, keepId: number, dropId: number
 	await sql`DELETE FROM patient_access WHERE patient_id = ${dropId}`;
 	await sql`
 		UPDATE patients
-		SET nic = NULL, passport = NULL, record_token = NULL, invite_token = NULL
+		SET nic = NULL, nic_bidx = NULL, passport = NULL, passport_bidx = NULL, record_token = NULL, invite_token = NULL
 		WHERE id = ${dropId}
 	`;
+	const nic = keep.nic || drop.nic;
+	const passport = keep.passport || drop.passport;
+	const phone = keep.phone || drop.phone;
+	const dob = keep.dob || drop.dob;
+	const blood = keep.blood_type || drop.blood_type;
 	await sql`
 		UPDATE patients
-		SET nic = ${keep.nic || drop.nic},
-			passport = ${keep.passport || drop.passport},
-			phone = ${keep.phone || drop.phone},
-			dob = ${keep.dob || drop.dob},
-			blood_type = ${keep.blood_type || drop.blood_type},
+		SET nic = ${await sealText(keepId, 'nic', nic)},
+			nic_bidx = ${identityIndex(nic)},
+			passport = ${await sealText(keepId, 'passport', passport)},
+			passport_bidx = ${identityIndex(passport)},
+			phone = ${await sealText(keepId, 'phone', phone)},
+			dob = ${await sealText(keepId, 'dob', dob ? String(dob).slice(0, 10) : null)},
+			blood_type = ${await sealText(keepId, 'blood_type', blood)},
 			record_token = ${keep.record_token || drop.record_token},
-			allergies = ${JSON.stringify(mergeTextLists(keep.allergies, drop.allergies))}::jsonb,
-			conditions = ${JSON.stringify(mergeTextLists(keep.conditions, drop.conditions))}::jsonb,
-			surgeries = ${JSON.stringify(mergeSurgeries(keep.surgeries, drop.surgeries))}::jsonb
+			allergies = ${JSON.stringify(await sealText(keepId, 'allergies', JSON.stringify(mergeTextLists(keep.allergies, drop.allergies))))}::jsonb,
+			conditions = ${JSON.stringify(await sealText(keepId, 'conditions', JSON.stringify(mergeTextLists(keep.conditions, drop.conditions))))}::jsonb,
+			surgeries = ${JSON.stringify(await sealText(keepId, 'surgeries', JSON.stringify(mergeSurgeries(keep.surgeries, drop.surgeries))))}::jsonb
 		WHERE id = ${keepId}
 	`;
 	await sql`DELETE FROM patients WHERE id = ${dropId}`;
+	dropped.push(dropId);
 }
 
 export async function ensureSignupInvite(patientId: number) {
@@ -820,19 +870,29 @@ export async function createWalkInPatient(
 		`;
 		if (!primary) return { error: 'That chart could not be opened.' as const };
 		await ensureMedicalCertificateStore();
+		const dropped: number[] = [];
 		await client.begin(async (sql) => {
 			for (const row of unsigned) {
-				if (row.id !== primary.id) await mergeUnsignedChart(sql, primary.id, row.id);
+				if (row.id !== primary.id) await mergeUnsignedChart(sql, primary.id, row.id, dropped);
 			}
+			const [current] = await sql<PatientRow[]>`SELECT * FROM patients WHERE id = ${primary.id}`;
+			const open = current ? await presentChart(primary.id, current) : null;
+			const nextNic = open?.nic || nic;
+			const nextPassport = open?.passport || passport;
+			const nextPhone = open?.phone || input.phone;
+			const nextDob = open?.dob || input.dob;
 			await sql`
 				UPDATE patients
-				SET nic = COALESCE(nic, ${nic || null}),
-					passport = COALESCE(passport, ${passport || null}),
-					phone = COALESCE(phone, ${input.phone || null}),
-					dob = COALESCE(dob, ${input.dob || null})
+				SET nic = ${await sealText(primary.id, 'nic', nextNic || null)},
+					nic_bidx = ${identityIndex(nextNic)},
+					passport = ${await sealText(primary.id, 'passport', nextPassport || null)},
+					passport_bidx = ${identityIndex(nextPassport)},
+					phone = ${await sealText(primary.id, 'phone', nextPhone || null)},
+					dob = ${await sealText(primary.id, 'dob', nextDob ? String(nextDob).slice(0, 10) : null)}
 				WHERE id = ${primary.id}
 			`;
 		});
+		for (const id of dropped) await discardDek(id);
 		await grantAccess(primary.id, doctorId, 'registered');
 		await ensureSignupInvite(primary.id);
 		const patient = await patientById(primary.id);
@@ -841,30 +901,52 @@ export async function createWalkInPatient(
 	}
 	const recordToken = randomBytes(24).toString('hex');
 	const inviteToken = randomBytes(24).toString('hex');
-	const [patient] = await client<PatientRow[]>`
-		INSERT INTO patients (
-			primary_doctor_id, pid, record_token, first_name, last_name, dob, sex, phone, nic, passport, concierge_note, invite_token
-		)
-		VALUES (
-			${doctorId},
-			(
-				SELECT 'PID-' || (COALESCE(MAX(CAST(SUBSTRING(pid FROM 5) AS int)), 1000) + 1)
-				FROM patients
-				WHERE pid ~ '^PID-[0-9]+$'
-			),
-			${recordToken},
-			${input.firstName},
-			${input.lastName},
-			${input.dob || null},
-			${input.sex},
-			${input.phone || null},
-			${nic || null},
-			${passport || null},
-			'Added during a consultation. No portal account.',
-			${inviteToken}
-		)
-		RETURNING *
-	`;
+	const created = await client.begin(async (sql) => {
+		const [row] = await sql<{ id: number }[]>`
+			INSERT INTO patients (
+				primary_doctor_id, pid, record_token, first_name, last_name, dob, sex, phone, nic, passport, concierge_note, invite_token
+			)
+			VALUES (
+				${doctorId},
+				(
+					SELECT 'PID-' || (COALESCE(MAX(CAST(SUBSTRING(pid FROM 5) AS int)), 1000) + 1)
+					FROM patients
+					WHERE pid ~ '^PID-[0-9]+$'
+				),
+				${recordToken},
+				${input.firstName},
+				${input.lastName},
+				${input.dob || null},
+				${input.sex},
+				${input.phone || null},
+				${nic || null},
+				${passport || null},
+				'Added during a consultation. No portal account.',
+				${inviteToken}
+			)
+			RETURNING id
+		`;
+		await sql`
+			UPDATE patients
+			SET first_name = ${await sealText(row.id, 'first_name', input.firstName)},
+				last_name = ${await sealText(row.id, 'last_name', input.lastName)},
+				dob = ${await sealText(row.id, 'dob', input.dob || null)},
+				sex = ${await sealText(row.id, 'sex', input.sex)},
+				phone = ${await sealText(row.id, 'phone', input.phone || null)},
+				nic = ${await sealText(row.id, 'nic', nic || null)},
+				nic_bidx = ${identityIndex(nic)},
+				passport = ${await sealText(row.id, 'passport', passport || null)},
+				passport_bidx = ${identityIndex(passport)},
+				concierge_note = ${await sealText(row.id, 'concierge_note', 'Added during a consultation. No portal account.')},
+				allergies = ${JSON.stringify(await sealText(row.id, 'allergies', '[]'))}::jsonb,
+				conditions = ${JSON.stringify(await sealText(row.id, 'conditions', '[]'))}::jsonb,
+				surgeries = ${JSON.stringify(await sealText(row.id, 'surgeries', '[]'))}::jsonb
+			WHERE id = ${row.id}
+		`;
+		return row.id;
+	});
+	const patient = await patientById(created);
+	if (!patient) return { error: 'That chart could not be opened.' as const };
 	await grantAccess(patient.id, doctorId, 'registered');
 	await client`
 		INSERT INTO signup_invites (token, patient_id, created_at)
@@ -889,10 +971,10 @@ export async function registerPatient(input: {
 		return await client.begin(async (sql) => {
 			const [user] = await sql<{ id: number }[]>`
 				INSERT INTO users (email, password_hash, role, name)
-				VALUES (${input.email}, ${input.passwordHash}, 'patient', ${`${input.firstName} ${input.lastName}`})
+				VALUES (${input.email}, ${input.passwordHash}, 'patient', 'Patient')
 				RETURNING id
 			`;
-			await sql`
+			const [patient] = await sql<{ id: number }[]>`
 				INSERT INTO patients (
 					user_id, pid, record_token, first_name, last_name, dob, sex, phone, concierge_note
 				)
@@ -911,6 +993,20 @@ export async function registerPatient(input: {
 					${input.phone || null},
 					'Registered from the patient portal.'
 				)
+				RETURNING id
+			`;
+			await sql`
+				UPDATE patients
+				SET first_name = ${await sealText(patient.id, 'first_name', input.firstName)},
+					last_name = ${await sealText(patient.id, 'last_name', input.lastName)},
+					dob = ${await sealText(patient.id, 'dob', input.dob || null)},
+					sex = ${await sealText(patient.id, 'sex', input.sex)},
+					phone = ${await sealText(patient.id, 'phone', input.phone || null)},
+					concierge_note = ${await sealText(patient.id, 'concierge_note', 'Registered from the patient portal.')},
+					allergies = ${JSON.stringify(await sealText(patient.id, 'allergies', '[]'))}::jsonb,
+					conditions = ${JSON.stringify(await sealText(patient.id, 'conditions', '[]'))}::jsonb,
+					surgeries = ${JSON.stringify(await sealText(patient.id, 'surgeries', '[]'))}::jsonb
+				WHERE id = ${patient.id}
 			`;
 			return { userId: user.id as number };
 		});
@@ -941,8 +1037,11 @@ export async function signupPreview(token: string) {
 		WHERE s.token = ${token} AND p.user_id IS NULL
 	`;
 	if (!chart) return null;
-	const nic = chart.nic ?? '';
-	const passport = chart.passport ?? '';
+	const open = await presentChart(chart.id, chart);
+	const nic = open.nic ?? '';
+	const passport = open.passport ?? '';
+	const nicIdx = identityIndex(nic);
+	const passportIdx = identityIndex(passport);
 	const [count] = await client<{ count: number }[]>`
 		SELECT COUNT(*)::int AS count
 		FROM encounters e
@@ -951,17 +1050,17 @@ export async function signupPreview(token: string) {
 		   OR (
 			p.user_id IS NULL
 			AND (
-				(${nic} <> '' AND p.nic IS NOT NULL AND lower(trim(p.nic)) = lower(${nic}))
-				OR (${passport} <> '' AND p.passport IS NOT NULL AND lower(trim(p.passport)) = lower(${passport}))
+				(${nicIdx}::text IS NOT NULL AND p.nic_bidx = ${nicIdx})
+				OR (${passportIdx}::text IS NOT NULL AND p.passport_bidx = ${passportIdx})
 			)
 		   )
 	`;
 	return {
-		firstName: chart.first_name,
+		firstName: open.first_name,
 		lastName: chart.last_name,
-		dob: chart.dob,
-		sex: chart.sex,
-		phone: chart.phone ?? '',
+		dob: open.dob,
+		sex: open.sex,
+		phone: open.phone ?? '',
 		nic,
 		passport,
 		consultations: count?.count ?? 0
@@ -982,21 +1081,23 @@ export async function claimSignupInvite(
 		WHERE s.token = ${token}
 	`;
 	if (!chart || chart.user_id) return { error: 'This signup link has already been used. Sign in instead.' as const };
+	const openChart = await presentChart(chart.id, chart);
+	if (openChart.shredded) return { error: 'This medical record was deleted.' as const };
 	const nic = input.nic.trim();
 	const passport = input.passport.trim();
 	const identity = /^[A-Za-z0-9][A-Za-z0-9\s-]{4,31}$/;
-	if (chart.nic && identityKey(nic) !== identityKey(chart.nic)) {
+	if (openChart.nic && identityKey(nic) !== identityKey(openChart.nic)) {
 		return { error: 'Enter the NIC recorded at the clinic.' as const };
 	}
-	if (chart.passport && identityKey(passport) !== identityKey(chart.passport)) {
+	if (openChart.passport && identityKey(passport) !== identityKey(openChart.passport)) {
 		return { error: 'Enter the passport number recorded at the clinic.' as const };
 	}
-	if (nic && !chart.nic && !identity.test(nic)) return { error: 'Enter a NIC using letters and numbers.' as const };
-	if (passport && !chart.passport && !identity.test(passport)) {
+	if (nic && !openChart.nic && !identity.test(nic)) return { error: 'Enter a NIC using letters and numbers.' as const };
+	if (passport && !openChart.passport && !identity.test(passport)) {
 		return { error: 'Enter a passport number using letters and numbers.' as const };
 	}
-	const nextNic = chart.nic || nic;
-	const nextPassport = chart.passport || passport;
+	const nextNic = openChart.nic || nic;
+	const nextPassport = openChart.passport || passport;
 	const matches = await chartsForIdentity(nextNic, nextPassport);
 	const blocked = accountConflict(matches, nextNic, nextPassport);
 	if (blocked) return { error: blocked };
@@ -1006,23 +1107,27 @@ export async function claimSignupInvite(
 	}
 	try {
 		await ensureMedicalCertificateStore();
+		const dropped: number[] = [];
 		const userId = await client.begin(async (sql) => {
 			const [user] = await sql<{ id: number }[]>`
 				INSERT INTO users (email, password_hash, role, name)
-				VALUES (${input.email}, ${input.passwordHash}, 'patient', ${`${chart.first_name} ${chart.last_name}`})
+				VALUES (${input.email}, ${input.passwordHash}, 'patient', 'Patient')
 				RETURNING id
 			`;
 			for (const row of matches) {
-				if (!row.user_id && row.id !== chart.id) await mergeUnsignedChart(sql, chart.id, row.id);
+				if (!row.user_id && row.id !== chart.id) await mergeUnsignedChart(sql, chart.id, row.id, dropped);
 			}
+			const sealedPhone = phone ? await sealText(chart.id, 'phone', phone) : null;
 			const [claimed] = await sql<{ id: number }[]>`
 				UPDATE patients
 				SET user_id = ${user.id},
 					invite_token = NULL,
-					nic = ${nextNic || null},
-					passport = ${nextPassport || null},
-					phone = COALESCE(${phone || null}, phone),
-					concierge_note = 'Signed up from the consultation link.'
+					nic = ${await sealText(chart.id, 'nic', nextNic || null)},
+					nic_bidx = ${identityIndex(nextNic)},
+					passport = ${await sealText(chart.id, 'passport', nextPassport || null)},
+					passport_bidx = ${identityIndex(nextPassport)},
+					phone = COALESCE(${sealedPhone}, phone),
+					concierge_note = ${await sealText(chart.id, 'concierge_note', 'Signed up from the consultation link.')}
 				WHERE id = ${chart.id} AND user_id IS NULL
 				RETURNING id
 			`;
@@ -1030,6 +1135,7 @@ export async function claimSignupInvite(
 			await sql`DELETE FROM signup_invites WHERE patient_id = ${chart.id}`;
 			return user.id as number;
 		});
+		for (const id of dropped) await discardDek(id);
 		return { userId };
 	} catch (error) {
 		if (error instanceof Error && error.message === 'signup-used') {
@@ -1199,48 +1305,51 @@ export async function claimColleagueInvite(
 	}
 }
 
+function patientHaystack(patient: PatientRow) {
+	return [patient.first_name, patient.last_name, `${patient.first_name} ${patient.last_name}`, patient.pid, patient.nic, patient.passport]
+		.filter(Boolean)
+		.join('\n')
+		.toLowerCase();
+}
+
+async function filterPatients<T extends PatientRow>(rows: T[], query: string) {
+	const opened = await presentEach(rows);
+	const needle = query.trim().toLowerCase();
+	const visible = opened.filter((row) => !row.shredded);
+	const matched = needle ? visible.filter((row) => patientHaystack(row).includes(needle)) : visible;
+	matched.sort((a, b) => a.last_name.localeCompare(b.last_name) || a.first_name.localeCompare(b.first_name) || a.id - b.id);
+	return matched;
+}
+
 export async function searchPatients(doctorId: number, query: string) {
-	const q = `%${query.trim()}%`;
-	return client<(PatientRow & { access: string })[]>`
+	const rows = await client<(PatientRow & { access: string })[]>`
 		SELECT p.*, COALESCE(a.status, 'none') AS access
 		FROM patients p
 		LEFT JOIN patient_access a ON a.patient_id = p.id AND a.doctor_id = ${doctorId}
-		WHERE ${query.trim()} = ''
-		   OR p.first_name ILIKE ${q}
-		   OR p.last_name ILIKE ${q}
-		   OR p.pid ILIKE ${q}
-		   OR p.nic ILIKE ${q}
-		   OR p.passport ILIKE ${q}
-		   OR (p.first_name || ' ' || p.last_name) ILIKE ${q}
-		ORDER BY p.last_name, p.first_name
+		ORDER BY p.id
 	`;
+	return filterPatients(rows, query);
 }
 
 export async function patientsForDoctor(doctorId: number, query: string) {
-	const q = `%${query.trim()}%`;
-	return client<PatientRow[]>`
+	const rows = await client<PatientRow[]>`
 		SELECT p.*
 		FROM patients p
 		JOIN patient_access a ON a.patient_id = p.id AND a.doctor_id = ${doctorId} AND a.status = 'granted'
-		WHERE ${query.trim()} = ''
-		   OR p.first_name ILIKE ${q}
-		   OR p.last_name ILIKE ${q}
-		   OR p.pid ILIKE ${q}
-		   OR p.nic ILIKE ${q}
-		   OR p.passport ILIKE ${q}
-		   OR (p.first_name || ' ' || p.last_name) ILIKE ${q}
-		ORDER BY p.last_name, p.first_name
+		ORDER BY p.id
 	`;
+	return filterPatients(rows, query);
 }
 
 export async function encountersFor(patientId: number) {
-	return client`
+	const rows = await client`
 		SELECT * FROM encounters WHERE patient_id = ${patientId} ORDER BY occurred_on DESC
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function consultationsFor(patientId: number) {
-	return client`
+	const rows = await client`
 		SELECT c.id, c.status, c.modality, c.narrative, c.code, c.started_at, c.doctor_id,
 			d.name AS doctor_name, d.credentials, d.specialty
 		FROM consultations c
@@ -1248,6 +1357,7 @@ export async function consultationsFor(patientId: number) {
 		WHERE c.patient_id = ${patientId}
 		ORDER BY c.started_at DESC
 	`;
+	return presentChart(patientId, rows);
 }
 
 type VisitEntry = { id: number; kind: string; label: string; detail: string | null };
@@ -1415,15 +1525,16 @@ function ensureMedicalCertificateStore() {
 	return medicalCertificateStore;
 }
 
-async function certificatesOnVisit(consultId: number | null) {
+async function certificatesOnVisit(patientId: number, consultId: number | null) {
 	if (!consultId) return [];
 	await ensureMedicalCertificateStore();
-	return client<VisitCertificate[]>`
+	const rows = await client<VisitCertificate[]>`
 		SELECT id, code, reason, rest_from, rest_until, issued_on, status
 		FROM medical_certificates
 		WHERE consultation_id = ${consultId}
 		ORDER BY id
 	`;
+	return presentChart(patientId, rows);
 }
 
 export type PatientCertificate = {
@@ -1441,7 +1552,7 @@ export type PatientCertificate = {
 
 export async function certificatesForPatient(patientId: number) {
 	await ensureMedicalCertificateStore();
-	return client<PatientCertificate[]>`
+	const rows = await client<PatientCertificate[]>`
 		SELECT mc.id, mc.code, mc.reason, mc.rest_from, mc.rest_until, mc.issued_on, mc.status,
 			d.name AS doctor_name, d.credentials, d.specialty
 		FROM medical_certificates mc
@@ -1449,10 +1560,13 @@ export async function certificatesForPatient(patientId: number) {
 		WHERE mc.patient_id = ${patientId} AND mc.status = 'issued'
 		ORDER BY mc.issued_on DESC, mc.id DESC
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function consultCertificate(consultId: number) {
-	const [row] = await certificatesOnVisit(consultId);
+	const [owner] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+	if (!owner) return null;
+	const [row] = await certificatesOnVisit(owner.patient_id, consultId);
 	if (!row) return null;
 	return {
 		id: row.id,
@@ -1482,7 +1596,7 @@ export async function saveConsultCertificate(
 		INSERT INTO medical_certificates (
 			consultation_id, patient_id, doctor_id, reason, rest_from, rest_until, issued_on, status, created_at
 		) VALUES (
-			${consultId}, ${consult.patient_id}, ${consult.doctor_id}, ${fields.reason},
+			${consultId}, ${consult.patient_id}, ${consult.doctor_id}, ${await sealText(consult.patient_id, 'reason', fields.reason)},
 			${fields.restFrom}, ${fields.restUntil}, ${fields.issuedOn}, 'draft', ${nowLocal().stamp}
 		)
 		ON CONFLICT (consultation_id) DO UPDATE SET
@@ -1585,7 +1699,7 @@ export async function medicalCertificateView(id: number, patientId: number) {
 		JOIN doctors d ON d.id = mc.doctor_id
 		WHERE mc.id = ${id} AND mc.patient_id = ${patientId}
 	`;
-	return row ?? null;
+	return row ? presentChart(patientId, row) : null;
 }
 
 export async function prescriptionPhotoBytes(id: number) {
@@ -1596,13 +1710,20 @@ export async function prescriptionPhotoBytes(id: number) {
 		WHERE id = ${id}
 	`;
 	if (!row) return null;
-	if (row.encoded) return Buffer.from(row.encoded, 'base64');
+	const [owner] = await client<{ patient_id: number }[]>`
+		SELECT c.patient_id
+		FROM prescription_photos p
+		JOIN consultations c ON c.id = p.consultation_id
+		WHERE p.id = ${id}
+	`;
 	const { readPrescriptionPhoto } = await import('./uploads');
-	return readPrescriptionPhoto(row.stored_name);
+	const bytes = row.encoded ? Buffer.from(row.encoded, 'base64') : await readPrescriptionPhoto(row.stored_name);
+	if (!bytes || !owner) return bytes;
+	return openPatientFile(owner.patient_id, bytes);
 }
 
 async function referralsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
-	return client<VisitReferral[]>`
+	const rows = await client<VisitReferral[]>`
 		SELECT r.id, r.note, r.status, r.created_at,
 			f.name AS from_name, f.credentials AS from_credentials, f.specialty AS from_specialty,
 			t.name AS to_name, t.credentials AS to_credentials, t.specialty AS to_specialty
@@ -1620,10 +1741,27 @@ async function referralsOnVisit(patientId: number, day: string, doctorName: stri
 		  )
 		ORDER BY r.created_at DESC
 	`;
+	return presentChart(patientId, rows);
 }
 
 async function consultParts(patientId: number, consultId: number) {
-	const [consult] = await client`
+	const [consult] = await client<
+		{
+			id: number;
+			status: string;
+			modality: string | null;
+			narrative: string | null;
+			code: string;
+			started_at: Date | string;
+			doctor_id: number;
+			doctor_name: string;
+			credentials: string | null;
+			specialty: string | null;
+			practice: string | null;
+			location: string | null;
+			edit_copy: boolean;
+		}[]
+	>`
 		SELECT c.*, d.name AS doctor_name, d.credentials, d.specialty, d.practice, d.location
 		FROM consultations c
 		JOIN doctors d ON d.id = c.doctor_id
@@ -1635,7 +1773,12 @@ async function consultParts(patientId: number, consultId: number) {
 		client<VisitOrder[]>`SELECT id, kind, title, detail, note, completes_on FROM consultation_orders WHERE consultation_id = ${consultId} ORDER BY id`,
 		client<VisitTask[]>`SELECT id, title, detail, note, status FROM patient_tasks WHERE consultation_id = ${consultId} ORDER BY id`
 	]);
-	return { consult, entries, orders, tasks };
+	return {
+		consult: await presentChart(patientId, consult),
+		entries: await presentChart(patientId, entries),
+		orders: await presentChart(patientId, orders),
+		tasks: await presentChart(patientId, tasks)
+	};
 }
 
 function visitShape(
@@ -1656,43 +1799,59 @@ function sameClinician(encounterName: string, doctorName: string) {
 }
 
 export async function visitByEncounter(patientId: number, encounterId: number, doctorId: number, pid: string) {
-	const [visit] = await client`
+	const [visit] = await client<
+		{
+			id: number;
+			consultation_id: number | null;
+			occurred_on: Date | string;
+			status: string;
+			doctor_name: string;
+			doctor_role: string;
+			practice: string | null;
+			location: string | null;
+			kind: string;
+			focus: string | null;
+			findings: string | null;
+			plan: string | null;
+		}[]
+	>`
 		SELECT * FROM encounters WHERE id = ${encounterId} AND patient_id = ${patientId}
 	`;
 	if (!visit) return null;
-	const linked = visit.consultation_id ? await consultParts(patientId, visit.consultation_id) : null;
-	const day = isoDate(visit.occurred_on);
+	const openedVisit = await presentChart(patientId, visit);
+	const linked = openedVisit.consultation_id ? await consultParts(patientId, openedVisit.consultation_id) : null;
+	const day = isoDate(openedVisit.occurred_on);
 	const consultId = linked?.consult.id ?? null;
 	const [prescriptions, referrals, photos, certificates] = await Promise.all([
-		prescriptionsOnVisit(patientId, day, visit.doctor_name, consultId),
-		referralsOnVisit(patientId, day, visit.doctor_name, consultId),
+		prescriptionsOnVisit(patientId, day, openedVisit.doctor_name, consultId),
+		referralsOnVisit(patientId, day, openedVisit.doctor_name, consultId),
 		consultId ? prescriptionPhotos(consultId) : Promise.resolve([]),
-		certificatesOnVisit(consultId)
+		certificatesOnVisit(patientId, consultId)
 	]);
 	const open = linked?.consult.status === 'in_session' && linked.consult.doctor_id === doctorId;
 	const editable = Boolean(linked && linked.consult.status === 'signed' && linked.consult.doctor_id === doctorId);
 	const [actor] = await client<{ name: string }[]>`SELECT name FROM doctors WHERE id = ${doctorId}`;
-	const ownsEncounter = Boolean(!linked && actor && sameClinician(visit.doctor_name, actor.name));
+	const ownsEncounter = Boolean(!linked && actor && sameClinician(openedVisit.doctor_name, actor.name));
 	return visitShape(
-		visit.occurred_on,
+		openedVisit.occurred_on,
 		{
-			status: visit.status,
+			status: openedVisit.status,
 			code: linked?.consult.code ?? '',
 			modality: linked?.consult.modality ?? '',
-			doctor: visit.doctor_name,
-			role: visit.doctor_role,
-			practice: visit.practice ?? '',
-			location: visit.location ?? '',
-			kind: visit.kind,
-			focus: visit.focus,
-			findings: visit.findings ?? '',
-			plan: visit.plan ?? '',
-			narrative: linked && linked.consult.narrative !== visit.findings ? (linked.consult.narrative ?? '') : '',
+			doctor: openedVisit.doctor_name,
+			role: openedVisit.doctor_role,
+			practice: openedVisit.practice ?? '',
+			location: openedVisit.location ?? '',
+			kind: openedVisit.kind,
+			focus: openedVisit.focus ?? '',
+			findings: openedVisit.findings ?? '',
+			plan: openedVisit.plan ?? '',
+			narrative: linked && linked.consult.narrative !== openedVisit.findings ? (linked.consult.narrative ?? '') : '',
 			continueHref: open ? `/doctor/patients/${pid}/consult` : '',
 			editHref: editable && linked
 				? `/doctor/patients/${pid}/consults/${linked.consult.id}/prescription`
 				: ownsEncounter
-					? `/doctor/patients/${pid}/visits/${visit.id}/prescription`
+					? `/doctor/patients/${pid}/visits/${openedVisit.id}/prescription`
 					: '',
 			deleteId: linked && linked.consult.doctor_id === doctorId ? linked.consult.id : 0,
 			keepsChartVisit: Boolean(linked?.consult.edit_copy),
@@ -1715,7 +1874,7 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 		prescriptionsOnVisit(patientId, day, doctor, consult.id),
 		referralsOnVisit(patientId, day, consult.doctor_name, consult.id),
 		prescriptionPhotos(consult.id),
-		certificatesOnVisit(consult.id)
+		certificatesOnVisit(patientId, consult.id)
 	]);
 	const open = consult.status === 'in_session' && consult.doctor_id === doctorId;
 	const editable = consult.status === 'signed' && consult.doctor_id === doctorId;
@@ -1768,7 +1927,7 @@ export async function selfReportsFor(patientId: number) {
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
 	`;
-	if (!rows.length) return rows.map((row) => ({ ...row, edits: [] as SelfReportEdit[], files: [], alerted: [] as string[] }));
+	if (!rows.length) return presentChart(patientId, rows.map((row) => ({ ...row, edits: [] as SelfReportEdit[], files: [], alerted: [] as string[] })));
 	const ids = rows.map((row) => row.id);
 	const edits = await client<{ report_id: number; changed_at: Date | string; changes: SelfReportEdit['changes'] }[]>`
 		SELECT report_id, changed_at, changes
@@ -1789,12 +1948,15 @@ export async function selfReportsFor(patientId: number) {
 		WHERE a.report_id = ANY(${ids})
 		ORDER BY d.name
 	`;
-	return rows.map((row) => ({
-		...row,
-		edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes })),
-		files: files.filter((file) => file.report_id === row.id),
-		alerted: alerts.filter((alert) => alert.report_id === row.id).map((alert) => alert.name)
-	}));
+	return presentChart(
+		patientId,
+		rows.map((row) => ({
+			...row,
+			edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes })),
+			files: files.filter((file) => file.report_id === row.id),
+			alerted: alerts.filter((alert) => alert.report_id === row.id).map((alert) => alert.name)
+		}))
+	);
 }
 
 export async function selfReportById(patientId: number, id: number) {
@@ -1818,8 +1980,12 @@ export async function addSelfReport(
 		INSERT INTO self_reports (
 			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at
 		) VALUES (
-			${patientId}, ${input.occurredOn}, ${input.title}, ${input.detail || null}, ${input.duration || null},
-			${input.severity || null}, ${input.meds || null}, ${input.ongoing}, ${nowLocal().stamp}
+			${patientId}, ${input.occurredOn}, ${await sealText(patientId, 'title', input.title)},
+			${await sealText(patientId, 'detail', input.detail || null)},
+			${await sealText(patientId, 'duration', input.duration || null)},
+			${await sealText(patientId, 'severity', input.severity || null)},
+			${await sealText(patientId, 'meds_taken', input.meds || null)},
+			${input.ongoing}, ${nowLocal().stamp}
 		)
 		RETURNING id
 	`;
@@ -1827,9 +1993,11 @@ export async function addSelfReport(
 }
 
 export async function addReportFile(reportId: number, fileName: string, storedName: string, contentType: string) {
+	const [report] = await client<{ patient_id: number }[]>`SELECT patient_id FROM self_reports WHERE id = ${reportId}`;
+	if (!report) return;
 	await client`
 		INSERT INTO self_report_files (report_id, file_name, stored_name, content_type, created_at)
-		VALUES (${reportId}, ${fileName}, ${storedName}, ${contentType}, ${nowLocal().stamp})
+		VALUES (${reportId}, ${await sealText(report.patient_id, 'file_name', fileName)}, ${storedName}, ${contentType}, ${nowLocal().stamp})
 	`;
 }
 
@@ -1842,7 +2010,7 @@ export async function reportFileFor(id: number) {
 		JOIN self_reports r ON r.id = f.report_id
 		WHERE f.id = ${id}
 	`;
-	return file ?? null;
+	return file ? presentChart(file.patient_id, file) : null;
 }
 
 export async function reportAlerted(reportId: number, doctorId: number) {
@@ -1879,10 +2047,12 @@ export async function alertReportDoctors(
 			VALUES (${reportId}, ${doctor.id}, ${nowLocal().stamp})
 			ON CONFLICT (report_id, doctor_id) DO NOTHING
 		`;
+		const [report] = await client<{ patient_id: number }[]>`SELECT patient_id FROM self_reports WHERE id = ${reportId}`;
 		await notify(
 			doctor.user_id,
 			'Patient self report',
-			`${patient.first_name} ${patient.last_name} (${patient.pid}) filed “${title}”.`
+			`${patient.first_name} ${patient.last_name} (${patient.pid}) filed “${title}”.`,
+			report?.patient_id
 		);
 		names.push(doctor.name);
 	}
@@ -1928,14 +2098,18 @@ export async function updateSelfReport(
 	if (!changes.length) return { unchanged: true as const };
 	await client`
 		UPDATE self_reports
-		SET occurred_on = ${input.occurredOn}, title = ${input.title}, detail = ${input.detail || null},
-			duration = ${input.duration || null}, severity = ${input.severity || null},
-			meds_taken = ${input.meds || null}, ongoing = ${input.ongoing}
+		SET occurred_on = ${input.occurredOn},
+			title = ${await sealText(patientId, 'title', input.title)},
+			detail = ${await sealText(patientId, 'detail', input.detail || null)},
+			duration = ${await sealText(patientId, 'duration', input.duration || null)},
+			severity = ${await sealText(patientId, 'severity', input.severity || null)},
+			meds_taken = ${await sealText(patientId, 'meds_taken', input.meds || null)},
+			ongoing = ${input.ongoing}
 		WHERE id = ${id} AND patient_id = ${patientId}
 	`;
 	await client`
 		INSERT INTO self_report_edits (report_id, changed_at, changes)
-		VALUES (${id}, ${nowLocal().stamp}, ${JSON.stringify(changes)}::jsonb)
+		VALUES (${id}, ${nowLocal().stamp}, ${JSON.stringify(await sealText(patientId, 'changes', JSON.stringify(changes)))}::jsonb)
 	`;
 	return { saved: true as const };
 }
@@ -1951,13 +2125,17 @@ export async function prescriptionsFor(patientId: number) {
 		ORDER BY i.sort_order, i.id
 	`;
 	const photos = await photosByPatient(patientId);
-	return rows.map((row) => ({
-		...row,
-		items: items.filter((item) => item.prescription_id === row.id),
-		photos: photos
-			.filter((photo) => photo.code === row.code)
-			.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
-	}));
+	return presentChart(
+		patientId,
+		rows.map((row) =>
+			attach(row, {
+				items: items.filter((item) => item.prescription_id === row.id),
+				photos: photos
+					.filter((photo) => photo.code === row.code)
+					.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
+			})
+		)
+	);
 }
 
 export async function prescriptionById(patientId: number, id: number) {
@@ -1974,10 +2152,14 @@ export async function labsFor(patientId: number) {
 		WHERE l.patient_id = ${patientId}
 		ORDER BY r.sort_order, r.id
 	`;
-	return rows.map((row) => ({
-		...row,
-		results: results.filter((result) => result.lab_id === row.id)
-	}));
+	return presentChart(
+		patientId,
+		rows.map((row) =>
+			attach(row, {
+				results: results.filter((result) => result.lab_id === row.id)
+			})
+		)
+	);
 }
 
 export async function labById(patientId: number, id: number) {
@@ -1986,43 +2168,46 @@ export async function labById(patientId: number, id: number) {
 }
 
 export async function imagingFor(patientId: number) {
-	const rows = await client`
+	const rows = await client<(Record<string, unknown> & { image_path: string | null })[]>`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} ORDER BY performed_on DESC NULLS LAST
 	`;
-	return resolveImagePaths(rows);
+	return presentChart(patientId, await resolveImagePaths(rows));
 }
 
 export async function imagingById(patientId: number, id: number) {
-	const [row] = await client`
+	const [row] = await client<(Record<string, unknown> & { image_path: string | null })[]>`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} AND id = ${id}
 	`;
 	if (!row) return null;
 	const [resolved] = await resolveImagePaths([row]);
-	return resolved;
+	return presentChart(patientId, resolved);
 }
 
 export async function vitalsFor(patientId: number) {
-	return client`
+	const rows = await client`
 		SELECT * FROM vitals WHERE patient_id = ${patientId} ORDER BY recorded_at
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function latestVital(patientId: number) {
 	const [row] = await client`
 		SELECT * FROM vitals WHERE patient_id = ${patientId} ORDER BY recorded_at DESC LIMIT 1
 	`;
-	return row ?? null;
+	return row ? presentChart(patientId, row) : null;
 }
 
 export async function careOrdersFor(patientId: number) {
 	await ensureChartLinks(patientId);
-	return client`SELECT * FROM care_orders WHERE patient_id = ${patientId} ORDER BY id`;
+	const rows = await client`SELECT * FROM care_orders WHERE patient_id = ${patientId} ORDER BY id`;
+	return presentChart(patientId, rows);
 }
 
 export async function doseLogsFor(patientId: number) {
-	return client`
+	const rows = await client`
 		SELECT * FROM dose_logs WHERE patient_id = ${patientId} AND log_date = ${CLINIC_DAY} ORDER BY id
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function invoicesFor(patientId: number) {
@@ -2040,7 +2225,8 @@ export async function invoicesFor(patientId: number) {
 }
 
 export async function notificationsFor(userId: number) {
-	return client`SELECT * FROM notifications WHERE user_id = ${userId} ORDER BY created_at DESC`;
+	const rows = await client`SELECT * FROM notifications WHERE user_id = ${userId} ORDER BY created_at DESC`;
+	return presentEach(rows);
 }
 
 export async function markNotificationsSeen(userId: number) {
@@ -2090,7 +2276,7 @@ export async function consultHistory(doctorId: number) {
 			specialty: string;
 		}[]
 	>`
-		SELECT c.id, c.code, c.narrative, c.started_at, p.pid, p.first_name, p.last_name, d.specialty
+		SELECT c.id, c.patient_id, c.code, c.narrative, c.started_at, p.pid, p.first_name, p.last_name, d.specialty
 		FROM consultations c
 		JOIN patients p ON p.id = c.patient_id
 		JOIN doctors d ON d.id = c.doctor_id
@@ -2114,7 +2300,7 @@ export async function consultHistory(doctorId: number) {
 			doctor_role: string;
 		}[]
 	>`
-		SELECT e.id, e.focus, e.occurred_on, p.pid, p.first_name, p.last_name, e.doctor_role
+		SELECT e.id, e.patient_id, e.focus, e.occurred_on, p.pid, p.first_name, p.last_name, e.doctor_role
 		FROM encounters e
 		JOIN patients p ON p.id = e.patient_id
 		JOIN doctors d ON d.id = ${doctorId}
@@ -2135,8 +2321,10 @@ export async function consultHistory(doctorId: number) {
 		  )
 		ORDER BY e.occurred_on DESC
 	`;
+	const openedConsults = await presentEach(consults);
+	const openedEncounters = await presentEach(encounters);
 	const rows: ConsultHistoryItem[] = [
-		...consults.map((consult) => ({
+		...openedConsults.map((consult) => ({
 			kind: 'consult' as const,
 			id: consult.id,
 			code: consult.code,
@@ -2148,7 +2336,7 @@ export async function consultHistory(doctorId: number) {
 			specialty: consult.specialty ?? '',
 			href: `/doctor/patients/${consult.pid}/consults/${consult.id}`
 		})),
-		...encounters.map((visit) => ({
+		...openedEncounters.map((visit) => ({
 			kind: 'encounter' as const,
 			id: visit.id,
 			code: '',
@@ -2166,13 +2354,14 @@ export async function consultHistory(doctorId: number) {
 }
 
 export async function openConsultsForDoctor(doctorId: number) {
-	return client<{ id: number; started_at: Date | string; pid: string; first_name: string; last_name: string }[]>`
-		SELECT c.id, c.started_at, p.pid, p.first_name, p.last_name
+	const rows = await client<{ id: number; patient_id: number; started_at: Date | string; pid: string; first_name: string; last_name: string }[]>`
+		SELECT c.id, c.patient_id, c.started_at, p.pid, p.first_name, p.last_name
 		FROM consultations c
 		JOIN patients p ON p.id = c.patient_id
 		WHERE c.doctor_id = ${doctorId} AND c.status = 'in_session'
 		ORDER BY c.started_at DESC
 	`;
+	return presentEach(rows);
 }
 
 export async function cancelConsult(consultId: number, doctorId: number) {
@@ -2256,28 +2445,39 @@ export async function deleteConsult(consultId: number, doctorId: number, patient
 		await sql`DELETE FROM referrals WHERE source_consult_id = ${consultId}`;
 		const rxCode = chartCode('RX', consult.doctor_id, consult.pid, consult.id);
 		const legacyRx = `RX-${consult.id}`;
-		const names = await sql<{ name: string }[]>`
-			SELECT DISTINCT i.name
-			FROM prescription_items i
-			JOIN prescriptions rx ON rx.id = i.prescription_id
-			WHERE rx.patient_id = ${consult.patient_id}
-			  AND rx.code IN (${rxCode}, ${legacyRx})
-		`;
-		for (const item of names) {
-			const [other] = await sql<{ id: number }[]>`
-				SELECT i.id
+		const names = await presentChart(
+			consult.patient_id,
+			await sql<{ name: string }[]>`
+				SELECT DISTINCT i.name
+				FROM prescription_items i
+				JOIN prescriptions rx ON rx.id = i.prescription_id
+				WHERE rx.patient_id = ${consult.patient_id}
+				  AND rx.code IN (${rxCode}, ${legacyRx})
+			`
+		);
+		const others = await presentChart(
+			consult.patient_id,
+			await sql<{ name: string }[]>`
+				SELECT i.name
 				FROM prescription_items i
 				JOIN prescriptions rx ON rx.id = i.prescription_id
 				WHERE rx.patient_id = ${consult.patient_id}
 				  AND rx.code NOT IN (${rxCode}, ${legacyRx})
-				  AND lower(i.name) = lower(${item.name})
-				LIMIT 1
-			`;
-			if (!other) {
-				await sql`
-					DELETE FROM dose_logs
-					WHERE patient_id = ${consult.patient_id} AND lower(item_name) = lower(${item.name})
-				`;
+			`
+		);
+		const logs = await presentChart(
+			consult.patient_id,
+			await sql<{ id: number; item_name: string }[]>`
+				SELECT id, item_name FROM dose_logs WHERE patient_id = ${consult.patient_id}
+			`
+		);
+		for (const item of names) {
+			const kept = others.some((row) => row.name.toLowerCase() === item.name.toLowerCase());
+			if (kept) continue;
+			for (const log of logs) {
+				if (log.item_name.toLowerCase() === item.name.toLowerCase()) {
+					await sql`DELETE FROM dose_logs WHERE id = ${log.id}`;
+				}
 			}
 		}
 		await sql`
@@ -2329,26 +2529,31 @@ export async function deleteConsult(consultId: number, doctorId: number, patient
 	if (!removed) return { error: 'Only the doctor who signed this consultation can delete it.' };
 	for (const photo of removed.photos) await deletePrescriptionPhoto(photo.stored_name);
 	for (const task of removed.tasks) await deleteTaskPdf(task.id);
-	const who = `${removed.consult.first_name} ${removed.consult.last_name} (${removed.consult.pid})`;
+	const consult = await presentChart(removed.consult.patient_id, removed.consult);
+	const followed = await presentChart(removed.consult.patient_id, removed.followed);
+	const sourced = await presentChart(removed.consult.patient_id, removed.sourced);
+	const who = `${consult.first_name} ${consult.last_name} (${consult.pid})`;
 	await notify(
-		removed.consult.user_id,
+		consult.user_id,
 		'Consultation removed',
-		`${removed.consult.doctor_name} removed a consultation from your record, including the prescriptions, orders, and files filed with it.`
+		`${consult.doctor_name} removed a consultation from your record, including the prescriptions, orders, and files filed with it.`,
+		consult.patient_id
 	);
-	for (const referral of removed.followed) {
+	for (const referral of followed) {
 		await notify(
 			referral.user_id,
 			'Consultation removed',
-			`${removed.consult.doctor_name} removed the consultation for ${who}. The referral is open again.`
+			`${consult.doctor_name} removed the consultation for ${who}. The referral is open again.`,
+			consult.patient_id
 		);
 	}
-	for (const referral of removed.sourced) {
+	for (const referral of sourced) {
 		const title = referral.status === 'incoming' ? 'Referral withdrawn' : 'Consultation removed';
 		const body =
 			referral.status === 'incoming'
 				? `${referral.from_name} withdrew the referral for ${who}.`
 				: `${referral.from_name} removed the consultation that referred ${who}.`;
-		await notify(referral.user_id, title, body);
+		await notify(referral.user_id, title, body, consult.patient_id);
 	}
 	return { pid: removed.consult.pid };
 }
@@ -2374,7 +2579,7 @@ export async function draftConsult(patientId: number, doctorId: number) {
 	if (!consult) {
 		const [created] = await client<{ id: number }[]>`
 			INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at, edit_copy)
-			VALUES (${patientId}, ${doctorId}, 'pending', 'in_session', 'in_person', '', NULL, NOW(), false)
+			VALUES (${patientId}, ${doctorId}, 'pending', 'in_session', 'in_person', ${await sealText(patientId, 'narrative', '')}, NULL, NOW(), false)
 			RETURNING id
 		`;
 		const pid = await patientPid(patientId);
@@ -2394,13 +2599,19 @@ export async function draftConsult(patientId: number, doctorId: number) {
 	const tasks = await client`
 		SELECT * FROM patient_tasks WHERE consultation_id = ${consult.id} ORDER BY id
 	`;
-	return { ...consult, entries, orders, tasks };
+	return presentChart(patientId, attach(consult, { entries, orders, tasks }));
 }
 
 export async function addConsultEntry(consultId: number, kind: string, label: string, detail: string) {
+	const [consult] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+	if (!consult) return;
 	await client`
 		INSERT INTO consultation_entries (consultation_id, kind, label, detail)
-		VALUES (${consultId}, ${kind}, ${label}, ${detail})
+		VALUES (
+			${consultId}, ${kind},
+			${await sealText(consult.patient_id, 'label', label)},
+			${await sealText(consult.patient_id, 'detail', detail)}
+		)
 	`;
 }
 
@@ -2409,8 +2620,12 @@ export async function removeConsultEntry(id: number) {
 }
 
 export async function saveNarrative(consultId: number, narrative: string, modality: string) {
+	const [consult] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+	if (!consult) return;
 	await client`
-		UPDATE consultations SET narrative = ${narrative}, modality = ${modality} WHERE id = ${consultId}
+		UPDATE consultations
+		SET narrative = ${await sealText(consult.patient_id, 'narrative', narrative)}, modality = ${modality}
+		WHERE id = ${consultId}
 	`;
 }
 
@@ -2664,19 +2879,25 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 		FROM consultation_orders o
 		WHERE t.order_id = o.id AND t.patient_id = ${patientId} AND t.order_uid IS NULL
 	`;
-	const tasks = await client<
-		{ id: number; consultation_id: number; title: string; order_id: number | null; file_name: string | null }[]
-	>`
-		SELECT id, consultation_id, title, order_id, file_name
-		FROM patient_tasks
-		WHERE patient_id = ${patientId} AND order_id IS NULL
-	`;
-	const orders = await client<{ id: number; uid: string; title: string; consultation_id: number }[]>`
-		SELECT o.id, o.uid, o.title, o.consultation_id
-		FROM consultation_orders o
-		JOIN consultations c ON c.id = o.consultation_id
-		WHERE c.patient_id = ${patientId} AND o.kind = 'test'
-	`;
+	const tasks = await presentChart(
+		patientId,
+		await client<
+			{ id: number; consultation_id: number; title: string; order_id: number | null; file_name: string | null }[]
+		>`
+			SELECT id, consultation_id, title, order_id, file_name
+			FROM patient_tasks
+			WHERE patient_id = ${patientId} AND order_id IS NULL
+		`
+	);
+	const orders = await presentChart(
+		patientId,
+		await client<{ id: number; uid: string; title: string; consultation_id: number }[]>`
+			SELECT o.id, o.uid, o.title, o.consultation_id
+			FROM consultation_orders o
+			JOIN consultations c ON c.id = o.consultation_id
+			WHERE c.patient_id = ${patientId} AND o.kind = 'test'
+		`
+	);
 	const taken = new Set(
 		(
 			await client<{ order_id: number }[]>`
@@ -2719,7 +2940,7 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 		`;
 		const [task] = await client<{ id: number }[]>`
 			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, status)
-			VALUES (${patientId}, ${order.consultation_id}, ${order.id}, ${order.uid}, ${order.title}, 'open')
+			VALUES (${patientId}, ${order.consultation_id}, ${order.id}, ${order.uid}, ${await sealText(patientId, 'title', order.title)}, 'open')
 			RETURNING id
 		`;
 		if (link) {
@@ -2738,16 +2959,22 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 		WHERE c.patient_id = ${patientId} AND c.uid IS NOT NULL
 		ORDER BY c.id DESC
 	`;
-	const linkedOrders = await client<{ uid: string; title: string; consultation_uid: string }[]>`
-		SELECT o.uid, o.title, c.uid AS consultation_uid
-		FROM consultation_orders o
-		JOIN consultations c ON c.id = o.consultation_id
-		WHERE c.patient_id = ${patientId} AND o.kind = 'test' AND o.uid IS NOT NULL
-	`;
-	const pending = await client<{ id: number; title: string; ordered_by: string }[]>`
-		SELECT id, title, ordered_by FROM care_orders
-		WHERE patient_id = ${patientId} AND consultation_uid IS NULL
-	`;
+	const linkedOrders = await presentChart(
+		patientId,
+		await client<{ uid: string; title: string; consultation_uid: string }[]>`
+			SELECT o.uid, o.title, c.uid AS consultation_uid
+			FROM consultation_orders o
+			JOIN consultations c ON c.id = o.consultation_id
+			WHERE c.patient_id = ${patientId} AND o.kind = 'test' AND o.uid IS NOT NULL
+		`
+	);
+	const pending = await presentChart(
+		patientId,
+		await client<{ id: number; title: string; ordered_by: string }[]>`
+			SELECT id, title, ordered_by FROM care_orders
+			WHERE patient_id = ${patientId} AND consultation_uid IS NULL
+		`
+	);
 	for (const order of pending) {
 		const titled = linkedOrders.find((item) => linkScore(order.title, item.title) > 0);
 		const consult = titled
@@ -2760,10 +2987,13 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 			WHERE id = ${order.id}
 		`;
 	}
-	const reports = await client<{ id: number; name: string; ordering_md: string | null }[]>`
-		SELECT id, name, ordering_md FROM labs
-		WHERE patient_id = ${patientId} AND consultation_uid IS NULL
-	`;
+	const reports = await presentChart(
+		patientId,
+		await client<{ id: number; name: string; ordering_md: string | null }[]>`
+			SELECT id, name, ordering_md FROM labs
+			WHERE patient_id = ${patientId} AND consultation_uid IS NULL
+		`
+	);
 	for (const report of reports) {
 		const titled = linkedOrders.find((item) => linkScore(report.name, item.title) > 0);
 		const consult = titled
@@ -2781,7 +3011,7 @@ export async function ensureChartLinks(patientId: number, taskId?: number, fileN
 export async function tasksForPatient(patientId: number) {
 	await ensureChartLinks(patientId);
 	await ensureVaccinationStore();
-	return client`
+	const rows = await client`
 		SELECT t.*, c.code AS consultation_code, c.uid AS consultation_uid, c.started_at, d.name AS doctor_name, d.id AS doctor_id,
 			COALESCE(o.kind, CASE WHEN v.id IS NOT NULL THEN 'vaccine' END) AS order_kind,
 			v.id AS vaccination_id, (v.proof_name IS NOT NULL) AS has_proof
@@ -2793,17 +3023,18 @@ export async function tasksForPatient(patientId: number) {
 		WHERE t.patient_id = ${patientId}
 		ORDER BY c.started_at DESC, t.consultation_id, t.id
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function taskOwned(id: number, patientId: number) {
 	const [task] = await client`SELECT * FROM patient_tasks WHERE id = ${id} AND patient_id = ${patientId}`;
-	return task ?? null;
+	return task ? presentChart(patientId, task) : null;
 }
 
 export async function saveTaskResult(id: number, patientId: number, fileName: string, storedName: string) {
 	const [task] = await client`
 		UPDATE patient_tasks
-		SET status = 'received', file_name = ${fileName}, stored_name = ${storedName}, uploaded_at = NOW()
+		SET status = 'received', file_name = ${await sealText(patientId, 'file_name', fileName)}, stored_name = ${storedName}, uploaded_at = NOW()
 		WHERE id = ${id} AND patient_id = ${patientId}
 		RETURNING id
 	`;
@@ -2813,10 +3044,10 @@ export async function saveTaskResult(id: number, patientId: number, fileName: st
 }
 
 export async function taskFile(id: number) {
-	const [task] = await client`
+	const [task] = await client<{ id: number; patient_id: number; file_name: string | null; stored_name: string | null }[]>`
 		SELECT id, patient_id, file_name, stored_name FROM patient_tasks WHERE id = ${id}
 	`;
-	return task ?? null;
+	return task ? presentChart(task.patient_id, task) : null;
 }
 
 type MedicineDoctor = { name: string; times: number };
@@ -2914,11 +3145,6 @@ export async function addConsultOrder(
 	completesOn: string | null = null,
 	tags = ''
 ) {
-	const [order] = await client<{ id: number }[]>`
-		INSERT INTO consultation_orders (consultation_id, kind, title, detail, note, completes_on, tags)
-		VALUES (${consultId}, ${kind}, ${title}, ${detail}, ${note}, ${completesOn}, ${tags || null})
-		RETURNING id
-	`;
 	const [consult] = await client<{ patient_id: number; doctor_id: number; uid: string | null; pid: string }[]>`
 		SELECT c.patient_id, c.doctor_id, c.uid, p.pid
 		FROM consultations c
@@ -2926,13 +3152,31 @@ export async function addConsultOrder(
 		WHERE c.id = ${consultId}
 	`;
 	if (!consult) return;
+	const [order] = await client<{ id: number }[]>`
+		INSERT INTO consultation_orders (consultation_id, kind, title, detail, note, completes_on, tags)
+		VALUES (
+			${consultId}, ${kind},
+			${await sealText(consult.patient_id, 'title', title)},
+			${await sealText(consult.patient_id, 'detail', detail)},
+			${await sealText(consult.patient_id, 'note', note)},
+			${completesOn},
+			${tags ? await sealText(consult.patient_id, 'tags', tags) : null}
+		)
+		RETURNING id
+	`;
 	const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
 	await client`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
 	const label = title.trim();
 	if (kind === 'test' && label) {
 		const [task] = await client<{ id: number }[]>`
 			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, detail, note, status)
-			VALUES (${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid}, ${label}, ${detail}, ${note}, 'open')
+			VALUES (
+				${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid},
+				${await sealText(consult.patient_id, 'title', label)},
+				${await sealText(consult.patient_id, 'detail', detail)},
+				${await sealText(consult.patient_id, 'note', note)},
+				'open'
+			)
 			RETURNING id
 		`;
 		await client`
@@ -2941,13 +3185,21 @@ export async function addConsultOrder(
 			WHERE id = ${task.id}
 		`;
 		if (consult.uid) {
-			await client`
-				UPDATE care_orders
-				SET consultation_uid = ${consult.uid}, order_uid = ${orderUid}
-				WHERE patient_id = ${consult.patient_id}
-				  AND consultation_uid IS NULL
-				  AND title = ${label}
-			`;
+			const pending = await presentChart(
+				consult.patient_id,
+				await client<{ id: number; title: string }[]>`
+					SELECT id, title FROM care_orders
+					WHERE patient_id = ${consult.patient_id} AND consultation_uid IS NULL
+				`
+			);
+			const match = pending.find((row) => row.title === label);
+			if (match) {
+				await client`
+					UPDATE care_orders
+					SET consultation_uid = ${consult.uid}, order_uid = ${orderUid}
+					WHERE id = ${match.id}
+				`;
+			}
 		}
 	}
 }
@@ -3047,10 +3299,6 @@ async function openConsult(consultId: number) {
 	return consult ?? null;
 }
 
-function proofSql(proof: VaccineProof) {
-	return proof ? proof.bytes.toString('base64') : null;
-}
-
 export async function giveVaccination(
 	consultId: number,
 	input: { name: string; givenOn: string; lot: string; site: string; note: string },
@@ -3070,11 +3318,14 @@ export async function giveVaccination(
 	const consult = await openConsult(consultId);
 	if (!consult) return { error: 'This consultation is no longer open.' };
 	const detail = ['Given in clinic', givenOn, site, lot ? `Lot ${lot}` : ''].filter(Boolean).join(' · ');
-	const encoded = proofSql(proof);
+	const encoded = proof ? (await sealPatientFile(consult.patient_id, proof.bytes)).toString('base64') : null;
+	const orderTitle = await sealText(consult.patient_id, 'title', name);
+	const orderDetail = await sealText(consult.patient_id, 'detail', detail);
+	const sealedNote = await sealText(consult.patient_id, 'note', note || null);
 	await client.begin(async (sql) => {
 		const [order] = await sql<{ id: number }[]>`
 			INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
-			VALUES (${consultId}, 'vaccine', ${name}, ${detail}, ${note || null})
+			VALUES (${consultId}, 'vaccine', ${orderTitle}, ${orderDetail}, ${sealedNote})
 			RETURNING id
 		`;
 		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
@@ -3084,13 +3335,17 @@ export async function giveVaccination(
 				patient_id, consultation_id, order_id, doctor_id, name, given_on, source, status,
 				note, lot, site, proof_name, proof_type, proof_bytes, created_at
 			) VALUES (
-				${consult.patient_id}, ${consultId}, ${order.id}, ${consult.doctor_id}, ${name}, ${givenOn},
-				'given', 'done', ${note || null}, ${lot || null}, ${site || null},
-				${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+				${consult.patient_id}, ${consultId}, ${order.id}, ${consult.doctor_id},
+				${await sealText(consult.patient_id, 'name', name)}, ${givenOn},
+				'given', 'done', ${sealedNote},
+				${await sealText(consult.patient_id, 'lot', lot || null)},
+				${await sealText(consult.patient_id, 'site', site || null)},
+				${proof ? await sealText(consult.patient_id, 'proof_name', proof.name) : null},
+				${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
 			)
 		`;
 	});
-	await notify(consult.user_id, 'Vaccination recorded', `${consult.doctor_name} recorded ${name} on your vaccination card.`);
+	await notify(consult.user_id, 'Vaccination recorded', `${consult.doctor_name} recorded ${name} on your vaccination card.`, consult.patient_id);
 	return { saved: true as const };
 }
 
@@ -3107,14 +3362,25 @@ export async function orderVaccination(consultId: number, nameInput: string, det
 	await client.begin(async (sql) => {
 		const [order] = await sql<{ id: number }[]>`
 			INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
-			VALUES (${consultId}, 'vaccine', ${name}, ${detail || null}, ${note || null})
+			VALUES (
+				${consultId}, 'vaccine',
+				${await sealText(consult.patient_id, 'title', name)},
+				${await sealText(consult.patient_id, 'detail', detail || null)},
+				${await sealText(consult.patient_id, 'note', note || null)}
+			)
 			RETURNING id
 		`;
 		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
 		await sql`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
 		const [task] = await sql<{ id: number }[]>`
 			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, detail, note, status)
-			VALUES (${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid}, ${name}, ${detail || null}, ${note || null}, 'open')
+			VALUES (
+				${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid},
+				${await sealText(consult.patient_id, 'title', name)},
+				${await sealText(consult.patient_id, 'detail', detail || null)},
+				${await sealText(consult.patient_id, 'note', note || null)},
+				'open'
+			)
 			RETURNING id
 		`;
 		await sql`
@@ -3127,11 +3393,12 @@ export async function orderVaccination(consultId: number, nameInput: string, det
 				patient_id, consultation_id, order_id, task_id, doctor_id, name, source, status, note, created_at
 			) VALUES (
 				${consult.patient_id}, ${consultId}, ${order.id}, ${task.id}, ${consult.doctor_id},
-				${name}, 'ordered', 'ordered', ${note || null}, ${nowLocal().stamp}
+				${await sealText(consult.patient_id, 'name', name)}, 'ordered', 'ordered',
+				${await sealText(consult.patient_id, 'note', note || null)}, ${nowLocal().stamp}
 			)
 		`;
 	});
-	await notify(consult.user_id, 'Vaccination ordered', `${consult.doctor_name} ordered ${name}. It is on your to-do list.`);
+	await notify(consult.user_id, 'Vaccination ordered', `${consult.doctor_name} ordered ${name}. It is on your to-do list.`, consult.patient_id);
 	return { saved: true as const };
 }
 
@@ -3150,7 +3417,11 @@ export async function recordOrderedVaccination(taskId: number, patientId: number
 	`;
 	if (!task || task.order_kind !== 'vaccine') return { error: 'That task is not a vaccination.' };
 	if (task.status === 'received') return { error: 'This vaccination is already on your card.' };
-	const encoded = proofSql(proof);
+	const [taskTitle] = await client<{ title: string }[]>`SELECT title FROM patient_tasks WHERE id = ${taskId}`;
+	const openedTitle = taskTitle ? await presentChart(patientId, taskTitle) : null;
+	const vaccineName = await sealText(patientId, 'name', openedTitle?.title ?? '');
+	const encoded = proof ? (await sealPatientFile(patientId, proof.bytes)).toString('base64') : null;
+	const proofName = proof ? await sealText(patientId, 'proof_name', proof.name) : null;
 	const saved = await client.begin(async (sql) => {
 		const [existing] = await sql<{ id: number; status: string }[]>`
 			SELECT id, status FROM vaccinations WHERE task_id = ${taskId} FOR UPDATE
@@ -3160,7 +3431,7 @@ export async function recordOrderedVaccination(taskId: number, patientId: number
 			await sql`
 				UPDATE vaccinations
 				SET status = 'done', given_on = ${givenOn},
-					proof_name = COALESCE(${proof?.name ?? null}, proof_name),
+					proof_name = COALESCE(${proofName}, proof_name),
 					proof_type = COALESCE(${proof?.type ?? null}, proof_type),
 					proof_bytes = COALESCE(decode(${encoded}::text, 'base64'), proof_bytes)
 				WHERE id = ${existing.id} AND patient_id = ${patientId}
@@ -3172,8 +3443,8 @@ export async function recordOrderedVaccination(taskId: number, patientId: number
 					proof_name, proof_type, proof_bytes, created_at
 				)
 				SELECT ${patientId}, ${task.consultation_id}, ${task.order_id}, ${task.id}, ${task.doctor_id},
-					t.title, ${givenOn}, 'ordered', 'done',
-					${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+					${vaccineName}, ${givenOn}, 'ordered', 'done',
+					${proofName}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
 				FROM patient_tasks t
 				WHERE t.id = ${task.id}
 			`;
@@ -3205,13 +3476,17 @@ export async function selfReportVaccination(
 	if (site === false) return { error: 'Keep the site to 80 characters.' };
 	const note = limitedText(input.note, 500);
 	if (note === false) return { error: 'Keep the note to 500 characters.' };
-	const encoded = proofSql(proof);
+	const encoded = proof ? (await sealPatientFile(patientId, proof.bytes)).toString('base64') : null;
 	await client`
 		INSERT INTO vaccinations (
 			patient_id, name, given_on, source, status, note, lot, site, proof_name, proof_type, proof_bytes, created_at
 		) VALUES (
-			${patientId}, ${name}, ${givenOn}, 'self', 'done', ${note || null}, ${lot || null}, ${site || null},
-			${proof?.name ?? null}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+			${patientId}, ${await sealText(patientId, 'name', name)}, ${givenOn}, 'self', 'done',
+			${await sealText(patientId, 'note', note || null)},
+			${await sealText(patientId, 'lot', lot || null)},
+			${await sealText(patientId, 'site', site || null)},
+			${proof ? await sealText(patientId, 'proof_name', proof.name) : null},
+			${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
 		)
 	`;
 	return { saved: true as const };
@@ -3219,7 +3494,7 @@ export async function selfReportVaccination(
 
 export async function vaccinationsForPatient(patientId: number) {
 	await ensureVaccinationStore();
-	return client<VaccinationCard[]>`
+	const rows = await client<VaccinationCard[]>`
 		SELECT v.id, v.name, v.given_on, v.source, v.status, v.note, v.lot, v.site, v.proof_name, v.order_id,
 			d.name AS doctor_name, d.credentials
 		FROM vaccinations v
@@ -3227,18 +3502,21 @@ export async function vaccinationsForPatient(patientId: number) {
 		WHERE v.patient_id = ${patientId} AND v.status = 'done'
 		ORDER BY v.given_on DESC NULLS LAST, v.id DESC
 	`;
+	return presentChart(patientId, rows);
 }
 
 export async function vaccinationsForConsult(consultId: number) {
 	await ensureVaccinationStore();
-	return client<VaccinationCard[]>`
-		SELECT v.id, v.name, v.given_on, v.source, v.status, v.note, v.lot, v.site, v.proof_name, v.order_id,
+	const [consult] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+	const rows = await client<VaccinationCard[]>`
+		SELECT v.id, v.patient_id, v.name, v.given_on, v.source, v.status, v.note, v.lot, v.site, v.proof_name, v.order_id,
 			d.name AS doctor_name, d.credentials
 		FROM vaccinations v
 		LEFT JOIN doctors d ON d.id = v.doctor_id
 		WHERE v.consultation_id = ${consultId}
 		ORDER BY v.id
 	`;
+	return consult ? presentChart(consult.patient_id, rows) : rows;
 }
 
 export async function vaccinationProof(id: number) {
@@ -3251,11 +3529,12 @@ export async function vaccinationProof(id: number) {
 		WHERE id = ${id} AND proof_name IS NOT NULL
 	`;
 	if (!row?.encoded || !row.proof_type) return null;
+	const opened = await presentChart(row.patient_id, { proof_name: row.proof_name });
 	return {
 		id: row.id,
 		patient_id: row.patient_id,
 		doctor_id: row.doctor_id,
-		proof_name: row.proof_name,
+		proof_name: opened.proof_name,
 		proof_type: row.proof_type,
 		bytes: Buffer.from(row.encoded, 'base64')
 	};
@@ -3295,7 +3574,7 @@ export type IncomingReferral = {
 };
 
 export async function incomingReferrals(doctorId: number) {
-	return client<IncomingReferral[]>`
+	const rows = await client<IncomingReferral[]>`
 		SELECT r.id, r.patient_id, r.note, r.status, r.created_at,
 			p.pid, p.first_name, p.last_name, p.dob, p.sex,
 			fd.name AS from_name, fd.id AS from_id
@@ -3306,71 +3585,86 @@ export async function incomingReferrals(doctorId: number) {
 		ORDER BY CASE r.status WHEN 'incoming' THEN 0 WHEN 'in_session' THEN 1 ELSE 2 END,
 			r.created_at DESC, r.id DESC
 	`;
+	return presentEach(rows);
 }
 
 export async function referralForFollowUp(consultId: number) {
-	const [row] = await client<{ id: number; note: string | null; status: string; from_name: string }[]>`
-		SELECT r.id, r.note, r.status, d.name AS from_name
+	const [row] = await client<{ id: number; patient_id: number; note: string | null; status: string; from_name: string }[]>`
+		SELECT r.id, r.patient_id, r.note, r.status, d.name AS from_name
 		FROM referrals r
 		JOIN doctors d ON d.id = r.from_doctor_id
 		WHERE r.follow_consult_id = ${consultId}
 		LIMIT 1
 	`;
-	return row ?? null;
+	return row ? presentChart(row.patient_id, row) : null;
 }
 
-async function notify(userId: number | null, title: string, body: string) {
+async function notify(userId: number | null, title: string, body: string, patientId?: number) {
 	if (!userId) return;
+	const storedTitle = patientId ? await sealText(patientId, 'title', title) : title;
+	const storedBody = patientId ? await sealText(patientId, 'body', body) : body;
 	await client`
-		INSERT INTO notifications (user_id, title, body, created_at)
-		VALUES (${userId}, ${title}, ${body}, ${nowLocal().stamp})
+		INSERT INTO notifications (user_id, patient_id, title, body, created_at)
+		VALUES (${userId}, ${patientId ?? null}, ${storedTitle}, ${storedBody}, ${nowLocal().stamp})
 	`;
 }
 
 export async function addReferral(consultId: number, fromDoctorId: number, toDoctorId: number, note: string) {
 	if (!toDoctorId || fromDoctorId === toDoctorId) return { error: 'Choose another clinician from the registry.' };
-	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId} AND status = 'in_session'`;
+	const [consult] = await client<{ id: number; doctor_id: number; patient_id: number; status: string }[]>`
+		SELECT * FROM consultations WHERE id = ${consultId} AND status = 'in_session'
+	`;
 	if (!consult || consult.doctor_id !== fromDoctorId) return { error: 'This consultation is no longer open.' };
-	const [target] = await client`SELECT * FROM doctors WHERE id = ${toDoctorId}`;
+	const [target] = await client<
+		{ id: number; user_id: number | null; name: string; credentials: string | null; specialty: string; practice: string | null }[]
+	>`SELECT * FROM doctors WHERE id = ${toDoctorId}`;
 	if (!target) return { error: 'Choose a specialist from the registry.' };
 	const [existing] = await client`
 		SELECT id FROM referrals
 		WHERE source_consult_id = ${consultId} AND to_doctor_id = ${toDoctorId} AND status <> 'completed'
 	`;
 	if (existing) return { error: 'This clinician is already on the referral list.' };
-	const [patient] = await client<{ first_name: string; last_name: string; pid: string; user_id: number | null }[]>`
+	const [storedPatient] = await client<{ first_name: string; last_name: string; pid: string; user_id: number | null }[]>`
 		SELECT first_name, last_name, pid, user_id FROM patients WHERE id = ${consult.patient_id}
 	`;
-	const [from] = await client`SELECT name FROM doctors WHERE id = ${fromDoctorId}`;
+	const patient = storedPatient ? await presentChart(consult.patient_id, storedPatient) : null;
+	const [from] = await client<{ name: string }[]>`SELECT name FROM doctors WHERE id = ${fromDoctorId}`;
 	if (!patient || !from) return { error: 'That patient could not be found.' };
 	const title = target.credentials ? `${target.name}, ${target.credentials}` : target.name;
 	const detail = [target.specialty, target.practice].filter(Boolean).join(' · ');
 	const [order] = await client`
 		INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
-		VALUES (${consultId}, 'referral', ${title}, ${detail}, ${note})
+		VALUES (
+			${consultId}, 'referral',
+			${await sealText(consult.patient_id, 'title', title)},
+			${await sealText(consult.patient_id, 'detail', detail)},
+			${await sealText(consult.patient_id, 'note', note)}
+		)
 		RETURNING id
 	`;
 	await client`
 		INSERT INTO referrals (
 			patient_id, from_doctor_id, to_doctor_id, source_consult_id, order_id, note, status, created_at
 		) VALUES (
-			${consult.patient_id}, ${fromDoctorId}, ${toDoctorId}, ${consultId}, ${order.id}, ${note}, 'incoming', ${nowLocal().stamp}
+			${consult.patient_id}, ${fromDoctorId}, ${toDoctorId}, ${consultId}, ${order.id},
+			${await sealText(consult.patient_id, 'note', note)}, 'incoming', ${nowLocal().stamp}
 		)
 	`;
 	await grantAccess(consult.patient_id, toDoctorId, 'referral');
 	const who = `${patient.first_name} ${patient.last_name} (${patient.pid})`;
 	const body = note ? `${from.name} referred ${who}. ${note}` : `${from.name} referred ${who} for ${target.specialty}.`;
-	await notify(target.user_id, 'Incoming referral', body);
+	await notify(target.user_id, 'Incoming referral', body, consult.patient_id);
 	await notify(
 		patient.user_id,
 		'Specialist added',
-		`${target.name} can now view your record because ${from.name} referred you.`
+		`${target.name} can now view your record because ${from.name} referred you.`,
+		consult.patient_id
 	);
 	return { saved: true as const };
 }
 
 export async function startConsultForReferral(referralId: number, doctorId: number) {
-	const [referral] = await client`
+	const [referral] = await client<{ id: number; patient_id: number; status: string; follow_consult_id: number | null }[]>`
 		SELECT * FROM referrals WHERE id = ${referralId} AND to_doctor_id = ${doctorId}
 	`;
 	if (!referral) return { error: 'That referral is not on your list.' };
@@ -3406,6 +3700,7 @@ export async function consultForEncounterEdit(patientId: number, encounterId: nu
 		WHERE id = ${encounterId} AND patient_id = ${patientId}
 	`;
 	if (!visit) return { error: 'Consultation not found.' as const };
+	const opened = await presentChart(patientId, visit);
 	const [doctor] = await client<{ name: string }[]>`SELECT name FROM doctors WHERE id = ${doctorId}`;
 	if (!doctor || !sameClinician(visit.doctor_name, doctor.name)) {
 		return { error: 'Only the doctor who signed this consultation can edit the prescription.' as const };
@@ -3421,7 +3716,7 @@ export async function consultForEncounterEdit(patientId: number, encounterId: nu
 		INSERT INTO consultations (patient_id, doctor_id, code, status, modality, narrative, pharmacy, started_at, edit_copy)
 		VALUES (
 			${patientId}, ${doctorId}, 'pending', 'signed', 'in_person',
-			${visit.findings ?? ''}, NULL, ${visit.occurred_on}, true
+			${await sealText(patientId, 'narrative', opened.findings ?? '')}, NULL, ${opened.occurred_on}, true
 		)
 		RETURNING id
 	`;
@@ -3434,7 +3729,7 @@ export async function consultForEncounterEdit(patientId: number, encounterId: nu
 }
 
 export async function consultForChart(patientId: number, consultId: number) {
-	const [consult] = await client`
+	const [consult] = await client<{ id: number }[]>`
 		SELECT * FROM consultations WHERE id = ${consultId} AND patient_id = ${patientId}
 	`;
 	if (!consult) return null;
@@ -3442,7 +3737,7 @@ export async function consultForChart(patientId: number, consultId: number) {
 		SELECT * FROM consultation_orders WHERE consultation_id = ${consult.id} ORDER BY id
 	`;
 	const photos = await prescriptionPhotos(consult.id);
-	return { ...consult, orders, photos };
+	return presentChart(patientId, attach(consult, { orders, photos }));
 }
 
 export async function prescriptionPhotoAccess(id: number) {
@@ -3461,7 +3756,7 @@ export async function prescriptionPhotoAccess(id: number) {
 		JOIN consultations c ON c.id = p.consultation_id
 		WHERE p.id = ${id}
 	`;
-	return row ?? null;
+	return row ? presentChart(row.patient_id, row) : null;
 }
 
 async function consultPrescriptionId(consultId: number, course: string, completesOn: string | null) {
@@ -3493,7 +3788,7 @@ async function consultPrescriptionId(consultId: number, course: string, complete
 		)
 		VALUES (
 			${consult.patient_id}, ${code}, ${doctor.name}, ${doctor.specialty},
-			${doctor.location}, NULL, ${stamp}, 'active', ${course}, ${completesOn}
+			${doctor.location}, NULL, ${stamp}, 'active', ${await sealText(consult.patient_id, 'course_label', course)}, ${completesOn}
 		)
 		RETURNING id
 	`;
@@ -3508,16 +3803,21 @@ export async function fileSignedMedication(
 	completesOn: string | null,
 	tags: string
 ) {
-	const [consult] = await client<{ completes_on: Date | string | null }[]>`
-		SELECT completes_on FROM consultations WHERE id = ${consultId}
+	const [consult] = await client<{ patient_id: number; completes_on: Date | string | null }[]>`
+		SELECT patient_id, completes_on FROM consultations WHERE id = ${consultId}
 	`;
 	const completion = completesOn || isoDate(consult?.completes_on) || null;
 	const rxId = await consultPrescriptionId(consultId, 'Added after the consultation was signed', completion);
-	if (!rxId) return;
-	await client`
-		UPDATE prescriptions SET course_label = 'Signed during consultation'
-		WHERE id = ${rxId} AND course_label = 'Photograph of the written prescription'
-	`;
+	if (!rxId || !consult) return;
+	const [rx] = await client<{ course_label: string | null }[]>`SELECT course_label FROM prescriptions WHERE id = ${rxId}`;
+	const opened = rx ? await presentChart(consult.patient_id, rx) : null;
+	if (opened?.course_label === 'Photograph of the written prescription') {
+		await client`
+			UPDATE prescriptions
+			SET course_label = ${await sealText(consult.patient_id, 'course_label', 'Signed during consultation')}
+			WHERE id = ${rxId}
+		`;
+	}
 	const marks = tagsFrom(tags);
 	const sig = [detail, marks.frequency, marks.meal].filter(Boolean).join('. ');
 	const [count] = await client<{ count: number }[]>`
@@ -3528,8 +3828,18 @@ export async function fileSignedMedication(
 			prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
 			frequency, schedule_detail
 		) VALUES (
-			${rxId}, ${title}, ${detail}, 'Oral', ${sig}, ${note}, ${detail}, '0', ${count.count},
-			${completesOn}, ${marks.frequency || null}, ${marks.meal || null}
+			${rxId},
+			${await sealText(consult.patient_id, 'name', title)},
+			${await sealText(consult.patient_id, 'strength', detail)},
+			'Oral',
+			${await sealText(consult.patient_id, 'sig', sig)},
+			${await sealText(consult.patient_id, 'indication', note)},
+			${await sealText(consult.patient_id, 'supply_label', detail)},
+			${await sealText(consult.patient_id, 'refills', '0')},
+			${count.count},
+			${completesOn},
+			${await sealText(consult.patient_id, 'frequency', marks.frequency || null)},
+			${await sealText(consult.patient_id, 'schedule_detail', marks.meal || null)}
 		)
 	`;
 }
@@ -3557,7 +3867,9 @@ async function pruneFiledPrescription(consultId: number) {
 	}
 	if (left.count === 0 && photos.count > 0) {
 		await client`
-			UPDATE prescriptions SET course_label = 'Photograph of the written prescription' WHERE id = ${rx.id}
+			UPDATE prescriptions
+			SET course_label = ${await sealText(consult.patient_id, 'course_label', 'Photograph of the written prescription')}
+			WHERE id = ${rx.id}
 		`;
 	}
 }
@@ -3573,12 +3885,13 @@ export async function dropFiledMedication(consultId: number, title: string) {
 		SELECT id FROM prescriptions WHERE patient_id = ${consult.patient_id} AND code = ${code}
 	`;
 	if (!rx) return;
-	const [item] = await client<{ id: number }[]>`
-		SELECT id FROM prescription_items
-		WHERE prescription_id = ${rx.id} AND name = ${title}
-		ORDER BY id DESC
-		LIMIT 1
-	`;
+	const items = await presentChart(
+		consult.patient_id,
+		await client<{ id: number; name: string }[]>`
+			SELECT id, name FROM prescription_items WHERE prescription_id = ${rx.id} ORDER BY id DESC
+		`
+	);
+	const item = items.find((row) => row.name === title);
 	if (item) await client`DELETE FROM prescription_items WHERE id = ${item.id}`;
 	await pruneFiledPrescription(consultId);
 }
@@ -3595,12 +3908,15 @@ export async function addPrescriptionPhoto(
 		SELECT COUNT(*)::int AS count FROM prescription_photos WHERE consultation_id = ${consultId}
 	`;
 	if (count.count >= 6) return { error: 'This consultation already has 6 prescription photos.' as const };
+	const [owner] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
+	if (!owner) return { error: 'This consultation is no longer open.' as const };
 	const stored = `rx-${consultId}-${Date.now()}.${ext}`;
+	const sealed = await sealPatientFile(owner.patient_id, bytes);
 	await client`
 		INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at, bytes)
 		VALUES (
-			${consultId}, ${fileName}, ${stored}, ${contentType}, ${nowLocal().stamp},
-			decode(${bytes.toString('base64')}, 'base64')
+			${consultId}, ${await sealText(owner.patient_id, 'file_name', fileName)}, ${stored}, ${contentType}, ${nowLocal().stamp},
+			decode(${sealed.toString('base64')}, 'base64')
 		)
 	`;
 	const [consult] = await client<{ status: string; completes_on: Date | string | null }[]>`
@@ -3631,13 +3947,29 @@ export async function removePrescriptionPhoto(id: number, consultId: number) {
 }
 
 export async function removeConsultOrder(id: number, consultId?: number) {
-	const [order] = await client<{ id: number; kind: string; title: string; consultation_id: number }[]>`
-		SELECT id, kind, title, consultation_id FROM consultation_orders WHERE id = ${id}
+	const [storedOrder] = await client<{ id: number; kind: string; title: string; consultation_id: number; patient_id: number }[]>`
+		SELECT o.id, o.kind, o.title, o.consultation_id, c.patient_id
+		FROM consultation_orders o
+		JOIN consultations c ON c.id = o.consultation_id
+		WHERE o.id = ${id}
 	`;
-	if (!order || (consultId != null && order.consultation_id !== consultId)) return;
+	if (!storedOrder || (consultId != null && storedOrder.consultation_id !== consultId)) return;
+	const order = await presentChart(storedOrder.patient_id, storedOrder);
 	if (order?.kind === 'referral') {
-		const [referral] = await client`
-			SELECT r.id, r.status, r.note, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
+		const [referral] = await client<
+			{
+				id: number;
+				patient_id: number;
+				status: string;
+				note: string | null;
+				user_id: number | null;
+				first_name: string;
+				last_name: string;
+				pid: string;
+				from_name: string;
+			}[]
+		>`
+			SELECT r.id, r.patient_id, r.status, r.note, d.user_id, p.first_name, p.last_name, p.pid, f.name AS from_name
 			FROM referrals r
 			JOIN doctors d ON d.id = r.to_doctor_id
 			JOIN doctors f ON f.id = r.from_doctor_id
@@ -3646,8 +3978,9 @@ export async function removeConsultOrder(id: number, consultId?: number) {
 		`;
 		if (referral?.status === 'incoming') {
 			await client`DELETE FROM referrals WHERE id = ${referral.id}`;
-			const who = `${referral.first_name} ${referral.last_name} (${referral.pid})`;
-			await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`);
+			const openReferral = await presentChart(referral.patient_id, referral);
+			const who = `${openReferral.first_name} ${openReferral.last_name} (${openReferral.pid})`;
+			await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`, referral.patient_id);
 		}
 	}
 	await client`DELETE FROM vaccinations WHERE order_id = ${id} AND (status = 'ordered' OR source = 'given')`;
@@ -3675,22 +4008,50 @@ export async function finalizeConsult(
 	charges: { description: string; amount: number }[]
 ) {
 	if (!charges.length) return { error: 'Enter the consultation bill.' };
-	const [consult] = await client`SELECT * FROM consultations WHERE id = ${consultId}`;
+	const [consult] = await client<
+		{
+			id: number;
+			patient_id: number;
+			doctor_id: number;
+			status: string;
+			uid: string | null;
+			narrative: string | null;
+			completes_on: Date | string | null;
+		}[]
+	>`SELECT * FROM consultations WHERE id = ${consultId}`;
 	if (!consult || consult.status !== 'in_session') return;
 	await ensureChartLinks(consult.patient_id);
 	const [linked] = await client<{ uid: string | null }[]>`SELECT uid FROM consultations WHERE id = ${consultId}`;
 	consult.uid = linked?.uid ?? consult.uid;
-	const orders = await client`SELECT * FROM consultation_orders WHERE consultation_id = ${consultId}`;
+	const openedConsult = await presentChart(consult.patient_id, consult);
+	const orders = await presentChart(
+		consult.patient_id,
+		await client<
+			{
+				id: number;
+				kind: string;
+				title: string;
+				detail: string | null;
+				note: string | null;
+				tags: string | null;
+				uid: string | null;
+				completes_on: Date | string | null;
+			}[]
+		>`SELECT * FROM consultation_orders WHERE consultation_id = ${consultId}`
+	);
 	const meds = orders.filter((order) => order.kind === 'medication');
 	const completion = completesOn || isoDate(consult.completes_on) || null;
 	if (completion) {
 		await client`UPDATE consultations SET completes_on = ${completion} WHERE id = ${consultId}`;
 	}
-	const [doctor] = await client`SELECT * FROM doctors WHERE id = ${consult.doctor_id}`;
-	const [chart] = await client<{ pid: string; insurance_name: string | null; user_id: number | null }[]>`
+	const [doctor] = await client<{ name: string; specialty: string; practice: string | null; location: string | null }[]>`
+		SELECT * FROM doctors WHERE id = ${consult.doctor_id}
+	`;
+	const [storedChart] = await client<{ pid: string; insurance_name: string | null; user_id: number | null }[]>`
 		SELECT pid, insurance_name, user_id FROM patients WHERE id = ${consult.patient_id}
 	`;
-	if (!chart) throw new Error('Patient not found.');
+	if (!storedChart) throw new Error('Patient not found.');
+	const chart = await presentChart(consult.patient_id, storedChart);
 	const rxCode = chartCode('RX', Number(consult.doctor_id), chart.pid, Number(consult.id));
 	const billCode = chartCode('INV', Number(consult.doctor_id), chart.pid, Number(consult.id));
 	const { date, stamp } = nowLocal();
@@ -3698,8 +4059,11 @@ export async function finalizeConsult(
 		INSERT INTO encounters (patient_id, doctor_name, doctor_role, practice, occurred_on, kind, focus, findings, plan, location, status, consultation_id)
 		VALUES (
 			${consult.patient_id}, ${doctor.name}, ${doctor.specialty}, ${doctor.practice},
-			${date}, ${`${doctor.specialty} Consult`}, 'Signed consultation',
-			${consult.narrative}, 'Orders authorized and transmitted.', ${doctor.location}, 'finalized', ${consult.id}
+			${date}, ${`${doctor.specialty} Consult`},
+			${await sealText(consult.patient_id, 'focus', 'Signed consultation')},
+			${await sealText(consult.patient_id, 'findings', openedConsult.narrative ?? '')},
+			${await sealText(consult.patient_id, 'plan', 'Orders authorized and transmitted.')},
+			${doctor.location}, 'finalized', ${consult.id}
 		)
 	`;
 	if (meds.length) {
@@ -3709,7 +4073,8 @@ export async function finalizeConsult(
 			)
 			VALUES (
 				${consult.patient_id}, ${rxCode}, ${doctor.name}, ${doctor.specialty},
-				${doctor.location}, NULL, ${stamp}, 'active', 'Signed during consultation', ${completion}
+				${doctor.location}, NULL, ${stamp}, 'active',
+				${await sealText(consult.patient_id, 'course_label', 'Signed during consultation')}, ${completion}
 			)
 			RETURNING id
 		`;
@@ -3721,8 +4086,18 @@ export async function finalizeConsult(
 					prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
 					frequency, schedule_detail
 				) VALUES (
-					${rx.id}, ${med.title}, ${med.detail}, 'Oral', ${sig}, ${med.note}, ${med.detail}, '0', ${index},
-					${isoDate(med.completes_on) || null}, ${marks.frequency || null}, ${marks.meal || null}
+					${rx.id},
+					${await sealText(consult.patient_id, 'name', med.title)},
+					${await sealText(consult.patient_id, 'strength', med.detail ?? '')},
+					'Oral',
+					${await sealText(consult.patient_id, 'sig', sig)},
+					${await sealText(consult.patient_id, 'indication', med.note ?? '')},
+					${await sealText(consult.patient_id, 'supply_label', med.detail ?? '')},
+					${await sealText(consult.patient_id, 'refills', '0')},
+					${index},
+					${isoDate(med.completes_on) || null},
+					${await sealText(consult.patient_id, 'frequency', marks.frequency || null)},
+					${await sealText(consult.patient_id, 'schedule_detail', marks.meal || null)}
 				)
 			`;
 		}
@@ -3738,8 +4113,10 @@ export async function finalizeConsult(
 		await client`
 			INSERT INTO care_orders (patient_id, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
 			VALUES (
-				${consult.patient_id}, ${consult.uid}, ${order.uid}, 'diagnostic', ${order.title}, ${doctor.name}, ${order.detail},
-				${'Ordered ' + formatDate(date)}, ${order.note}
+				${consult.patient_id}, ${consult.uid}, ${order.uid}, 'diagnostic',
+				${await sealText(consult.patient_id, 'title', order.title)}, ${doctor.name}, ${order.detail},
+				${'Ordered ' + formatDate(date)},
+				${await sealText(consult.patient_id, 'instructions', order.note ?? '')}
 			)
 		`;
 	}
@@ -3768,7 +4145,8 @@ export async function finalizeConsult(
 		await notify(
 			chart.user_id,
 			'Medical certificate issued',
-			`${doctor.name} issued a medical certificate. Certified rest is ${formatDate(certificate.rest_from)} through ${formatDate(certificate.rest_until)}.`
+			`${doctor.name} issued a medical certificate. Certified rest is ${formatDate(certificate.rest_from)} through ${formatDate(certificate.rest_until)}.`,
+			consult.patient_id
 		);
 	}
 	return { medications: meds.length, photos: photoCount.count, certificate: Boolean(certificate) };
@@ -3777,7 +4155,14 @@ export async function finalizeConsult(
 export async function logVital(patientId: number, systolic: number, diastolic: number, heartRate: number, source: string) {
 	await client`
 		INSERT INTO vitals (patient_id, recorded_at, systolic, diastolic, heart_rate, source, note)
-		VALUES (${patientId}, ${nowLocal().stamp}, ${systolic}, ${diastolic}, ${heartRate}, ${source}, 'Logged from the patient portal')
+		VALUES (
+			${patientId}, ${nowLocal().stamp},
+			${await sealText(patientId, 'systolic', String(systolic))},
+			${await sealText(patientId, 'diastolic', String(diastolic))},
+			${await sealText(patientId, 'heart_rate', String(heartRate))},
+			${source},
+			${await sealText(patientId, 'note', 'Logged from the patient portal')}
+		)
 	`;
 }
 
@@ -3810,17 +4195,26 @@ export async function addOtc(patientId: number, name: string, detail: string) {
 	`;
 	if (!rx) {
 		[rx] = await client`
-			INSERT INTO prescriptions (patient_id, code, prescriber, specialty, facility, pharmacy, ordered_at, status, course_label)
-			VALUES (
-				${patientId}, 'OTC-SELF', 'Self-reported', 'Patient', 'Home', NULL,
-				${nowLocal().stamp}, 'active', 'Patient-reported supplement'
-			)
+		INSERT INTO prescriptions (patient_id, code, prescriber, specialty, facility, pharmacy, ordered_at, status, course_label)
+		VALUES (
+			${patientId}, 'OTC-SELF', 'Self-reported', 'Patient', 'Home', NULL,
+			${nowLocal().stamp}, 'active', ${await sealText(patientId, 'course_label', 'Patient-reported supplement')}
+		)
 			RETURNING id
 		`;
 	}
 	await client`
 		INSERT INTO prescription_items (prescription_id, name, strength, form, sig, indication, schedule_detail, sort_order)
-		VALUES (${rx.id}, ${name}, ${detail}, 'OTC', ${detail}, 'Patient-reported', ${detail}, 20)
+		VALUES (
+			${rx.id},
+			${await sealText(patientId, 'name', name)},
+			${await sealText(patientId, 'strength', detail)},
+			'OTC',
+			${await sealText(patientId, 'sig', detail)},
+			${await sealText(patientId, 'indication', 'Patient-reported')},
+			${await sealText(patientId, 'schedule_detail', detail)},
+			20
+		)
 	`;
 }
 
@@ -3840,7 +4234,10 @@ export async function orderLab(patientId: number, doctorId: number, name: string
 	await migrateChartCodes();
 	const [lab] = await client<{ id: number }[]>`
 		INSERT INTO labs (patient_id, name, category, status, facility, ordering_md, acknowledged)
-		VALUES (${patientId}, ${name}, 'Ordered', 'pending', ${facility}, ${orderingMd}, false)
+		VALUES (
+			${patientId}, ${await sealText(patientId, 'name', name)},
+			${await sealText(patientId, 'category', 'Ordered')}, 'pending', ${facility}, ${orderingMd}, false
+		)
 		RETURNING id
 	`;
 	const pid = await patientPid(patientId);
@@ -3919,7 +4316,8 @@ export async function requestChartAccess(patientId: number, doctorId: number) {
 	await notify(
 		patient.user_id,
 		'Record access request',
-		`${doctor?.name ?? 'A clinician'} is asking to open your medical record. Allow or deny this from your home page or My physicians.`
+		`${doctor?.name ?? 'A clinician'} is asking to open your medical record. Allow or deny this from your home page or My physicians.`,
+		patientId
 	);
 	return 'requested' as const;
 }
@@ -3938,11 +4336,13 @@ export async function decideChartAccess(patientId: number, accessId: number, all
 	const [patient] = await client<{ first_name: string; last_name: string; pid: string }[]>`
 		SELECT first_name, last_name, pid FROM patients WHERE id = ${patientId}
 	`;
-	const who = `${patient.first_name} ${patient.last_name} (${patient.pid})`;
+	const open = await presentChart(patientId, patient);
+	const who = `${open.first_name} ${open.last_name} (${open.pid})`;
 	await notify(
 		doctor?.user_id ?? null,
 		allow ? 'Record access allowed' : 'Record access declined',
-		allow ? `${who} allowed you to open their medical record.` : `${who} declined access to their medical record.`
+		allow ? `${who} allowed you to open their medical record.` : `${who} declined access to their medical record.`,
+		patientId
 	);
 	return true;
 }
@@ -3971,13 +4371,15 @@ export async function setRecordAccess(patientId: number, doctorId: number, allow
 	const [patient] = await client<{ first_name: string; last_name: string; pid: string }[]>`
 		SELECT first_name, last_name, pid FROM patients WHERE id = ${patientId}
 	`;
-	const who = `${patient.first_name} ${patient.last_name} (${patient.pid})`;
+	const open = await presentChart(patientId, patient);
+	const who = `${open.first_name} ${open.last_name} (${open.pid})`;
 	await notify(
 		doctor?.user_id ?? null,
 		allow ? 'Record access turned on' : 'Record access turned off',
 		allow
 			? `${who} turned your access to their medical record back on.`
-			: `${who} turned off your access to their medical record. Scan their QR code or enter their access code to open it again.`
+			: `${who} turned off your access to their medical record. Scan their QR code or enter their access code to open it again.`,
+		patientId
 	);
 	return { ok: true as const, name: doctor?.name ?? 'This clinician' };
 }
@@ -4038,7 +4440,8 @@ async function announceCode(patientId: number, doctorId: number) {
 	await notify(
 		patient.user_id,
 		'Record access granted',
-		`${doctor?.name ?? 'A clinician'} used your access code and can now view your full medical history.`
+		`${doctor?.name ?? 'A clinician'} used your access code and can now view your full medical history.`,
+		patientId
 	);
 	return patient.pid;
 }
@@ -4073,8 +4476,13 @@ export async function redeemRecordToken(doctorId: number, payload: string) {
 		await notify(
 			patient.user_id,
 			'Record access granted',
-			`${doctor?.name ?? 'A clinician'} scanned your record code and can now view your full medical history.`
+			`${doctor?.name ?? 'A clinician'} scanned your record code and can now view your full medical history.`,
+			patient.id
 		);
 	}
 	return { pid: patient.pid };
+}
+
+export function shredPatient(patientId: number) {
+	return shredPatientRecord(patientId);
 }

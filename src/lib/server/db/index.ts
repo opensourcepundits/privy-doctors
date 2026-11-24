@@ -9,6 +9,7 @@ import * as schema from './schema';
 export interface ClinicSql {
 	<T = Record<string, unknown>[]>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 	begin<T>(fn: (sql: ClinicSql) => Promise<T>): Promise<T>;
+	unsafe<T = Record<string, unknown>[]>(query: string, args?: unknown[]): Promise<T>;
 }
 
 export function databaseUrl() {
@@ -57,7 +58,16 @@ function neonDatabase(url: string) {
 			cache.clear();
 		}
 	}) as ClinicSql['begin'];
+	query.unsafe = (async (text, args = []) => {
+		cache.clear();
+		writer ??= postgres(tcpUrl(url), postgresOptions(url));
+		return writer.unsafe(text, args as never[]);
+	}) as ClinicSql['unsafe'];
 	return { query, http };
+}
+
+export function connectSql(connectionString: string): ClinicSql {
+	return postgres(tcpUrl(connectionString), postgresOptions(connectionString)) as unknown as ClinicSql;
 }
 
 const url = databaseUrl();

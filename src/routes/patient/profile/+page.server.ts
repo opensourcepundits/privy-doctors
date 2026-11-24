@@ -9,6 +9,7 @@ import {
 	ensureRecordToken,
 	patientForUser,
 	recordPayload,
+	shredPatient,
 	updatePatientField
 } from '#lib/server/clinic';
 
@@ -57,5 +58,16 @@ export const actions = {
 		if (!patient) redirect(303, '/login');
 		await createAccessCode(patient.id);
 		redirect(303, `/patient/profile?notice=${encodeURIComponent('Access code created')}`);
+	},
+	shred: async ({ locals, request }) => {
+		if (!locals.user || locals.user.role !== 'patient') redirect(303, '/login');
+		const patient = await patientForUser(locals.user.id);
+		if (!patient) redirect(303, '/login');
+		const data = await request.formData();
+		if (String(data.get('confirm') ?? '') !== 'DELETE') {
+			return fail(400, { shred: true, message: 'Type DELETE to confirm.' });
+		}
+		await shredPatient(patient.id);
+		redirect(303, `/patient/profile?notice=${encodeURIComponent('Medical record deleted')}`);
 	}
 };

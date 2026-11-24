@@ -1,4 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { sealPatientFile } from '#lib/server/chart-crypto';
 import { actingPatient, patientForUser, recordOrderedVaccination, rescheduleOwnAppointment, saveTaskResult, taskOwned, tasksForPatient, taskVisits } from '#lib/server/clinic';
 import { optionalImage, saveTaskPdf } from '#lib/server/uploads';
 
@@ -33,7 +34,7 @@ export const actions = {
 		if (file.size > 8 * 1024 * 1024) return fail(400, { message: 'The PDF must be 8 MB or smaller.' });
 		const bytes = Buffer.from(await file.arrayBuffer());
 		if (bytes.subarray(0, 5).toString('utf8') !== '%PDF-') return fail(400, { message: 'Upload a PDF file.' });
-		const stored = await saveTaskPdf(task.id, bytes);
+		const stored = await saveTaskPdf(task.id, await sealPatientFile(patient.id, bytes));
 		const name = file.name.replace(/[/\\]/g, '').slice(0, 120) || 'result.pdf';
 		await saveTaskResult(task.id, patient.id, name, stored);
 		return { uploaded: task.id };

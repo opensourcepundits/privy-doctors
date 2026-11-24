@@ -511,3 +511,22 @@ CREATE TABLE IF NOT EXISTS colleague_invites (
 );
 CREATE INDEX IF NOT EXISTS colleague_invites_doctor_id_idx ON colleague_invites (doctor_id);
 CREATE UNIQUE INDEX IF NOT EXISTS colleague_invites_open_doctor_idx ON colleague_invites (doctor_id) WHERE claimed_at IS NULL;
+
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS nic_bidx text;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS passport_bidx text;
+ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_nic_key;
+ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_passport_key;
+CREATE UNIQUE INDEX IF NOT EXISTS patients_nic_bidx_key ON patients (nic_bidx) WHERE nic_bidx IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS patients_passport_bidx_key ON patients (passport_bidx) WHERE passport_bidx IS NOT NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS patient_id int;
+
+CREATE TABLE IF NOT EXISTS patient_keys (
+  patient_id int PRIMARY KEY,
+  wrapped_dek text NOT NULL,
+  kek_version int NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chart_crypto_state (
+  id int PRIMARY KEY,
+  backfill_done boolean NOT NULL
+);

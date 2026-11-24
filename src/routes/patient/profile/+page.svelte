@@ -87,12 +87,12 @@
 					<p class="mt-0.5">{field === 'surgeries' ? shown(field).replace(/\b(20\d{2})\b/g, (year) => liveProcedureYear(year).label) : shown(field)}</p>
 				{/if}
 			</div>
-			{#if editing !== field}
+			{#if !patient.shredded && editing !== field}
 				<button class="btn-sm shrink-0" type="button" onclick={() => begin(field)}>Edit</button>
 			{/if}
 		</div>
 
-		{#if editing === field && review?.field !== field}
+		{#if !patient.shredded && editing === field && review?.field !== field}
 			<div class="mt-2 space-y-2">
 				{#if form?.message && form.field === field}
 					<p class="text-sm text-red-600">{form.message}</p>
@@ -261,4 +261,24 @@
 	<div class="span-2">
 		<a class="btn" href="/patient/help">Contact care team</a>
 	</div>
+
+	{#if patient.shredded}
+		<article class="card span-2">
+			<p class="kicker">Medical record</p>
+			<p class="mt-2">This medical record was deleted. Clinical notes, results, and files can no longer be opened. The account, appointments, and invoices remain.</p>
+		</article>
+	{:else if !data.preview}
+		<article class="card span-2">
+			<p class="kicker">Delete medical record</p>
+			<p class="mt-2">This deletes the key that opens the chart. Clinical notes and files stay stored but cannot be read again. Appointments, invoices, and this login remain.</p>
+			<form class="mt-4 space-y-3" method="POST" action="?/shred">
+				{#if form && 'shred' in form && form.shred}
+					<p class="text-sm text-red-600">{form.message}</p>
+				{/if}
+				<label class="block text-[#64748B]" for="shred-confirm">Type DELETE to confirm</label>
+				<input id="shred-confirm" class="field" name="confirm" autocomplete="off" />
+				<button class="btn" type="submit">Delete medical record</button>
+			</form>
+		</article>
+	{/if}
 </section>

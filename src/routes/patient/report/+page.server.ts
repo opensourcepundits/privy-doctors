@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { isoDate } from '#lib/format';
 import { readSelfReport } from '#lib/report-form';
+import { sealPatientFile } from '#lib/server/chart-crypto';
 import { addReportFile, addSelfReport, alertClinicians, alertReportDoctors, patientForUser } from '#lib/server/clinic';
 import { saveReportFile, sniffDocument } from '#lib/server/uploads';
 
@@ -34,7 +35,7 @@ export const actions = {
 		const reportId = await addSelfReport(patient.id, parsed.value);
 		for (const [index, file] of prepared.entries()) {
 			const stored = `report-${reportId}-${index + 1}.${file.ext}`;
-			await saveReportFile(stored, file.bytes);
+			await saveReportFile(stored, await sealPatientFile(patient.id, file.bytes));
 			await addReportFile(reportId, file.name, stored, file.type);
 		}
 		const doctorIds = data.getAll('doctor_id').map((value) => Number(value));
