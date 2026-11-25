@@ -54,6 +54,7 @@
 						lab: (id) => `/patient/labs/${id}`,
 						image: (id) => `/patient/imaging/${id}`,
 						visit: (id) => `/patient/visits/${id}`,
+						download: (id) => `/patient/visits/${id}/report`,
 						report: (id) => `/patient/reports/${id}`,
 						procedure: (item) => `/patient/history/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`,
 						vaccine: () => '/patient/vaccinations'

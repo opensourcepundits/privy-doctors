@@ -68,6 +68,12 @@
 	});
 	const chosen = $derived(data.doctors.find((doctor) => doctor.id === picked) ?? null);
 
+	function closeReferral() {
+		specialist = '';
+		picked = null;
+		open = null;
+	}
+
 	$effect.pre(() => {
 		if (form && 'referral' in form && form.referral) open = 'referral';
 		if (form && 'vaccine' in form && (form.vaccine === 'give' || form.vaccine === 'order')) open = form.vaccine;
@@ -421,11 +427,7 @@
 					class="card space-y-2"
 					method="POST"
 					action="?/referral"
-					use:enhance={saving('referral', () => {
-						specialist = '';
-						picked = null;
-						open = null;
-					})}
+					use:enhance={saving('referral', closeReferral)}
 				>
 					{@render problem('referral')}
 					<label class="block text-sm font-semibold" for="specialist-search">
@@ -473,7 +475,10 @@
 					{/if}
 					<input type="hidden" name="doctor_id" value={picked ?? ''} />
 					<input class="field" name="note" placeholder="Referral note" />
-					<button class="btn" type="submit">Save referral</button>
+					<div class="grid grid-cols-2 gap-2">
+						<button class="btn" type="submit">Save referral</button>
+						<button class="btn-line" type="button" onclick={closeReferral}>Cancel</button>
+					</div>
 				</form>
 			{/if}
 		</section>

@@ -14,6 +14,7 @@
 	let shredDialog = $state<HTMLDialogElement | null>(null);
 	let understood = $state(false);
 	let typed = $state('');
+	let reportId = $state('');
 	const shredReady = $derived(understood && typed.trim().toLowerCase() === 'confirm');
 
 	function openShred() {
@@ -198,6 +199,32 @@
 			Vaxx card
 		</a>
 	</div>
+	{#await data.consultations then consultations}
+		{#if consultations.length}
+			<div class="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-end">
+				<label class="block text-sm font-semibold" for="report-consult">
+					Consultation
+					<select class="field mt-1" id="report-consult" bind:value={reportId}>
+						<option value="">Choose a consultation</option>
+						{#each consultations as visit (visit.id)}
+							<option value={String(visit.id)}>{visit.label}</option>
+						{/each}
+					</select>
+				</label>
+				<a
+					class="btn {!reportId ? 'pointer-events-none opacity-50' : ''}"
+					href={reportId ? `/patient/visits/${reportId}/report` : undefined}
+					aria-disabled={!reportId}
+					onclick={(event) => {
+						if (!reportId) event.preventDefault();
+					}}
+				>
+					<span class="material-symbols-outlined text-lg">download</span>
+					Generate report
+				</a>
+			</div>
+		{/if}
+	{/await}
 </header>
 
 <section class="cards-2 px-4 py-4 text-sm lg:px-0">

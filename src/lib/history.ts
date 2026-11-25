@@ -12,6 +12,7 @@ export type TimelineEvent = {
 	note: string;
 	href: string;
 	link: string;
+	download?: string;
 	image: string;
 	log?: string[];
 	files?: { href: string; name: string; image: boolean }[];
@@ -156,6 +157,7 @@ export function historyEvents(
 		lab: (id: number) => string;
 		image: (id: number) => string;
 		visit?: (id: number) => string;
+		download?: (id: number) => string;
 		report?: (id: number) => string;
 		procedure?: (item: Surgery) => string;
 		vaccine?: (id: number) => string;
@@ -175,6 +177,7 @@ export function historyEvents(
 				note: visit.plan ?? '',
 				href: links.visit ? links.visit(visit.id) : '',
 				link: links.visit ? 'Open consultation' : '',
+				download: links.download ? links.download(visit.id) : '',
 				image: ''
 			});
 		}
