@@ -47,6 +47,7 @@ type Report = {
 	edits?: ReportEdit[];
 	files?: { id: number; file_name: string; content_type: string }[];
 	alerted?: string[];
+	added_by?: string;
 };
 
 const reportFields: Record<string, string> = {
@@ -91,6 +92,7 @@ type Study = {
 	facility: string | null;
 	summary: string | null;
 	image_path: string | null;
+	added_by?: string;
 };
 
 type Surgery = { year: string; name: string };
@@ -195,7 +197,7 @@ export function historyEvents(
 				title: report.title,
 				meta: [strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
 				body: report.detail ?? '',
-				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : ''].filter(Boolean).join(' '),
+				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : '', report.added_by ? `Added by ${report.added_by}` : ''].filter(Boolean).join(' '),
 				href: links.report ? links.report(report.id) : '',
 				link: links.report ? 'Open report' : '',
 				image: '',
@@ -235,7 +237,7 @@ export function historyEvents(
 				title: study.title,
 				meta: study.facility ?? '',
 				body: study.summary ?? '',
-				note: '',
+				note: study.added_by ? `Added by ${study.added_by}` : '',
 				href: links.image(study.id),
 				link: 'View the scan',
 				image: study.image_path ?? ''

@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { isoDate } from '#lib/format';
 import { readSelfReport } from '#lib/report-form';
+import { removeAddedReport } from '#lib/server/circle';
 import { patientForUser, selfReportById, updateSelfReport } from '#lib/server/clinic';
 
 export async function load({ params, parent }) {
@@ -16,6 +17,14 @@ export async function load({ params, parent }) {
 }
 
 export const actions = {
+	remove: async ({ params, locals }) => {
+		if (!locals.user || locals.user.role !== 'patient') redirect(303, '/login');
+		const patient = await patientForUser(locals.user.id);
+		if (!patient) redirect(303, '/login');
+		const removed = await removeAddedReport(patient.id, Number(params.id));
+		if (!removed) return fail(400, { message: 'That treatment is not one you can remove.' });
+		redirect(303, '/patient/history?view=reports&notice=Treatment%20removed');
+	},
 	default: async ({ request, params, locals }) => {
 		if (!locals.user || locals.user.role !== 'patient') redirect(303, '/login');
 		const patient = await patientForUser(locals.user.id);

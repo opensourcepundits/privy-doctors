@@ -39,6 +39,11 @@ export type ReportPhoto = {
 	bytes: Uint8Array | null;
 };
 
+export type ReportDocument = {
+	name: string;
+	bytes: Uint8Array;
+};
+
 export type ReportItem = {
 	name: string;
 	strength: string;
@@ -134,6 +139,7 @@ export type ConsultationReport = {
 		note: string;
 	}[];
 	photos: ReportPhoto[];
+	documents: ReportDocument[];
 	certificate: {
 		code: string;
 		reason: string;
@@ -275,6 +281,7 @@ class Letter {
 		this.charted();
 		this.prescriptions();
 		await this.photos();
+		await this.attachedReports();
 		this.referrals();
 		this.vaccines();
 		this.tests();
@@ -746,7 +753,7 @@ class Letter {
 
 	private async photos() {
 		if (!this.report.photos.length) return;
-		this.section('Prescription photographs');
+		this.section('Images');
 		for (const photo of this.report.photos) {
 			const image = await this.embed(photo);
 			if (!image) {
@@ -794,6 +801,23 @@ class Letter {
 			return null;
 		}
 		return null;
+	}
+
+	private async attachedReports() {
+		const files = this.report.documents;
+		if (!files.length) return;
+		this.section('Attached reports');
+		this.text('The original pages of these reports follow this summary.', MARGIN, 10.5, this.italic, MUTED, CONTENT);
+		for (const file of files) this.text(file.name, MARGIN, 11, this.bold, INK, CONTENT);
+		for (const file of files) {
+			try {
+				const source = await PDFDocument.load(file.bytes, { ignoreEncryption: true });
+				const copied = await this.doc.copyPages(source, source.getPageIndices().slice(0, 30));
+				for (const page of copied) this.doc.addPage(page);
+			} catch {
+				this.text(`The file “${file.name}” could not be attached.`, MARGIN, 10.5, this.italic, MUTED, CONTENT);
+			}
+		}
 	}
 
 	private referrals() {

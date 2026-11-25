@@ -1933,6 +1933,7 @@ export async function selfReportsFor(patientId: number) {
 			meds_taken: string | null;
 			ongoing: boolean;
 			created_at: Date | string;
+			added_by_patient_id: number | null;
 		}[]
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
@@ -1958,14 +1959,16 @@ export async function selfReportsFor(patientId: number) {
 		WHERE a.report_id = ANY(${ids})
 		ORDER BY d.name
 	`;
-	return presentChart(
-		patientId,
-		rows.map((row) => ({
-			...row,
-			edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes })),
-			files: files.filter((file) => file.report_id === row.id),
-			alerted: alerts.filter((alert) => alert.report_id === row.id).map((alert) => alert.name)
-		}))
+	return withAddedBy(
+		await presentChart(
+			patientId,
+			rows.map((row) => ({
+				...row,
+				edits: edits.filter((edit) => edit.report_id === row.id).map((edit) => ({ changed_at: edit.changed_at, changes: edit.changes })),
+				files: files.filter((file) => file.report_id === row.id),
+				alerted: alerts.filter((alert) => alert.report_id === row.id).map((alert) => alert.name)
+			}))
+		)
 	);
 }
 
@@ -1976,7 +1979,7 @@ export async function selfReportById(patientId: number, id: number) {
 
 export async function addSelfReport(
 	patientId: number,
-	input: {
+		input: {
 		title: string;
 		occurredOn: string;
 		detail: string;
@@ -1984,18 +1987,19 @@ export async function addSelfReport(
 		severity: string;
 		meds: string;
 		ongoing: boolean;
+		addedBy?: number | null;
 	}
 ) {
 	const [row] = await client<{ id: number }[]>`
 		INSERT INTO self_reports (
-			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at
+			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at, added_by_patient_id
 		) VALUES (
 			${patientId}, ${input.occurredOn}, ${await sealText(patientId, 'title', input.title)},
 			${await sealText(patientId, 'detail', input.detail || null)},
 			${await sealText(patientId, 'duration', input.duration || null)},
 			${await sealText(patientId, 'severity', input.severity || null)},
 			${await sealText(patientId, 'meds_taken', input.meds || null)},
-			${input.ongoing}, ${nowLocal().stamp}
+			${input.ongoing}, ${nowLocal().stamp}, ${input.addedBy ?? null}
 		)
 		RETURNING id
 	`;
@@ -2177,20 +2181,42 @@ export async function labById(patientId: number, id: number) {
 	return all.find((row) => row.id === id) ?? null;
 }
 
+async function patientNames(ids: number[]) {
+	const names = new Map<number, string>();
+	for (const id of [...new Set(ids)]) {
+		const [row] = await client<{ first_name: string; last_name: string }[]>`
+			SELECT first_name, last_name FROM patients WHERE id = ${id}
+		`;
+		if (!row) continue;
+		const open = await presentChart(id, row);
+		names.set(id, `${open.first_name} ${open.last_name}`.trim());
+	}
+	return names;
+}
+
+async function withAddedBy<T extends { added_by_patient_id?: number | null }>(rows: T[]) {
+	const names = await patientNames(rows.flatMap((row) => (row.added_by_patient_id ? [row.added_by_patient_id] : [])));
+	return rows.map((row) => ({
+		...row,
+		added_by: row.added_by_patient_id ? (names.get(row.added_by_patient_id) ?? '') : ''
+	}));
+}
+
 export async function imagingFor(patientId: number) {
-	const rows = await client<(Record<string, unknown> & { image_path: string | null })[]>`
+	const rows = await client<(Record<string, unknown> & { image_path: string | null; added_by_patient_id?: number | null })[]>`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} ORDER BY performed_on DESC NULLS LAST
 	`;
-	return presentChart(patientId, await resolveImagePaths(rows));
+	return withAddedBy(await presentChart(patientId, await resolveImagePaths(rows)));
 }
 
 export async function imagingById(patientId: number, id: number) {
-	const [row] = await client<(Record<string, unknown> & { image_path: string | null })[]>`
+	const [row] = await client<(Record<string, unknown> & { image_path: string | null; added_by_patient_id?: number | null })[]>`
 		SELECT * FROM imaging_studies WHERE patient_id = ${patientId} AND id = ${id}
 	`;
 	if (!row) return null;
 	const [resolved] = await resolveImagePaths([row]);
-	return presentChart(patientId, resolved);
+	const [opened] = await withAddedBy([await presentChart(patientId, resolved)]);
+	return opened;
 }
 
 export async function vitalsFor(patientId: number) {
@@ -4397,7 +4423,7 @@ export async function requestChartAccess(patientId: number, doctorId: number) {
 	return 'requested' as const;
 }
 
-export async function decideChartAccess(patientId: number, accessId: number, allow: boolean) {
+export async function decideChartAccess(patientId: number, accessId: number, allow: boolean, actor?: string) {
 	const [row] = await client<{ doctor_id: number }[]>`
 		UPDATE patient_access
 		SET status = ${allow ? 'granted' : 'denied'}
@@ -4413,12 +4439,17 @@ export async function decideChartAccess(patientId: number, accessId: number, all
 	`;
 	const open = await presentChart(patientId, patient);
 	const who = `${open.first_name} ${open.last_name} (${open.pid})`;
+	const decided = allow ? 'allowed' : 'declined';
 	await notify(
 		doctor?.user_id ?? null,
 		allow ? 'Record access allowed' : 'Record access declined',
-		allow ? `${who} allowed you to open their medical record.` : `${who} declined access to their medical record.`,
+		actor ? `${actor} ${decided} access to ${who}'s medical record.` : allow ? `${who} allowed you to open their medical record.` : `${who} declined access to their medical record.`,
 		patientId
 	);
+	if (actor) {
+		const [owner] = await client<{ user_id: number | null }[]>`SELECT user_id FROM patients WHERE id = ${patientId}`;
+		await notify(owner?.user_id ?? null, allow ? 'Record access allowed' : 'Record access declined', `${actor} ${decided} a request to open your medical record.`, patientId);
+	}
 	return true;
 }
 
