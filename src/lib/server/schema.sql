@@ -535,3 +535,18 @@ CREATE TABLE IF NOT EXISTS chart_crypto_state (
   id int PRIMARY KEY,
   backfill_done boolean NOT NULL
 );
+
+ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id);
+ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id);
+ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_file_type text;
+
+CREATE TABLE IF NOT EXISTS patient_trustees (
+  id serial PRIMARY KEY,
+  patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  trustee_patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  view_chart boolean NOT NULL DEFAULT true,
+  accept_access boolean NOT NULL DEFAULT false,
+  add_records boolean NOT NULL DEFAULT false,
+  created_at timestamp NOT NULL,
+  UNIQUE (patient_id, trustee_patient_id)
+);

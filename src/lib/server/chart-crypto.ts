@@ -265,6 +265,19 @@ async function migrate() {
 		`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS patient_id int`,
 		`ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS file_bytes bytea`,
 		`ALTER TABLE self_report_files ADD COLUMN IF NOT EXISTS bytes bytea`,
+		`ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id)`,
+		`ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id)`,
+		`ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_file_type text`,
+		`CREATE TABLE IF NOT EXISTS patient_trustees (
+			id serial PRIMARY KEY,
+			patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+			trustee_patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+			view_chart boolean NOT NULL DEFAULT true,
+			accept_access boolean NOT NULL DEFAULT false,
+			add_records boolean NOT NULL DEFAULT false,
+			created_at timestamp NOT NULL,
+			UNIQUE (patient_id, trustee_patient_id)
+		)`
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_nic_bidx_key ON patients (nic_bidx) WHERE nic_bidx IS NOT NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_passport_bidx_key ON patients (passport_bidx) WHERE passport_bidx IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS chart_crypto_state (id int PRIMARY KEY, backfill_done boolean NOT NULL)`

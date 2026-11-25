@@ -198,6 +198,10 @@
 			<span class="material-symbols-outlined text-lg">vaccines</span>
 			Vaxx card
 		</a>
+		<a class="btn" href="/patient/circle">
+			<span class="material-symbols-outlined text-lg">diversity_3</span>
+			My circle
+		</a>
 	</div>
 	{#await data.consultations then consultations}
 		{#if consultations.length}

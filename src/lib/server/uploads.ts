@@ -185,6 +185,24 @@ export async function deleteVaccineProof(id: number) {
 	await deleteFile(vaccineProofKey(id));
 }
 
+function circleScanKey(id: number) {
+	return `circle/scan-${id}`;
+}
+
+export async function saveCircleScan(id: number, bytes: Buffer) {
+	await putFile(circleScanKey(id), bytes);
+}
+
+export async function readCircleScan(id: number) {
+	const bytes = await getFile(circleScanKey(id));
+	if (!bytes) throw new Error('Scan file is missing');
+	return bytes;
+}
+
+export async function deleteCircleScan(id: number) {
+	await deleteFile(circleScanKey(id));
+}
+
 export async function acceptImageFile(file: File, emptyError: string) {
 	if (!file || file.size === 0) return { error: emptyError };
 	if (file.size > 8 * 1024 * 1024) return { error: 'The photo must be 8 MB or smaller.' as const };

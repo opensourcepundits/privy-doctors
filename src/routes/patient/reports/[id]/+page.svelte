@@ -11,6 +11,17 @@
 
 <ReportRecord report={report} backHref="/patient/history?view=reports" backLabel="History" />
 
+{#if report.added_by}
+	<section class="mx-4 max-w-xl pb-2 lg:mx-0">
+		<p class="text-sm text-[#64748B]">Added by {report.added_by}</p>
+		{#if !data.preview}
+			<form method="POST" action="?/remove">
+				<button class="btn-line mt-2" type="submit">Remove</button>
+			</form>
+		{/if}
+	</section>
+{/if}
+
 {#if !data.preview}
 	<section class="mx-4 max-w-xl space-y-4 pb-6 lg:mx-0">
 		<form class="card space-y-3" method="POST">

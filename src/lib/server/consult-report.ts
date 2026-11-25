@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { formatDate, isoDate, restDays } from '#lib/format';
 import {
 	chartCodeForConsult,
@@ -9,9 +11,10 @@ import {
 	type PatientRow,
 	type VisitRecord
 } from '#lib/server/clinic';
-import { presentChart } from './chart-crypto';
+import { openPatientFile, presentChart } from './chart-crypto';
 import { client } from './db';
-import type { ConsultationReport, ReportItem, ReportLine, ReportPrescription } from '#lib/server/consult-pdf';
+import { readTaskPdf, sniffDocument } from './uploads';
+import type { ConsultationReport, ReportDocument, ReportItem, ReportLine, ReportPhoto, ReportPrescription } from '#lib/server/consult-pdf';
 
 type Clinician = {
 	id: number;
@@ -149,6 +152,101 @@ function taskLine(task: VisitRecord['tasks'][number]): ReportLine {
 	};
 }
 
+function recordDiskPath(stored: string | null) {
+	if (!stored) return null;
+	let relative = stored.trim();
+	if (relative.startsWith('/records/')) relative = relative.slice('/records/'.length);
+	relative = relative.replace(/^PID-/i, 'pid-');
+	if (!/^pid-\d+\/[A-Za-z0-9._-]+$/.test(relative)) return null;
+	return join(process.cwd(), 'static', 'records', relative);
+}
+
+async function readRecordFile(stored: string | null) {
+	const path = recordDiskPath(stored);
+	if (!path) return null;
+	try {
+		return await readFile(path);
+	} catch {
+		return null;
+	}
+}
+
+function keepFile(name: string, bytes: Buffer, images: ReportPhoto[], documents: ReportDocument[]) {
+	if (bytes.subarray(0, 5).toString('utf8') === '%PDF-') {
+		documents.push({ name, bytes: new Uint8Array(bytes) });
+		return;
+	}
+	const kind = sniffDocument(bytes);
+	if (kind?.ext === 'jpg' || kind?.ext === 'png') {
+		images.push({ name, type: kind.type, bytes: new Uint8Array(bytes) });
+	}
+}
+
+async function attachLinked(report: ConsultationReport, patientId: number, consultId: number | null, record: VisitRecord) {
+	const images = await photosOf(record);
+	const documents: ReportDocument[] = [];
+	report.photos = images;
+	report.documents = documents;
+	if (!consultId) return;
+	const [consult] = await client<{ uid: string | null; started_at: Date | string }[]>`
+		SELECT uid, started_at FROM consultations WHERE id = ${consultId} AND patient_id = ${patientId}
+	`;
+	if (!consult) return;
+	const tasks = await presentChart(
+		patientId,
+		await client<{ id: number; file_name: string | null }[]>`
+			SELECT id, file_name FROM patient_tasks
+			WHERE patient_id = ${patientId} AND consultation_id = ${consultId} AND stored_name IS NOT NULL
+		`
+	);
+	for (const task of tasks) {
+		try {
+			const stored = await readTaskPdf(task.id);
+			const opened = await openPatientFile(patientId, stored);
+			if (opened) keepFile(task.file_name || 'Result', opened, images, documents);
+		} catch {
+			/* The upload is already gone. */
+		}
+	}
+	if (consult.uid) {
+		const labs = await presentChart(
+			patientId,
+			await client<{ name: string; report_path: string | null }[]>`
+				SELECT name, report_path FROM labs
+				WHERE patient_id = ${patientId} AND consultation_uid = ${consult.uid} AND report_path IS NOT NULL
+			`
+		);
+		for (const lab of labs) {
+			const bytes = await readRecordFile(lab.report_path);
+			if (bytes) keepFile(lab.name || 'Lab report', bytes, images, documents);
+		}
+	}
+	const orders = await presentChart(
+		patientId,
+		await client<{ title: string }[]>`
+			SELECT title FROM consultation_orders WHERE consultation_id = ${consultId} AND kind = 'test'
+		`
+	);
+	const titles = orders.map((order) => order.title.trim().toLowerCase()).filter(Boolean);
+	const day = isoDate(consult.started_at);
+	const studies = await presentChart(
+		patientId,
+		await client<{ title: string; performed_on: Date | string | null; image_path: string | null; report_path: string | null }[]>`
+			SELECT title, performed_on, image_path, report_path FROM imaging_studies WHERE patient_id = ${patientId}
+		`
+	);
+	for (const study of studies) {
+		const title = study.title.trim().toLowerCase();
+		const sameDay = Boolean(day) && isoDate(study.performed_on) === day;
+		const named = titles.some((item) => item === title || title.includes(item) || item.includes(title));
+		if (!sameDay && !named) continue;
+		for (const path of [study.image_path, study.report_path]) {
+			const bytes = await readRecordFile(path);
+			if (bytes) keepFile(study.title || 'Scan', bytes, images, documents);
+		}
+	}
+}
+
 async function photosOf(record: VisitRecord) {
 	return Promise.all(
 		record.photos.map(async (photo) => {
@@ -238,6 +336,7 @@ function reportFrom(
 			note: referral.note ?? ''
 		})),
 		photos: [],
+		documents: [],
 		certificate: certificateOf(record),
 		bill: null
 	};
@@ -351,7 +450,7 @@ export async function loadPatientVisitReport(patientId: number, encounterId: num
 		filename: fileName(patient, record.code, owned.id),
 		timed: Boolean(owned.consultation_id)
 	});
-	report.photos = await photosOf(record);
+	await attachLinked(report, patientId, owned.consultation_id, record);
 	report.bill = await billFor(patientId, owned.consultation_id);
 	return report;
 }
@@ -393,7 +492,7 @@ async function consultReport(clinician: Clinician, id: number) {
 		filename: fileName(patient, record.code, owned.id),
 		timed: true
 	});
-	report.photos = await photosOf(record);
+	await attachLinked(report, owned.patient_id, owned.id, record);
 	report.bill = await billFor(owned.patient_id, owned.id);
 	return report;
 }
@@ -440,7 +539,7 @@ async function encounterReport(clinician: Clinician, id: number) {
 		filename: fileName(patient, record.code, owned.id),
 		timed: false
 	});
-	report.photos = await photosOf(record);
+	await attachLinked(report, owned.patient_id, owned.consultation_id, record);
 	report.bill = await billFor(owned.patient_id, owned.consultation_id);
 	return report;
 }

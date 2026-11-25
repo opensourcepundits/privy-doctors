@@ -219,7 +219,9 @@ export const imagingStudies = pgTable('imaging_studies', {
 	vessels: jsonb('vessels').notNull(),
 	status: text('status').notNull(),
 	imagePath: text('image_path'),
-	reportPath: text('report_path')
+	reportPath: text('report_path'),
+	addedByPatientId: integer('added_by_patient_id'),
+	addedFileType: text('added_file_type')
 });
 
 export const careOrders = pgTable('care_orders', {
@@ -372,7 +374,8 @@ export const selfReports = pgTable('self_reports', {
 	severity: text('severity'),
 	medsTaken: text('meds_taken'),
 	ongoing: boolean('ongoing').notNull(),
-	createdAt: timestamp('created_at').notNull()
+	createdAt: timestamp('created_at').notNull(),
+	addedByPatientId: integer('added_by_patient_id')
 });
 
 export const selfReportFiles = pgTable('self_report_files', {

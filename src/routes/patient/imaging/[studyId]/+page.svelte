@@ -10,9 +10,14 @@
 
 <header class="px-4 pt-5">
 	<a class="text-sm font-semibold text-brand" href="/patient/history">History</a>
-	<p class="kicker mt-3">Clinically verified · {formatDate(data.study.performed_on)}</p>
+	<p class="kicker mt-3">{data.study.added_by ? `Added by ${data.study.added_by}` : 'Clinically verified'} · {formatDate(data.study.performed_on)}</p>
 	<h1 class="display text-2xl font-bold">{data.study.title}</h1>
 	<p class="text-sm text-[#64748B]">{data.study.facility}</p>
+	{#if data.study.added_by}
+		<form method="POST" action="?/remove">
+			<button class="btn-line mt-3" type="submit">Remove</button>
+		</form>
+	{/if}
 </header>
 
 <section class="space-y-3 px-4 py-4 lg:px-0">
