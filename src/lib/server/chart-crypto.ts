@@ -277,7 +277,7 @@ async function migrate() {
 			add_records boolean NOT NULL DEFAULT false,
 			created_at timestamp NOT NULL,
 			UNIQUE (patient_id, trustee_patient_id)
-		)`
+		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_nic_bidx_key ON patients (nic_bidx) WHERE nic_bidx IS NOT NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_passport_bidx_key ON patients (passport_bidx) WHERE passport_bidx IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS chart_crypto_state (id int PRIMARY KEY, backfill_done boolean NOT NULL)`
