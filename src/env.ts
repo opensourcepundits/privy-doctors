@@ -26,5 +26,10 @@ export const variables = defineEnvVars({
 		description:
 			'Postgres URL for patient chart keys. Set this in the Vercel project environment. When unset, keys live in DATABASE_URL.',
 		schema: optional
+	},
+	BLOB_READ_WRITE_TOKEN: {
+		description:
+			'Read-write token for the private Vercel Blob store that holds uploads. Required in production. Local `vite dev` writes to data/uploads when unset.',
+		schema: optional
 	}
 });

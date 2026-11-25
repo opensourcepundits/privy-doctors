@@ -1,6 +1,8 @@
 <script lang="ts">
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate, liveDay } from '#lib/format';
+	import { priorityClass, priorityOf } from '#lib/priority';
 
 	type Task = {
 		id: number;
@@ -35,9 +37,21 @@
 	} = $props();
 
 	let chosen = $state<Record<number, string>>({});
+	let sending = $state<number | null>(null);
 
 	function remember(id: number, input: HTMLInputElement) {
 		chosen[id] = input.files?.[0]?.name ?? '';
+	}
+
+	function uploaded(id: number): SubmitFunction {
+		return () => {
+			sending = id;
+			return async ({ result, update }) => {
+				sending = null;
+				if (result.type === 'success') delete chosen[id];
+				await update();
+			};
+		};
 	}
 
 	const groups = $derived.by(() => {
@@ -73,14 +87,14 @@
 
 {#if groups.length}
 	<div class="space-y-3">
-		{#each groups as group}
+		{#each groups as group (group.consultation_id)}
 			<article class="card">
 				<p class="kicker">Consultation {group.uid ?? group.code}</p>
 				<p class="mt-1 text-sm text-[#64748B]">
 					<Mention text={group.doctor_name} /> · {formatDate(group.started_at)}
 				</p>
 				<ul class="mt-3 space-y-4">
-					{#each group.tasks as task}
+					{#each group.tasks as task (task.id)}
 						{@const vaccine = task.order_kind === 'vaccine'}
 						{@const done = vaccine ? task.status === 'received' : Boolean(task.stored_name)}
 						<li class="flex gap-3">
@@ -99,7 +113,11 @@
 								{#if task.uid || task.order_uid}
 									<p class="text-xs text-[#64748B]">{task.uid ? `Task ${task.uid}` : ''}{task.uid && task.order_uid ? ' · ' : ''}{task.order_uid ? `Order ${task.order_uid}` : ''}</p>
 								{/if}
-								{#if task.detail}<p class="text-sm text-brand">{task.detail}</p>{/if}
+								{#if priorityOf(task.detail)}
+									<span class="mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold {priorityClass(task.detail)}">{priorityOf(task.detail)}</span>
+								{:else if task.detail}
+									<p class="text-sm text-brand">{task.detail}</p>
+								{/if}
 								{#if task.note}<p class="text-sm text-[#64748B]">{task.note}</p>{/if}
 								{#if vaccine && done}
 									<p class="mt-1 text-sm text-emerald-700">Recorded on the vaccination card</p>
@@ -143,21 +161,25 @@
 									<iframe class="mt-2 h-72 w-full rounded-xl border border-[#E2E8F0] bg-white" title="{task.title} result" src="/files/tasks/{task.id}"></iframe>
 									<a class="btn mt-3" href="/files/tasks/{task.id}?download">Download PDF</a>
 									{#if upload}
-										<form class="mt-3 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data">
+										<form class="mt-3 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data" use:enhance={uploaded(task.id)}>
 											<input type="hidden" name="task" value={task.id} />
 											<label class="btn" for="replace-{task.id}">Replace the PDF</label>
 											<input class="sr-only" id="replace-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required onchange={(event) => remember(task.id, event.currentTarget)} />
-											{#if chosen[task.id]}<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>{/if}
-											<button class="btn" type="submit">Upload replacement</button>
+											{#if chosen[task.id]}
+												<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>
+												<button class="btn" type="submit" disabled={sending === task.id}>{sending === task.id ? 'Uploading…' : 'Upload replacement'}</button>
+											{/if}
 										</form>
 									{/if}
 								{:else if upload}
-									<form class="mt-2 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data">
+									<form class="mt-2 space-y-2" method="POST" action="?/upload" enctype="multipart/form-data" use:enhance={uploaded(task.id)}>
 										<input type="hidden" name="task" value={task.id} />
-										<label class="btn" for="result-{task.id}">Upload the result PDF</label>
+										<label class="btn" for="result-{task.id}">{chosen[task.id] ? 'Choose a different PDF' : 'Upload the result PDF'}</label>
 										<input class="sr-only" id="result-{task.id}" name="result" type="file" accept="application/pdf,.pdf" required onchange={(event) => remember(task.id, event.currentTarget)} />
-										{#if chosen[task.id]}<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>{/if}
-										<button class="btn" type="submit">Mark done and save PDF</button>
+										{#if chosen[task.id]}
+											<p class="text-xs text-[#64748B]">{chosen[task.id]}</p>
+											<button class="btn" type="submit" disabled={sending === task.id}>{sending === task.id ? 'Saving…' : 'Mark done and save PDF'}</button>
+										{/if}
 									</form>
 								{:else}
 									<p class="mt-1 text-sm text-[#64748B]">Waiting for the patient to upload the PDF.</p>

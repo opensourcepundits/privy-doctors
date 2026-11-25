@@ -1,4 +1,3 @@
-import { rm } from 'node:fs/promises';
 import { DATA_KEK, KEYS_DATABASE_URL } from '$app/env/private';
 import {
 	blindIndex,
@@ -16,14 +15,17 @@ import {
 import { client, connectSql, type ClinicSql } from './db';
 import {
 	deletePrescriptionPhoto,
+	deleteReportFile,
 	deleteTaskPdf,
+	deleteVaccineProof,
 	readPrescriptionPhoto,
 	readReportFile,
 	readTaskPdf,
-	reportFilePath,
+	readVaccineProof,
 	savePrescriptionPhoto,
 	saveReportFile,
-	saveTaskPdf
+	saveTaskPdf,
+	saveVaccineProof
 } from './uploads';
 
 const DEV_KEK = Buffer.from('0123456789abcdef0123456789abcdef');
@@ -63,7 +65,6 @@ const TEXT_FIELDS = new Set([
 	'proof_name',
 	'reason',
 	'sig',
-	'indication',
 	'strength',
 	'form',
 	'route',
@@ -262,6 +263,8 @@ async function migrate() {
 		`ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_passport_key`,
 		`ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_passport_unique`,
 		`ALTER TABLE notifications ADD COLUMN IF NOT EXISTS patient_id int`,
+		`ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS file_bytes bytea`,
+		`ALTER TABLE self_report_files ADD COLUMN IF NOT EXISTS bytes bytea`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_nic_bidx_key ON patients (nic_bidx) WHERE nic_bidx IS NOT NULL`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS patients_passport_bidx_key ON patients (passport_bidx) WHERE passport_bidx IS NOT NULL`,
 		`CREATE TABLE IF NOT EXISTS chart_crypto_state (id int PRIMARY KEY, backfill_done boolean NOT NULL)`
@@ -290,6 +293,25 @@ async function migrate() {
 				WHERE table_schema = 'public' AND table_name = 'lab_results' AND column_name = 'value_num' AND udt_name = 'numeric'
 			) THEN
 				ALTER TABLE lab_results ALTER COLUMN value_num TYPE text USING value_num::text;
+			END IF;
+			IF EXISTS (
+				SELECT 1 FROM information_schema.columns
+				WHERE table_schema = 'public' AND table_name = 'prescription_items' AND column_name = 'indication'
+			) THEN
+				UPDATE consultation_orders SET detail = NULL, note = NULL WHERE kind = 'medication';
+				UPDATE consultation_orders SET note = NULL WHERE kind = 'test';
+				UPDATE consultation_orders SET detail = NULL WHERE kind = 'vaccine';
+				UPDATE patient_tasks SET note = NULL
+				WHERE order_id IN (SELECT id FROM consultation_orders WHERE kind = 'test');
+				UPDATE patient_tasks SET detail = NULL
+				WHERE order_id IN (SELECT id FROM consultation_orders WHERE kind = 'vaccine');
+				IF EXISTS (
+					SELECT 1 FROM information_schema.columns
+					WHERE table_schema = 'public' AND table_name = 'care_orders' AND column_name = 'consultation_uid'
+				) THEN
+					UPDATE care_orders SET instructions = NULL WHERE kind = 'diagnostic' AND consultation_uid IS NOT NULL;
+				END IF;
+				ALTER TABLE prescription_items DROP COLUMN indication;
 			END IF;
 		END $$;
 	`);
@@ -360,7 +382,7 @@ async function sealJoined(patientId: number, dek: Buffer) {
 		{
 			table: 'prescription_items',
 			sql: `SELECT i.* FROM prescription_items i JOIN prescriptions rx ON rx.id = i.prescription_id WHERE rx.patient_id = $1`,
-			columns: cols('name', 'strength', 'form', 'route', 'frequency', 'sig', 'indication', 'supply_label', 'schedule_slot', 'schedule_detail', 'remaining_label', 'due_label', 'refills')
+			columns: cols('name', 'strength', 'form', 'route', 'frequency', 'sig', 'supply_label', 'schedule_slot', 'schedule_detail', 'remaining_label', 'due_label', 'refills')
 		},
 		{
 			table: 'lab_results',
@@ -415,47 +437,32 @@ async function sealStoredFiles(patientId: number, dek: Buffer) {
 			/* The upload is already gone. */
 		}
 	}
-	const photos = await client<{ id: number; encoded: string | null; stored_name: string }[]>`
-		SELECT p.id, encode(p.bytes, 'base64') AS encoded, p.stored_name
+	const photos = await client<{ stored_name: string }[]>`
+		SELECT p.stored_name
 		FROM prescription_photos p
 		JOIN consultations c ON c.id = p.consultation_id
 		WHERE c.patient_id = ${patientId}
 	`;
 	for (const photo of photos) {
-		const bytes = photo.encoded ? Buffer.from(photo.encoded, 'base64') : await readPrescriptionPhoto(photo.stored_name);
+		const bytes = await readPrescriptionPhoto(photo.stored_name);
 		if (!bytes || isSealedFile(bytes)) continue;
-		const sealed = sealFileBytes(dek, patientId, bytes);
-		await client`
-			UPDATE prescription_photos
-			SET bytes = decode(${sealed.toString('base64')}, 'base64')
-			WHERE id = ${photo.id}
-		`;
-		try {
-			await savePrescriptionPhoto(photo.stored_name, sealed);
-		} catch {
-			/* Photos live in the database when the disk copy was never written. */
-		}
+		await savePrescriptionPhoto(photo.stored_name, sealFileBytes(dek, patientId, bytes));
 	}
-	const proofs = await client<{ id: number; encoded: string | null }[]>`
-		SELECT id, encode(proof_bytes, 'base64') AS encoded
-		FROM vaccinations
-		WHERE patient_id = ${patientId} AND proof_bytes IS NOT NULL
+	const proofs = await client<{ id: number }[]>`
+		SELECT id FROM vaccinations WHERE patient_id = ${patientId} AND proof_name IS NOT NULL
 	`;
 	for (const proof of proofs) {
-		if (!proof.encoded) continue;
-		const bytes = Buffer.from(proof.encoded, 'base64');
-		if (isSealedFile(bytes)) continue;
-		const sealed = sealFileBytes(dek, patientId, bytes);
-		await client`
-			UPDATE vaccinations
-			SET proof_bytes = decode(${sealed.toString('base64')}, 'base64')
-			WHERE id = ${proof.id}
-		`;
+		const bytes = await readVaccineProof(proof.id);
+		if (!bytes || isSealedFile(bytes)) continue;
+		await saveVaccineProof(proof.id, sealFileBytes(dek, patientId, bytes));
 	}
 }
 
 async function eraseFiles(patientId: number) {
-	const tasks = await client<{ id: number }[]>`SELECT id FROM patient_tasks WHERE patient_id = ${patientId}`;
+	const tasks = await client<{ id: number }[]>`
+		SELECT id FROM patient_tasks
+		WHERE patient_id = ${patientId} AND (stored_name IS NOT NULL OR file_bytes IS NOT NULL)
+	`;
 	for (const task of tasks) await deleteTaskPdf(task.id);
 	const reports = await client<{ stored_name: string }[]>`
 		SELECT f.stored_name
@@ -463,10 +470,7 @@ async function eraseFiles(patientId: number) {
 		JOIN self_reports r ON r.id = f.report_id
 		WHERE r.patient_id = ${patientId}
 	`;
-	for (const file of reports) {
-		const path = reportFilePath(file.stored_name);
-		if (path) await rm(path, { force: true });
-	}
+	for (const file of reports) await deleteReportFile(file.stored_name);
 	const photos = await client<{ stored_name: string }[]>`
 		SELECT p.stored_name
 		FROM prescription_photos p
@@ -478,6 +482,10 @@ async function eraseFiles(patientId: number) {
 		UPDATE prescription_photos SET bytes = NULL
 		WHERE consultation_id IN (SELECT id FROM consultations WHERE patient_id = ${patientId})
 	`;
+	const proofs = await client<{ id: number }[]>`
+		SELECT id FROM vaccinations WHERE patient_id = ${patientId} AND proof_name IS NOT NULL
+	`;
+	for (const proof of proofs) await deleteVaccineProof(proof.id);
 	await client`UPDATE vaccinations SET proof_bytes = NULL WHERE patient_id = ${patientId}`;
 }
 
@@ -512,7 +520,7 @@ async function rebindJoined(sql: ClinicSql, from: ChartState, fromId: number, to
 		{
 			table: 'prescription_items',
 			query: `SELECT i.* FROM prescription_items i JOIN prescriptions rx ON rx.id = i.prescription_id WHERE rx.patient_id = $1`,
-			columns: cols('name', 'strength', 'form', 'route', 'frequency', 'sig', 'indication', 'supply_label', 'schedule_slot', 'schedule_detail', 'remaining_label', 'due_label', 'refills')
+			columns: cols('name', 'strength', 'form', 'route', 'frequency', 'sig', 'supply_label', 'schedule_slot', 'schedule_detail', 'remaining_label', 'due_label', 'refills')
 		},
 		{
 			table: 'lab_results',
@@ -544,12 +552,12 @@ async function rebindJoined(sql: ClinicSql, from: ChartState, fromId: number, to
 }
 
 async function rebindFiles(sql: ClinicSql, fromDek: Buffer | null, fromId: number, toDek: Buffer, toId: number) {
+	const reseal = (bytes: Buffer) =>
+		sealFileBytes(toDek, toId, fromDek && isSealedFile(bytes) ? openFileBytes(fromDek, fromId, bytes) : bytes);
 	const tasks = await sql<{ id: number }[]>`SELECT id FROM patient_tasks WHERE patient_id = ${fromId} AND stored_name IS NOT NULL`;
 	for (const task of tasks) {
 		try {
-			const bytes = await readTaskPdf(task.id);
-			const plain = fromDek && isSealedFile(bytes) ? openFileBytes(fromDek, fromId, bytes) : bytes;
-			await saveTaskPdf(task.id, sealFileBytes(toDek, toId, plain));
+			await saveTaskPdf(task.id, reseal(await readTaskPdf(task.id)), sql);
 		} catch {
 			/* Missing uploads are skipped. */
 		}
@@ -562,33 +570,27 @@ async function rebindFiles(sql: ClinicSql, fromDek: Buffer | null, fromId: numbe
 	`;
 	for (const file of reports) {
 		try {
-			const bytes = await readReportFile(file.stored_name);
-			const plain = fromDek && isSealedFile(bytes) ? openFileBytes(fromDek, fromId, bytes) : bytes;
-			await saveReportFile(file.stored_name, sealFileBytes(toDek, toId, plain));
+			await saveReportFile(file.stored_name, reseal(await readReportFile(file.stored_name)), sql);
 		} catch {
 			/* Missing uploads are skipped. */
 		}
 	}
-	await moveBytea(sql, fromDek, fromId, toDek, toId, 'prescription_photos', 'bytes', `
-		SELECT p.id, encode(p.bytes, 'base64') AS encoded
+	const photos = await sql<{ stored_name: string }[]>`
+		SELECT p.stored_name
 		FROM prescription_photos p
 		JOIN consultations c ON c.id = p.consultation_id
-		WHERE c.patient_id = $1 AND p.bytes IS NOT NULL
-	`);
-	await moveBytea(sql, fromDek, fromId, toDek, toId, 'vaccinations', 'proof_bytes', `
-		SELECT id, encode(proof_bytes, 'base64') AS encoded
-		FROM vaccinations
-		WHERE patient_id = $1 AND proof_bytes IS NOT NULL
-	`);
-}
-
-async function moveBytea(sql: ClinicSql, fromDek: Buffer | null, fromId: number, toDek: Buffer, toId: number, table: string, column: string, query: string) {
-	const rows = await sql.unsafe<{ id: number; encoded: string }[]>(query, [fromId]);
-	for (const row of rows) {
-		const bytes = Buffer.from(row.encoded, 'base64');
-		const plain = fromDek && isSealedFile(bytes) ? openFileBytes(fromDek, fromId, bytes) : bytes;
-		const sealed = sealFileBytes(toDek, toId, plain);
-		await sql.unsafe(`UPDATE ${table} SET ${column} = decode($1, 'base64') WHERE id = $2`, [sealed.toString('base64'), row.id]);
+		WHERE c.patient_id = ${fromId}
+	`;
+	for (const photo of photos) {
+		const bytes = await readPrescriptionPhoto(photo.stored_name);
+		if (bytes) await savePrescriptionPhoto(photo.stored_name, reseal(bytes), sql);
+	}
+	const proofs = await sql<{ id: number }[]>`
+		SELECT id FROM vaccinations WHERE patient_id = ${fromId} AND proof_name IS NOT NULL
+	`;
+	for (const proof of proofs) {
+		const bytes = await readVaccineProof(proof.id);
+		if (bytes) await saveVaccineProof(proof.id, reseal(bytes), sql);
 	}
 }
 

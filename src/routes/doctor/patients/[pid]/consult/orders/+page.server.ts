@@ -1,6 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { frequencyTags, mealTags } from '#lib/doses';
 import { liveDay, restDays } from '#lib/format';
+import { priorities, priorityOf } from '#lib/priority';
 import { addConsultOrder, addPrescriptionPhoto, addReferral, consultCertificate, draftConsult, finalizeConsult, giveVaccination, medicinesCatalog, orderVaccination, prescriptionPhotos, recordMedicineUse, referralDoctors, removeConsultCertificate, removeConsultOrder, removePrescriptionPhoto, saveConsultCertificate, setConsultCompletion, vaccinationsForConsult } from '#lib/server/clinic';
 import { requireChart } from '#lib/server/guard';
 import { acceptPrescriptionPhoto, optionalImage } from '#lib/server/uploads';
@@ -119,8 +120,6 @@ export const actions = {
 		const { consult, doctor } = await context(locals, params.pid);
 		const data = await request.formData();
 		const title = String(data.get('title') ?? '').trim();
-		const detail = String(data.get('detail') ?? '').trim();
-		const note = String(data.get('note') ?? '').trim();
 		if (!title) return { message: 'Name the medication.' };
 		const completes = completionDate(data.get('completes_on'));
 		if (completes === false) return { message: 'Enter a valid completion date for this medicine.' };
@@ -128,16 +127,8 @@ export const actions = {
 		const tags = [...frequencyTags, ...mealTags].filter((label) => chosen.includes(label));
 		const frequency = tags.find((label) => (frequencyTags as readonly string[]).includes(label));
 		const meal = tags.find((label) => (mealTags as readonly string[]).includes(label));
-		await addConsultOrder(
-			consult.id,
-			'medication',
-			title,
-			detail,
-			note,
-			completes,
-			[frequency, meal].filter(Boolean).join(' · ')
-		);
-		await recordMedicineUse(doctor.id, doctor.name, title, note);
+		await addConsultOrder(consult.id, 'medication', title, '', '', completes, [frequency, meal].filter(Boolean).join(' · '));
+		await recordMedicineUse(doctor.id, doctor.name, title, '');
 		return { saved: true };
 	},
 	referral: async ({ request, params, locals }) => {
@@ -150,7 +141,11 @@ export const actions = {
 	test: async ({ request, params, locals }) => {
 		const { consult } = await context(locals, params.pid);
 		const data = await request.formData();
-		await addConsultOrder(consult.id, 'test', String(data.get('title') ?? ''), String(data.get('detail') ?? ''), String(data.get('note') ?? ''));
+		const title = String(data.get('title') ?? '').trim();
+		if (!title) return { message: 'Name the test.' };
+		const priority = priorityOf(String(data.get('detail') ?? ''));
+		if (!priority) return { message: `Choose a priority: ${priorities.join(', ')}.` };
+		await addConsultOrder(consult.id, 'test', title, priority, '');
 		return { saved: true };
 	},
 	give: async ({ request, params, locals }) => {
@@ -175,12 +170,7 @@ export const actions = {
 	orderVaccine: async ({ request, params, locals }) => {
 		const { consult } = await context(locals, params.pid);
 		const data = await request.formData();
-		const result = await orderVaccination(
-			consult.id,
-			String(data.get('name') ?? ''),
-			String(data.get('detail') ?? ''),
-			String(data.get('note') ?? '')
-		);
+		const result = await orderVaccination(consult.id, String(data.get('name') ?? ''), String(data.get('note') ?? ''));
 		if ('error' in result) return { message: result.error, vaccine: 'order' as const };
 		return { saved: true };
 	},

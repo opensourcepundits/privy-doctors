@@ -1,9 +1,16 @@
 <script lang="ts">
-	let { inputId = 'prescription-photo', selected = $bindable(false) }: { inputId?: string; selected?: boolean } = $props();
+	import { enhance } from '$app/forms';
+
+	let {
+		inputId = 'prescription-photo',
+		selected = $bindable(false),
+		onsend
+	}: { inputId?: string; selected?: boolean; onsend?: () => void } = $props();
 	let input = $state<HTMLInputElement | null>(null);
 	let preview = $state('');
 	let ready = $state(false);
 	let note = $state('');
+	let sending = $state(false);
 
 	function clearPreview() {
 		if (preview) URL.revokeObjectURL(preview);
@@ -78,11 +85,28 @@
 	}
 </script>
 
-<form class="space-y-2" method="POST" action="?/photo" enctype="multipart/form-data">
+<form
+	class="space-y-2"
+	method="POST"
+	action="?/photo"
+	enctype="multipart/form-data"
+	use:enhance={() => {
+		onsend?.();
+		sending = true;
+		note = '';
+		return async ({ result, update }) => {
+			sending = false;
+			const message = result.type === 'success' && typeof result.data?.message === 'string' ? result.data.message : '';
+			if (result.type === 'success' && !message) remove();
+			else note = message || 'The photo could not be saved. Try again.';
+			await update({ reset: false });
+		};
+	}}
+>
 	<div class="flex flex-wrap items-center gap-2">
 		<label class="btn-sm" for={inputId}>Choose photo</label>
 		<input class="sr-only" id={inputId} name="photo" type="file" accept="image/*" bind:this={input} onchange={chosen} />
-		<button class="btn-sm" type="submit" disabled={!ready}>Upload photo</button>
+		<button class="btn-sm" type="submit" disabled={!ready || sending}>{sending ? 'Uploading…' : 'Upload photo'}</button>
 	</div>
 	{#if note}<p class="text-sm text-red-600">{note}</p>{/if}
 	{#if preview}

@@ -29,6 +29,7 @@
 			body: string;
 			created_at: Date | string;
 			seen_at: Date | string | null;
+			link?: string | null;
 		}[];
 		markSeen?: string;
 		children: Snippet;

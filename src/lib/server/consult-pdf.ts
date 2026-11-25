@@ -46,7 +46,6 @@ export type ReportItem = {
 	route: string;
 	frequency: string;
 	sig: string;
-	indication: string;
 	quantity: number | null;
 	supply: string;
 	refills: string;
@@ -689,7 +688,6 @@ class Letter {
 			{ text: title || 'Medication', bold: true },
 			form ? { text: form, muted: true } : null,
 			item.sig ? { text: item.sig, italic: true } : null,
-			item.indication ? { text: item.indication } : null,
 			schedule ? { text: schedule, muted: true } : null,
 			supply ? { text: supply, muted: true } : null
 		]);

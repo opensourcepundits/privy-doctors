@@ -2,6 +2,7 @@
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { formatDate, formatTime, isoDate, liveCopy, restDays } from '#lib/format';
+	import { priorityClass, priorityOf } from '#lib/priority';
 	import type { VisitRecord } from '#lib/server/clinic';
 
 	let {
@@ -142,7 +143,6 @@
 									<p class="text-[#64748B]">{[item.form, item.route, item.frequency].filter(Boolean).join(' · ')}</p>
 									<DoseMarks {item} />
 									{#if item.sig}<p>{item.sig}</p>{/if}
-									{#if item.indication}<p>{item.indication}</p>{/if}
 									<p class="text-xs text-[#64748B]">
 										{[item.quantity != null ? `Dispense ${item.quantity}` : '', item.supply_label, item.refills, item.completes_on ? `Completes ${formatDate(item.completes_on)}` : ''].filter(Boolean).join(' · ')}
 									</p>
@@ -262,8 +262,11 @@
 				{#each tests as order}
 					<li class="text-sm">
 						<p class="font-semibold">{order.title}</p>
-						{#if order.detail}<p>{order.detail}</p>{/if}
-						{#if order.note}<p class="text-[#64748B]">{order.note}</p>{/if}
+						{#if priorityOf(order.detail)}
+							<span class="mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold {priorityClass(order.detail)}">{priorityOf(order.detail)}</span>
+						{:else if order.detail}
+							<p>{order.detail}</p>
+						{/if}
 					</li>
 				{/each}
 			</ul>

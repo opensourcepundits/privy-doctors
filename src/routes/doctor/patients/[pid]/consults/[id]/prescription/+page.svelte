@@ -9,7 +9,6 @@
 	let { data, form }: PageProps = $props();
 	let open = $state(false);
 	let medQuery = $state('');
-	let medNote = $state('');
 	let medList = $state(false);
 	let frequency = $state('');
 	let meal = $state('');
@@ -32,7 +31,6 @@
 
 	function chooseMedicine(med: (typeof data.medicines)[number]) {
 		medQuery = med.name;
-		if (!medNote.trim() && med.description) medNote = med.description;
 		medList = false;
 	}
 
@@ -68,7 +66,6 @@
 					open = !open;
 					if (open) {
 						medQuery = '';
-						medNote = '';
 						frequency = '';
 						meal = '';
 						medList = false;
@@ -83,15 +80,13 @@
 			<div class="flex items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 				<div class="min-w-0">
 					<p class="text-sm font-bold">{order.title}</p>
-					{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
-					{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 					{#if order.tags}
 						{@const marks = tagsFrom(order.tags)}
 						<div class="mt-1"><DoseMarks item={{ name: order.title, frequency: marks.frequency, schedule_detail: marks.meal }} /></div>
 					{/if}
 					{#if order.completes_on}<p class="text-[11px] text-[#64748B]">Completes {formatDate(order.completes_on)}</p>{/if}
 				</div>
-				<form method="POST" action="?/remove">
+				<form method="POST" action="?/remove" use:enhance>
 					<input type="hidden" name="id" value={order.id} />
 					<button class="grid h-8 w-8 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600" type="submit" aria-label="Remove medication">
 						<span class="material-symbols-outlined text-[18px]">delete_outline</span>
@@ -108,11 +103,10 @@
 				action="?/medication"
 				use:enhance={() => {
 					return async ({ result, update }) => {
-						if (result.type === 'success') {
+						if (result.type === 'success' && !result.data?.message) {
 							frequency = '';
 							meal = '';
 							medQuery = '';
-							medNote = '';
 							medList = false;
 							open = false;
 						}
@@ -161,8 +155,6 @@
 						</ul>
 					{/if}
 				</div>
-				<input class="field" name="detail" placeholder="Dose and supply" />
-				<input class="field" name="note" placeholder="Indication" bind:value={medNote} />
 				<fieldset>
 					<legend class="text-sm font-semibold">How often</legend>
 					<div class="mt-1 grid gap-1 sm:grid-cols-2">
@@ -221,7 +213,7 @@
 					<img class="max-h-48 rounded-lg border border-[#E2E8F0] bg-white object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
 					<span class="mt-1 block text-xs text-[#64748B]">{photo.file_name}</span>
 				</a>
-				<form method="POST" action="?/removePhoto">
+				<form method="POST" action="?/removePhoto" use:enhance>
 					<input type="hidden" name="id" value={photo.id} />
 					<button class="grid h-8 w-8 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600" type="submit" aria-label="Remove prescription photo">
 						<span class="material-symbols-outlined text-[18px]">delete_outline</span>

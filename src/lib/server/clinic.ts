@@ -10,6 +10,7 @@ function attach<T, E extends Record<string, unknown>>(row: T, extra: E): T & E {
 }
 import { tagsFrom } from '#lib/doses';
 import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
+import { priorityOf } from '#lib/priority';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import {
 	ChartDeleted,
@@ -25,7 +26,15 @@ import {
 } from './chart-crypto';
 import { client, type ClinicSql } from './db';
 import { resolveImagePaths } from './storage';
-import { deletePrescriptionPhoto, deleteTaskPdf } from './uploads';
+import {
+	deletePrescriptionPhoto,
+	deleteTaskPdf,
+	deleteVaccineProof,
+	readPrescriptionPhoto,
+	readVaccineProof,
+	savePrescriptionPhoto,
+	saveVaccineProof
+} from './uploads';
 
 export type PatientRow = {
 	id: number;
@@ -1442,13 +1451,16 @@ async function prescriptionsOnVisit(patientId: number, day: string, doctorName: 
 		ORDER BY sort_order, id
 	`;
 	const photos = await photosByPatient(patientId);
-	return rows.map((row) => ({
-		...row,
-		items: items.filter((item) => item.prescription_id === row.id),
-		photos: photos
-			.filter((photo) => photo.code === row.code)
-			.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
-	}));
+	return presentChart(
+		patientId,
+		rows.map((row) => ({
+			...row,
+			items: items.filter((item) => item.prescription_id === row.id),
+			photos: photos
+				.filter((photo) => photo.code === row.code)
+				.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }))
+		}))
+	);
 }
 
 async function photosByPatient(patientId: number) {
@@ -1488,12 +1500,16 @@ function ensurePrescriptionPhotoStore() {
 
 export async function prescriptionPhotos(consultId: number) {
 	await ensurePrescriptionPhotoStore();
-	return client<{ id: number; file_name: string; content_type: string }[]>`
-		SELECT id, file_name, content_type
-		FROM prescription_photos
-		WHERE consultation_id = ${consultId}
-		ORDER BY id
+	const rows = await client<{ id: number; file_name: string; content_type: string; patient_id: number }[]>`
+		SELECT ph.id, ph.file_name, ph.content_type, c.patient_id
+		FROM prescription_photos ph
+		JOIN consultations c ON c.id = ph.consultation_id
+		WHERE ph.consultation_id = ${consultId}
+		ORDER BY ph.id
 	`;
+	if (!rows.length) return [];
+	const opened = await presentChart(rows[0].patient_id, rows);
+	return opened.map(({ id, file_name, content_type }) => ({ id, file_name, content_type }));
 }
 
 let medicalCertificateStore: Promise<void> | null = null;
@@ -1704,22 +1720,16 @@ export async function medicalCertificateView(id: number, patientId: number) {
 
 export async function prescriptionPhotoBytes(id: number) {
 	await ensurePrescriptionPhotoStore();
-	const [row] = await client<{ encoded: string | null; stored_name: string }[]>`
-		SELECT encode(bytes, 'base64') AS encoded, stored_name
-		FROM prescription_photos
-		WHERE id = ${id}
-	`;
-	if (!row) return null;
-	const [owner] = await client<{ patient_id: number }[]>`
-		SELECT c.patient_id
+	const [row] = await client<{ stored_name: string; patient_id: number }[]>`
+		SELECT p.stored_name, c.patient_id
 		FROM prescription_photos p
 		JOIN consultations c ON c.id = p.consultation_id
 		WHERE p.id = ${id}
 	`;
-	const { readPrescriptionPhoto } = await import('./uploads');
-	const bytes = row.encoded ? Buffer.from(row.encoded, 'base64') : await readPrescriptionPhoto(row.stored_name);
-	if (!bytes || !owner) return bytes;
-	return openPatientFile(owner.patient_id, bytes);
+	if (!row) return null;
+	const bytes = await readPrescriptionPhoto(row.stored_name);
+	if (!bytes) return null;
+	return openPatientFile(row.patient_id, bytes);
 }
 
 async function referralsOnVisit(patientId: number, day: string, doctorName: string, consultId: number | null) {
@@ -2224,9 +2234,73 @@ export async function invoicesFor(patientId: number) {
 	}));
 }
 
+type NotificationRow = {
+	id: number;
+	user_id: number;
+	patient_id: number | null;
+	title: string;
+	body: string;
+	created_at: Date | string;
+	seen_at: Date | string | null;
+	pid: string | null;
+	role: string;
+};
+
 export async function notificationsFor(userId: number) {
-	const rows = await client`SELECT * FROM notifications WHERE user_id = ${userId} ORDER BY created_at DESC`;
-	return presentEach(rows);
+	const rows = await client<NotificationRow[]>`
+		SELECT n.*, p.pid, u.role
+		FROM notifications n
+		JOIN users u ON u.id = n.user_id
+		LEFT JOIN patients p ON p.id = n.patient_id
+		WHERE n.user_id = ${userId}
+		ORDER BY n.created_at DESC
+	`;
+	const opened = await presentEach(rows);
+	return opened.map(({ pid, role, ...note }) => ({ ...note, link: notificationLink(role, note.title, pid) }));
+}
+
+function notificationLink(role: string, title: string, pid: string | null) {
+	if (role === 'patient') {
+		switch (title) {
+			case 'Record access request':
+				return '/patient/physicians#requests';
+			case 'Record access granted':
+			case 'Specialist added':
+				return '/patient/physicians';
+			case 'Appointment approved':
+			case 'Appointment declined':
+			case 'Appointment rescheduled':
+				return '/patient/tasks#visits';
+			case 'Vaccination ordered':
+				return '/patient/tasks';
+			case 'Vaccination recorded':
+				return '/patient/vaccinations';
+			case 'Medical certificate issued':
+				return '/patient/certificates';
+			case 'Consultation removed':
+				return '/patient/history';
+			default:
+				return null;
+		}
+	}
+	switch (title) {
+		case 'Incoming referral':
+		case 'Referral withdrawn':
+		case 'Consultation removed':
+			return '/doctor/referrals';
+		case 'Appointment rescheduled':
+			return '/doctor';
+		case 'Colleague joined':
+			return '/doctor/profile';
+		case 'Patient self report':
+		case 'Record access allowed':
+		case 'Record access declined':
+		case 'Record access turned on':
+		case 'Record access turned off':
+			return pid ? `/doctor/patients/${pid}` : null;
+		default:
+			return null;
+	}
 }
 
 export async function markNotificationsSeen(userId: number) {
@@ -2423,6 +2497,10 @@ export async function deleteConsult(consultId: number, doctorId: number, patient
 			SELECT id FROM patient_tasks
 			WHERE consultation_id = ${consultId} AND stored_name IS NOT NULL
 		`;
+		const proofs = await sql<{ id: number }[]>`
+			SELECT id FROM vaccinations
+			WHERE consultation_id = ${consultId} AND proof_name IS NOT NULL
+		`;
 		const followed = await sql<{ user_id: number | null; first_name: string; last_name: string; pid: string }[]>`
 			SELECT f.user_id, p.first_name, p.last_name, p.pid
 			FROM referrals r
@@ -2524,11 +2602,12 @@ export async function deleteConsult(consultId: number, doctorId: number, patient
 		}
 		if (!consult.edit_copy) await sql`DELETE FROM encounters WHERE consultation_id = ${consultId}`;
 		await sql`DELETE FROM consultations WHERE id = ${consultId} AND doctor_id = ${doctorId}`;
-		return { consult, photos, tasks, followed, sourced };
+		return { consult, photos, tasks, proofs, followed, sourced };
 	});
 	if (!removed) return { error: 'Only the doctor who signed this consultation can delete it.' };
 	for (const photo of removed.photos) await deletePrescriptionPhoto(photo.stored_name);
 	for (const task of removed.tasks) await deleteTaskPdf(task.id);
+	for (const proof of removed.proofs) await deleteVaccineProof(proof.id);
 	const consult = await presentChart(removed.consult.patient_id, removed.consult);
 	const followed = await presentChart(removed.consult.patient_id, removed.followed);
 	const sourced = await presentChart(removed.consult.patient_id, removed.sourced);
@@ -3157,8 +3236,8 @@ export async function addConsultOrder(
 		VALUES (
 			${consultId}, ${kind},
 			${await sealText(consult.patient_id, 'title', title)},
-			${await sealText(consult.patient_id, 'detail', detail)},
-			${await sealText(consult.patient_id, 'note', note)},
+			${detail ? await sealText(consult.patient_id, 'detail', detail) : null},
+			${note ? await sealText(consult.patient_id, 'note', note) : null},
 			${completesOn},
 			${tags ? await sealText(consult.patient_id, 'tags', tags) : null}
 		)
@@ -3173,8 +3252,8 @@ export async function addConsultOrder(
 			VALUES (
 				${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid},
 				${await sealText(consult.patient_id, 'title', label)},
-				${await sealText(consult.patient_id, 'detail', detail)},
-				${await sealText(consult.patient_id, 'note', note)},
+				${detail ? await sealText(consult.patient_id, 'detail', detail) : null},
+				${note ? await sealText(consult.patient_id, 'note', note) : null},
 				'open'
 			)
 			RETURNING id
@@ -3318,7 +3397,7 @@ export async function giveVaccination(
 	const consult = await openConsult(consultId);
 	if (!consult) return { error: 'This consultation is no longer open.' };
 	const detail = ['Given in clinic', givenOn, site, lot ? `Lot ${lot}` : ''].filter(Boolean).join(' · ');
-	const encoded = proof ? (await sealPatientFile(consult.patient_id, proof.bytes)).toString('base64') : null;
+	const sealedProof = proof ? await sealPatientFile(consult.patient_id, proof.bytes) : null;
 	const orderTitle = await sealText(consult.patient_id, 'title', name);
 	const orderDetail = await sealText(consult.patient_id, 'detail', detail);
 	const sealedNote = await sealText(consult.patient_id, 'note', note || null);
@@ -3330,10 +3409,10 @@ export async function giveVaccination(
 		`;
 		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
 		await sql`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
-		await sql`
+		const [vaccination] = await sql<{ id: number }[]>`
 			INSERT INTO vaccinations (
 				patient_id, consultation_id, order_id, doctor_id, name, given_on, source, status,
-				note, lot, site, proof_name, proof_type, proof_bytes, created_at
+				note, lot, site, proof_name, proof_type, created_at
 			) VALUES (
 				${consult.patient_id}, ${consultId}, ${order.id}, ${consult.doctor_id},
 				${await sealText(consult.patient_id, 'name', name)}, ${givenOn},
@@ -3341,31 +3420,30 @@ export async function giveVaccination(
 				${await sealText(consult.patient_id, 'lot', lot || null)},
 				${await sealText(consult.patient_id, 'site', site || null)},
 				${proof ? await sealText(consult.patient_id, 'proof_name', proof.name) : null},
-				${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+				${proof?.type ?? null}, ${nowLocal().stamp}
 			)
+			RETURNING id
 		`;
+		if (sealedProof) await saveVaccineProof(vaccination.id, sealedProof, sql);
 	});
 	await notify(consult.user_id, 'Vaccination recorded', `${consult.doctor_name} recorded ${name} on your vaccination card.`, consult.patient_id);
 	return { saved: true as const };
 }
 
-export async function orderVaccination(consultId: number, nameInput: string, detailInput: string, noteInput: string) {
+export async function orderVaccination(consultId: number, nameInput: string, noteInput: string) {
 	await ensureVaccinationStore();
 	const name = vaccineLabel(nameInput);
 	if (!name) return { error: 'Name the vaccination in 120 characters or fewer.' };
-	const detail = limitedText(detailInput, 160);
-	if (detail === false) return { error: 'Keep the instructions to 160 characters.' };
 	const note = limitedText(noteInput, 500);
 	if (note === false) return { error: 'Keep the note to 500 characters.' };
 	const consult = await openConsult(consultId);
 	if (!consult) return { error: 'This consultation is no longer open.' };
 	await client.begin(async (sql) => {
 		const [order] = await sql<{ id: number }[]>`
-			INSERT INTO consultation_orders (consultation_id, kind, title, detail, note)
+			INSERT INTO consultation_orders (consultation_id, kind, title, note)
 			VALUES (
 				${consultId}, 'vaccine',
 				${await sealText(consult.patient_id, 'title', name)},
-				${await sealText(consult.patient_id, 'detail', detail || null)},
 				${await sealText(consult.patient_id, 'note', note || null)}
 			)
 			RETURNING id
@@ -3373,11 +3451,10 @@ export async function orderVaccination(consultId: number, nameInput: string, det
 		const orderUid = chartCode('ORD', consult.doctor_id, consult.pid, order.id);
 		await sql`UPDATE consultation_orders SET uid = ${orderUid} WHERE id = ${order.id}`;
 		const [task] = await sql<{ id: number }[]>`
-			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, detail, note, status)
+			INSERT INTO patient_tasks (patient_id, consultation_id, order_id, order_uid, title, note, status)
 			VALUES (
 				${consult.patient_id}, ${consultId}, ${order.id}, ${orderUid},
 				${await sealText(consult.patient_id, 'title', name)},
-				${await sealText(consult.patient_id, 'detail', detail || null)},
 				${await sealText(consult.patient_id, 'note', note || null)},
 				'open'
 			)
@@ -3420,7 +3497,7 @@ export async function recordOrderedVaccination(taskId: number, patientId: number
 	const [taskTitle] = await client<{ title: string }[]>`SELECT title FROM patient_tasks WHERE id = ${taskId}`;
 	const openedTitle = taskTitle ? await presentChart(patientId, taskTitle) : null;
 	const vaccineName = await sealText(patientId, 'name', openedTitle?.title ?? '');
-	const encoded = proof ? (await sealPatientFile(patientId, proof.bytes)).toString('base64') : null;
+	const sealedProof = proof ? await sealPatientFile(patientId, proof.bytes) : null;
 	const proofName = proof ? await sealText(patientId, 'proof_name', proof.name) : null;
 	const saved = await client.begin(async (sql) => {
 		const [existing] = await sql<{ id: number; status: string }[]>`
@@ -3432,22 +3509,24 @@ export async function recordOrderedVaccination(taskId: number, patientId: number
 				UPDATE vaccinations
 				SET status = 'done', given_on = ${givenOn},
 					proof_name = COALESCE(${proofName}, proof_name),
-					proof_type = COALESCE(${proof?.type ?? null}, proof_type),
-					proof_bytes = COALESCE(decode(${encoded}::text, 'base64'), proof_bytes)
+					proof_type = COALESCE(${proof?.type ?? null}, proof_type)
 				WHERE id = ${existing.id} AND patient_id = ${patientId}
 			`;
+			if (sealedProof) await saveVaccineProof(existing.id, sealedProof, sql);
 		} else {
-			await sql`
+			const [vaccination] = await sql<{ id: number }[]>`
 				INSERT INTO vaccinations (
 					patient_id, consultation_id, order_id, task_id, doctor_id, name, given_on, source, status,
-					proof_name, proof_type, proof_bytes, created_at
+					proof_name, proof_type, created_at
 				)
 				SELECT ${patientId}, ${task.consultation_id}, ${task.order_id}, ${task.id}, ${task.doctor_id},
 					${vaccineName}, ${givenOn}, 'ordered', 'done',
-					${proofName}, ${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
+					${proofName}, ${proof?.type ?? null}, ${nowLocal().stamp}
 				FROM patient_tasks t
 				WHERE t.id = ${task.id}
+				RETURNING id
 			`;
+			if (sealedProof && vaccination) await saveVaccineProof(vaccination.id, sealedProof, sql);
 		}
 		await sql`
 			UPDATE patient_tasks
@@ -3476,19 +3555,24 @@ export async function selfReportVaccination(
 	if (site === false) return { error: 'Keep the site to 80 characters.' };
 	const note = limitedText(input.note, 500);
 	if (note === false) return { error: 'Keep the note to 500 characters.' };
-	const encoded = proof ? (await sealPatientFile(patientId, proof.bytes)).toString('base64') : null;
-	await client`
-		INSERT INTO vaccinations (
-			patient_id, name, given_on, source, status, note, lot, site, proof_name, proof_type, proof_bytes, created_at
-		) VALUES (
-			${patientId}, ${await sealText(patientId, 'name', name)}, ${givenOn}, 'self', 'done',
-			${await sealText(patientId, 'note', note || null)},
-			${await sealText(patientId, 'lot', lot || null)},
-			${await sealText(patientId, 'site', site || null)},
-			${proof ? await sealText(patientId, 'proof_name', proof.name) : null},
-			${proof?.type ?? null}, decode(${encoded}::text, 'base64'), ${nowLocal().stamp}
-		)
-	`;
+	const sealedProof = proof ? await sealPatientFile(patientId, proof.bytes) : null;
+	const sealedName = await sealText(patientId, 'name', name);
+	const sealedNote = await sealText(patientId, 'note', note || null);
+	const sealedLot = await sealText(patientId, 'lot', lot || null);
+	const sealedSite = await sealText(patientId, 'site', site || null);
+	const proofName = proof ? await sealText(patientId, 'proof_name', proof.name) : null;
+	await client.begin(async (sql) => {
+		const [vaccination] = await sql<{ id: number }[]>`
+			INSERT INTO vaccinations (
+				patient_id, name, given_on, source, status, note, lot, site, proof_name, proof_type, created_at
+			) VALUES (
+				${patientId}, ${sealedName}, ${givenOn}, 'self', 'done', ${sealedNote}, ${sealedLot}, ${sealedSite},
+				${proofName}, ${proof?.type ?? null}, ${nowLocal().stamp}
+			)
+			RETURNING id
+		`;
+		if (sealedProof) await saveVaccineProof(vaccination.id, sealedProof, sql);
+	});
 	return { saved: true as const };
 }
 
@@ -3522,13 +3606,15 @@ export async function vaccinationsForConsult(consultId: number) {
 export async function vaccinationProof(id: number) {
 	await ensureVaccinationStore();
 	const [row] = await client<
-		{ id: number; patient_id: number; doctor_id: number | null; proof_name: string; proof_type: string; encoded: string | null }[]
+		{ id: number; patient_id: number; doctor_id: number | null; proof_name: string; proof_type: string | null }[]
 	>`
-		SELECT id, patient_id, doctor_id, proof_name, proof_type, encode(proof_bytes, 'base64') AS encoded
+		SELECT id, patient_id, doctor_id, proof_name, proof_type
 		FROM vaccinations
 		WHERE id = ${id} AND proof_name IS NOT NULL
 	`;
-	if (!row?.encoded || !row.proof_type) return null;
+	if (!row?.proof_type) return null;
+	const bytes = await readVaccineProof(row.id);
+	if (!bytes) return null;
 	const opened = await presentChart(row.patient_id, { proof_name: row.proof_name });
 	return {
 		id: row.id,
@@ -3536,7 +3622,7 @@ export async function vaccinationProof(id: number) {
 		doctor_id: row.doctor_id,
 		proof_name: opened.proof_name,
 		proof_type: row.proof_type,
-		bytes: Buffer.from(row.encoded, 'base64')
+		bytes
 	};
 }
 
@@ -3795,14 +3881,7 @@ async function consultPrescriptionId(consultId: number, course: string, complete
 	return rx.id;
 }
 
-export async function fileSignedMedication(
-	consultId: number,
-	title: string,
-	detail: string,
-	note: string,
-	completesOn: string | null,
-	tags: string
-) {
+export async function fileSignedMedication(consultId: number, title: string, completesOn: string | null, tags: string) {
 	const [consult] = await client<{ patient_id: number; completes_on: Date | string | null }[]>`
 		SELECT patient_id, completes_on FROM consultations WHERE id = ${consultId}
 	`;
@@ -3819,22 +3898,19 @@ export async function fileSignedMedication(
 		`;
 	}
 	const marks = tagsFrom(tags);
-	const sig = [detail, marks.frequency, marks.meal].filter(Boolean).join('. ');
+	const sig = [marks.frequency, marks.meal].filter(Boolean).join('. ');
 	const [count] = await client<{ count: number }[]>`
 		SELECT COUNT(*)::int AS count FROM prescription_items WHERE prescription_id = ${rxId}
 	`;
 	await client`
 		INSERT INTO prescription_items (
-			prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
+			prescription_id, name, form, sig, refills, sort_order, completes_on,
 			frequency, schedule_detail
 		) VALUES (
 			${rxId},
 			${await sealText(consult.patient_id, 'name', title)},
-			${await sealText(consult.patient_id, 'strength', detail)},
 			'Oral',
 			${await sealText(consult.patient_id, 'sig', sig)},
-			${await sealText(consult.patient_id, 'indication', note)},
-			${await sealText(consult.patient_id, 'supply_label', detail)},
 			${await sealText(consult.patient_id, 'refills', '0')},
 			${count.count},
 			${completesOn},
@@ -3911,12 +3987,11 @@ export async function addPrescriptionPhoto(
 	const [owner] = await client<{ patient_id: number }[]>`SELECT patient_id FROM consultations WHERE id = ${consultId}`;
 	if (!owner) return { error: 'This consultation is no longer open.' as const };
 	const stored = `rx-${consultId}-${Date.now()}.${ext}`;
-	const sealed = await sealPatientFile(owner.patient_id, bytes);
+	await savePrescriptionPhoto(stored, await sealPatientFile(owner.patient_id, bytes));
 	await client`
-		INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at, bytes)
+		INSERT INTO prescription_photos (consultation_id, file_name, stored_name, content_type, created_at)
 		VALUES (
-			${consultId}, ${await sealText(owner.patient_id, 'file_name', fileName)}, ${stored}, ${contentType}, ${nowLocal().stamp},
-			decode(${sealed.toString('base64')}, 'base64')
+			${consultId}, ${await sealText(owner.patient_id, 'file_name', fileName)}, ${stored}, ${contentType}, ${nowLocal().stamp}
 		)
 	`;
 	const [consult] = await client<{ status: string; completes_on: Date | string | null }[]>`
@@ -3983,7 +4058,11 @@ export async function removeConsultOrder(id: number, consultId?: number) {
 			await notify(referral.user_id, 'Referral withdrawn', `${referral.from_name} withdrew the referral for ${who}.`, referral.patient_id);
 		}
 	}
-	await client`DELETE FROM vaccinations WHERE order_id = ${id} AND (status = 'ordered' OR source = 'given')`;
+	const vaccinations = await client<{ id: number; proof_name: string | null }[]>`
+		DELETE FROM vaccinations WHERE order_id = ${id} AND (status = 'ordered' OR source = 'given')
+		RETURNING id, proof_name
+	`;
+	for (const vaccination of vaccinations) if (vaccination.proof_name) await deleteVaccineProof(vaccination.id);
 	await client`DELETE FROM patient_tasks WHERE order_id = ${id} AND stored_name IS NULL AND status = 'open'`;
 	if (order.kind === 'medication') {
 		const [consult] = await client<{ doctor_id: number; status: string }[]>`
@@ -4080,19 +4159,16 @@ export async function finalizeConsult(
 		`;
 		for (const [index, med] of meds.entries()) {
 			const marks = tagsFrom(med.tags);
-			const sig = [med.detail, marks.frequency, marks.meal].filter(Boolean).join('. ');
+			const sig = [marks.frequency, marks.meal].filter(Boolean).join('. ');
 			await client`
 				INSERT INTO prescription_items (
-					prescription_id, name, strength, form, sig, indication, supply_label, refills, sort_order, completes_on,
+					prescription_id, name, form, sig, refills, sort_order, completes_on,
 					frequency, schedule_detail
 				) VALUES (
 					${rx.id},
 					${await sealText(consult.patient_id, 'name', med.title)},
-					${await sealText(consult.patient_id, 'strength', med.detail ?? '')},
 					'Oral',
 					${await sealText(consult.patient_id, 'sig', sig)},
-					${await sealText(consult.patient_id, 'indication', med.note ?? '')},
-					${await sealText(consult.patient_id, 'supply_label', med.detail ?? '')},
 					${await sealText(consult.patient_id, 'refills', '0')},
 					${index},
 					${isoDate(med.completes_on) || null},
@@ -4114,9 +4190,9 @@ export async function finalizeConsult(
 			INSERT INTO care_orders (patient_id, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
 			VALUES (
 				${consult.patient_id}, ${consult.uid}, ${order.uid}, 'diagnostic',
-				${await sealText(consult.patient_id, 'title', order.title)}, ${doctor.name}, ${order.detail},
+				${await sealText(consult.patient_id, 'title', order.title)}, ${doctor.name}, ${priorityOf(order.detail) ?? 'Routine'},
 				${'Ordered ' + formatDate(date)},
-				${await sealText(consult.patient_id, 'instructions', order.note ?? '')}
+				NULL
 			)
 		`;
 	}
@@ -4204,14 +4280,13 @@ export async function addOtc(patientId: number, name: string, detail: string) {
 		`;
 	}
 	await client`
-		INSERT INTO prescription_items (prescription_id, name, strength, form, sig, indication, schedule_detail, sort_order)
+		INSERT INTO prescription_items (prescription_id, name, strength, form, sig, schedule_detail, sort_order)
 		VALUES (
 			${rx.id},
 			${await sealText(patientId, 'name', name)},
 			${await sealText(patientId, 'strength', detail)},
 			'OTC',
 			${await sealText(patientId, 'sig', detail)},
-			${await sealText(patientId, 'indication', 'Patient-reported')},
 			${await sealText(patientId, 'schedule_detail', detail)},
 			20
 		)

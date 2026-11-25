@@ -87,7 +87,6 @@ function itemsOf(value: unknown): ReportItem[] {
 			route: text(row.route),
 			frequency: text(row.frequency),
 			sig: text(row.sig),
-			indication: text(row.indication),
 			quantity: amount(row.quantity),
 			supply: text(row.supply_label),
 			refills: text(row.refills),

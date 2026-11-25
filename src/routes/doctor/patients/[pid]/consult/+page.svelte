@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import SignupLink from '#lib/components/SignupLink.svelte';
@@ -106,7 +107,7 @@
 						</button>
 					{/each}
 				</div>
-				<form class="mt-3 space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3" method="POST" action="?/add">
+				<form class="mt-3 space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3" method="POST" action="?/add" use:enhance>
 					<p class="kicker">Add new log item</p>
 					<div class="grid gap-2 sm:grid-cols-3">
 						<select class="field sm:col-span-1" name="kind" bind:value={kind}>
@@ -139,7 +140,7 @@
 									{#if entry.detail}<p class="truncate text-[11px] text-[#64748B]">{entry.detail}</p>{/if}
 								</div>
 							</div>
-							<form method="POST" action="?/remove">
+							<form method="POST" action="?/remove" use:enhance>
 								<input type="hidden" name="id" value={entry.id} />
 								<button class="grid h-7 w-7 place-items-center rounded-lg text-[#94A3B8] hover:bg-rose-50 hover:text-rose-600" type="submit" aria-label="Remove entry">
 									<span class="material-symbols-outlined text-base">close</span>

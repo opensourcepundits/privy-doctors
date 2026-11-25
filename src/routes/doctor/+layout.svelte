@@ -18,7 +18,10 @@
 	const query = $derived(page.url.search);
 	const notice = $derived(page.url.searchParams.get('notice'));
 	const sessions = $derived(
-		data.openConsults.filter((item) => path !== `/doctor/patients/${item.pid}/consult`)
+		data.openConsults.filter((item) => {
+			const consult = `/doctor/patients/${item.pid}/consult`;
+			return path !== consult && !path.startsWith(`${consult}/`);
+		})
 	);
 	const nav = $derived([
 		{ href: '/doctor', label: 'Home', icon: 'home' },

@@ -1,24 +1,92 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { del, get, put } from '@vercel/blob';
+import { BLOB_READ_WRITE_TOKEN } from '$app/env/private';
+import { client, type ClinicSql } from './db';
 
+// Uploads live in a private Vercel Blob store. Files saved before the move are still
+// read from their old Postgres columns or the local data folder until they are rewritten.
 const dir = join(process.cwd(), 'data', 'uploads');
 
-export function taskPdfPath(id: number) {
-	return join(dir, `task-${id}.pdf`);
+function blobToken() {
+	const value = process.env.BLOB_READ_WRITE_TOKEN?.trim() || BLOB_READ_WRITE_TOKEN?.trim();
+	if (value) return value;
+	if (process.env.NODE_ENV !== 'production') return null;
+	throw new Error(
+		'Set BLOB_READ_WRITE_TOKEN in the Vercel project environment by connecting a private Blob store, then redeploy. The running server does not have that variable.'
+	);
 }
 
-export async function saveTaskPdf(id: number, bytes: Buffer) {
-	await mkdir(dir, { recursive: true });
-	await writeFile(taskPdfPath(id), bytes);
+function localPath(key: string) {
+	return join(dir, ...key.split('/'));
+}
+
+async function putFile(key: string, bytes: Buffer) {
+	const token = blobToken();
+	if (!token) {
+		const path = localPath(key);
+		await mkdir(dirname(path), { recursive: true });
+		await writeFile(path, bytes);
+		return;
+	}
+	await put(key, bytes, {
+		access: 'private',
+		token,
+		addRandomSuffix: false,
+		allowOverwrite: true,
+		contentType: 'application/octet-stream'
+	});
+}
+
+async function getFile(key: string) {
+	const token = blobToken();
+	if (!token) return readFile(localPath(key)).catch(() => null);
+	const found = await get(key, { access: 'private', token, useCache: false });
+	if (!found || found.statusCode !== 200) return null;
+	return Buffer.from(await new Response(found.stream).arrayBuffer());
+}
+
+async function deleteFile(key: string) {
+	const token = blobToken();
+	if (!token) {
+		await rm(localPath(key), { force: true });
+		return;
+	}
+	await del(key, { token });
+}
+
+async function legacyFile(name: string) {
+	return readFile(join(dir, name)).catch(() => null);
+}
+
+async function legacyColumn(query: Promise<{ encoded: string | null }[]>) {
+	const [row] = await query;
+	return row?.encoded ? Buffer.from(row.encoded, 'base64') : null;
+}
+
+function taskKey(id: number) {
+	return `tasks/task-${id}.pdf`;
+}
+
+export async function saveTaskPdf(id: number, bytes: Buffer, sql: ClinicSql = client) {
+	await putFile(taskKey(id), bytes);
+	await sql`UPDATE patient_tasks SET file_bytes = NULL WHERE id = ${id} AND file_bytes IS NOT NULL`;
 	return `task-${id}.pdf`;
 }
 
 export async function readTaskPdf(id: number) {
-	return readFile(taskPdfPath(id));
+	const bytes =
+		(await getFile(taskKey(id))) ??
+		(await legacyColumn(client`SELECT encode(file_bytes, 'base64') AS encoded FROM patient_tasks WHERE id = ${id}`)) ??
+		(await legacyFile(`task-${id}.pdf`));
+	if (!bytes) throw new Error('Task file is missing');
+	return bytes;
 }
 
 export async function deleteTaskPdf(id: number) {
-	await rm(taskPdfPath(id), { force: true });
+	await deleteFile(taskKey(id));
+	await client`UPDATE patient_tasks SET file_bytes = NULL WHERE id = ${id} AND file_bytes IS NOT NULL`;
+	await rm(join(dir, `task-${id}.pdf`), { force: true });
 }
 
 export function sniffDocument(bytes: Buffer) {
@@ -33,46 +101,88 @@ export function sniffDocument(bytes: Buffer) {
 	return null;
 }
 
-export function reportFilePath(storedName: string) {
+function reportKey(storedName: string) {
 	if (!/^report-\d+-\d+\.(pdf|jpg|png|gif|webp)$/.test(storedName)) return null;
-	return join(dir, storedName);
+	return `reports/${storedName}`;
 }
 
-export async function saveReportFile(storedName: string, bytes: Buffer) {
-	const path = reportFilePath(storedName);
-	if (!path) throw new Error('Unsupported report file');
-	await mkdir(dir, { recursive: true });
-	await writeFile(path, bytes);
+export async function saveReportFile(storedName: string, bytes: Buffer, sql: ClinicSql = client) {
+	const key = reportKey(storedName);
+	if (!key) throw new Error('Unsupported report file');
+	await putFile(key, bytes);
+	await sql`UPDATE self_report_files SET bytes = NULL WHERE stored_name = ${storedName} AND bytes IS NOT NULL`;
 }
 
 export async function readReportFile(storedName: string) {
-	const path = reportFilePath(storedName);
-	if (!path) throw new Error('Unsupported report file');
-	return readFile(path);
+	const key = reportKey(storedName);
+	if (!key) throw new Error('Unsupported report file');
+	const bytes =
+		(await getFile(key)) ??
+		(await legacyColumn(
+			client`SELECT encode(bytes, 'base64') AS encoded FROM self_report_files WHERE stored_name = ${storedName}`
+		)) ??
+		(await legacyFile(storedName));
+	if (!bytes) throw new Error('Report file is missing');
+	return bytes;
 }
 
-export function prescriptionPhotoPath(storedName: string) {
+export async function deleteReportFile(storedName: string) {
+	const key = reportKey(storedName);
+	if (!key) return;
+	await deleteFile(key);
+	await client`UPDATE self_report_files SET bytes = NULL WHERE stored_name = ${storedName} AND bytes IS NOT NULL`;
+	await rm(join(dir, storedName), { force: true });
+}
+
+function prescriptionPhotoKey(storedName: string) {
 	if (!/^rx-\d+-\d+\.(jpg|png|gif|webp)$/.test(storedName)) return null;
-	return join(dir, storedName);
+	return `prescriptions/${storedName}`;
 }
 
-export async function savePrescriptionPhoto(storedName: string, bytes: Buffer) {
-	const path = prescriptionPhotoPath(storedName);
-	if (!path) throw new Error('Invalid prescription photo name');
-	await mkdir(dir, { recursive: true });
-	await writeFile(path, bytes);
+export async function savePrescriptionPhoto(storedName: string, bytes: Buffer, sql: ClinicSql = client) {
+	const key = prescriptionPhotoKey(storedName);
+	if (!key) throw new Error('Invalid prescription photo name');
+	await putFile(key, bytes);
+	await sql`UPDATE prescription_photos SET bytes = NULL WHERE stored_name = ${storedName} AND bytes IS NOT NULL`;
 }
 
 export async function readPrescriptionPhoto(storedName: string) {
-	const path = prescriptionPhotoPath(storedName);
-	if (!path) return null;
-	return readFile(path);
+	const key = prescriptionPhotoKey(storedName);
+	if (!key) return null;
+	return (
+		(await getFile(key)) ??
+		(await legacyColumn(
+			client`SELECT encode(bytes, 'base64') AS encoded FROM prescription_photos WHERE stored_name = ${storedName}`
+		)) ??
+		(await legacyFile(storedName))
+	);
 }
 
 export async function deletePrescriptionPhoto(storedName: string) {
-	const path = prescriptionPhotoPath(storedName);
-	if (!path) return;
-	await rm(path, { force: true });
+	const key = prescriptionPhotoKey(storedName);
+	if (!key) return;
+	await deleteFile(key);
+	await rm(join(dir, storedName), { force: true });
+}
+
+function vaccineProofKey(id: number) {
+	return `vaccinations/proof-${id}`;
+}
+
+export async function saveVaccineProof(id: number, bytes: Buffer, sql: ClinicSql = client) {
+	await putFile(vaccineProofKey(id), bytes);
+	await sql`UPDATE vaccinations SET proof_bytes = NULL WHERE id = ${id} AND proof_bytes IS NOT NULL`;
+}
+
+export async function readVaccineProof(id: number) {
+	return (
+		(await getFile(vaccineProofKey(id))) ??
+		(await legacyColumn(client`SELECT encode(proof_bytes, 'base64') AS encoded FROM vaccinations WHERE id = ${id}`))
+	);
+}
+
+export async function deleteVaccineProof(id: number) {
+	await deleteFile(vaccineProofKey(id));
 }
 
 export async function acceptImageFile(file: File, emptyError: string) {

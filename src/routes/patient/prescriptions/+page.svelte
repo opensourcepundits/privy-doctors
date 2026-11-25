@@ -42,7 +42,6 @@
 					<p class="text-sm text-[#334155]">{item.strength} {item.form}</p>
 					<DoseMarks {item} />
 					{#if item.sig}<p class="mt-1 text-sm">{item.sig}</p>{/if}
-					{#if item.indication}<p class="text-sm text-[#64748B]">{item.indication}</p>{/if}
 					<p class="mt-1 text-xs text-[#64748B]">{[item.supply_label, item.refills, item.completes_on ? `Completes ${formatDate(item.completes_on)}` : ''].filter(Boolean).join(' · ')}</p>
 				</div>
 			{/each}
