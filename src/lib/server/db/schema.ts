@@ -145,7 +145,6 @@ export const prescriptionItems = pgTable('prescription_items', {
 	route: text('route'),
 	frequency: text('frequency'),
 	sig: text('sig'),
-	indication: text('indication'),
 	quantity: integer('quantity'),
 	supplyLabel: text('supply_label'),
 	refills: text('refills'),
@@ -323,6 +322,7 @@ export const patientTasks = pgTable('patient_tasks', {
 	status: text('status').notNull(),
 	fileName: text('file_name'),
 	storedName: text('stored_name'),
+	fileBytes: bytea('file_bytes'),
 	uploadedAt: timestamp('uploaded_at')
 });
 
@@ -381,7 +381,8 @@ export const selfReportFiles = pgTable('self_report_files', {
 	fileName: text('file_name').notNull(),
 	storedName: text('stored_name').notNull(),
 	contentType: text('content_type').notNull(),
-	createdAt: timestamp('created_at').notNull()
+	createdAt: timestamp('created_at').notNull(),
+	bytes: bytea('bytes')
 });
 
 export const vaccinations = pgTable('vaccinations', {

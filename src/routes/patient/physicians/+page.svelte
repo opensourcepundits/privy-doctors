@@ -28,7 +28,7 @@
 		<p class="span-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{form.message}</p>
 	{/if}
 	{#if data.requests.length}
-		<div class="span-2 grid gap-3">
+		<div class="span-2 grid scroll-mt-16 gap-3" id="requests">
 			<AccessRequests requests={data.requests} preview={data.preview} />
 		</div>
 	{/if}

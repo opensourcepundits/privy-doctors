@@ -471,11 +471,11 @@ async function rx(code, prescriber, specialty, facility, at, status, auth, cours
 	for (const [index, item] of items.entries()) {
 		await sql`
 			INSERT INTO prescription_items (
-				prescription_id, name, strength, form, route, frequency, sig, indication, quantity,
+				prescription_id, name, strength, form, route, frequency, sig, quantity,
 				supply_label, refills, schedule_slot, schedule_detail, remaining_label, due_label, sort_order
 			) VALUES (
 				${row.id}, ${item.name}, ${item.strength}, ${item.form}, ${item.route ?? 'Oral'},
-				${item.frequency}, ${item.sig}, ${item.indication}, ${item.quantity ?? null},
+				${item.frequency}, ${item.sig}, ${item.quantity ?? null},
 				${item.supply}, ${item.refills}, ${item.slot ?? null}, ${item.schedule ?? null},
 				${item.remaining ?? null}, ${item.due ?? null}, ${index}
 			)
@@ -484,18 +484,18 @@ async function rx(code, prescriber, specialty, facility, at, status, auth, cours
 }
 
 await rx('RX-88412', 'Dr. Sarah Jensen, MD', 'Cardiology', 'Cardiology Outpatient Pavilion', '2024-10-24 09:30:00', 'active', 'Oct 2025', 'Ongoing long-term maintenance (authorized thru Oct 2025)', [
-	{ name: 'Apixaban (Eliquis)', strength: '5 mg', form: 'Tablet', frequency: 'Twice daily', sig: 'Take 1 tablet twice daily with or without food.', indication: 'Prevents blood clots and lowers the risk of stroke associated with irregular heart rhythm.', quantity: 60, supply: '30-day supply', refills: '2 refills remaining', slot: 'evening', schedule: 'Morning 8:00 AM and evening 8:00 PM', remaining: '48 capsules left', due: 'Due 8:00 PM' },
-	{ name: 'Metoprolol Succinate ER', strength: '25 mg', form: 'Extended-release tablet', frequency: 'Once daily', sig: 'Take 1 tablet once daily every morning.', indication: 'Helps calm the heart, maintain steady heartbeat rhythm, and reduce episodes of sudden palpitations.', quantity: 90, supply: '90-day supply', refills: '3 refills', slot: 'morning', schedule: 'Once daily with breakfast', remaining: '90 tablets remaining', due: 'Taken 8:00 AM' },
-	{ name: 'Aspirin (Enteric Coated)', strength: '81 mg', form: 'Low-dose tablet', frequency: 'Once daily', sig: 'Take 1 tablet once daily with meals.', indication: 'Protects arteries and maintains smooth blood flow as routine preventive cardiology care.', quantity: 100, supply: 'Over-the-counter Rx order', refills: 'As directed', slot: 'lunch', schedule: 'Once daily with lunch', remaining: '100 tablets', due: 'Taken 12:30 PM' }
+	{ name: 'Apixaban (Eliquis)', strength: '5 mg', form: 'Tablet', frequency: 'Twice daily', sig: 'Take 1 tablet twice daily with or without food.', quantity: 60, supply: '30-day supply', refills: '2 refills remaining', slot: 'evening', schedule: 'Morning 8:00 AM and evening 8:00 PM', remaining: '48 capsules left', due: 'Due 8:00 PM' },
+	{ name: 'Metoprolol Succinate ER', strength: '25 mg', form: 'Extended-release tablet', frequency: 'Once daily', sig: 'Take 1 tablet once daily every morning.', quantity: 90, supply: '90-day supply', refills: '3 refills', slot: 'morning', schedule: 'Once daily with breakfast', remaining: '90 tablets remaining', due: 'Taken 8:00 AM' },
+	{ name: 'Aspirin (Enteric Coated)', strength: '81 mg', form: 'Low-dose tablet', frequency: 'Once daily', sig: 'Take 1 tablet once daily with meals.', quantity: 100, supply: 'Over-the-counter Rx order', refills: 'As directed', slot: 'lunch', schedule: 'Once daily with lunch', remaining: '100 tablets', due: 'Taken 12:30 PM' }
 ]);
 await rx('RX-87904', 'Dr. Emily Watson, MD', 'Primary Care', 'West End Primary Care', '2024-09-28 14:15:00', 'active', 'Dec 2024', '6-month lipid therapy (re-evaluate Dec 2024)', [
-	{ name: 'Atorvastatin Calcium', strength: '20 mg', form: 'Oral tablet', frequency: 'Bedtime', sig: 'Take 1 tablet daily at bedtime.', indication: 'Cholesterol control and LDL plaque stabilization.', quantity: 90, supply: '90-day supply', refills: '2 refills left', slot: 'bedtime', schedule: 'Daily at bedtime' }
+	{ name: 'Atorvastatin Calcium', strength: '20 mg', form: 'Oral tablet', frequency: 'Bedtime', sig: 'Take 1 tablet daily at bedtime.', quantity: 90, supply: '90-day supply', refills: '2 refills left', slot: 'bedtime', schedule: 'Daily at bedtime' }
 ]);
 await rx('RX-86510', 'Dr. Marcus Vance, MD', 'Gastroenterology', 'Digestive Health Specialists', '2024-08-15 11:00:00', 'completed', null, '30-day completed course (ended Sep 14, 2024)', [
-	{ name: 'Pantoprazole Sodium', strength: '40 mg', form: 'Delayed-release tablet', frequency: 'Once daily', sig: 'Took 1 tablet once daily 30 minutes before the first meal.', indication: 'Acid reflux management and protection against medication-related gastritis.', quantity: 30, supply: 'Course finished', refills: '0' }
+	{ name: 'Pantoprazole Sodium', strength: '40 mg', form: 'Delayed-release tablet', frequency: 'Once daily', sig: 'Took 1 tablet once daily 30 minutes before the first meal.', quantity: 30, supply: 'Course finished', refills: '0' }
 ]);
 await rx('RX-82190', 'Dr. Emily Watson, MD', 'Primary Care', 'West End Primary Care', '2024-06-10 16:45:00', 'ceased', null, 'Discontinued when rhythm therapy changed', [
-	{ name: 'Lisinopril', strength: '10 mg', form: 'Tablet', frequency: 'Once daily', sig: 'Previously 1 tablet daily.', indication: 'Blood pressure. Switched toward metoprolol.', quantity: 30, supply: 'Discontinued', refills: '0' }
+	{ name: 'Lisinopril', strength: '10 mg', form: 'Tablet', frequency: 'Once daily', sig: 'Previously 1 tablet daily.', quantity: 30, supply: 'Discontinued', refills: '0' }
 ]);
 
 const prescribers = Object.fromEntries(

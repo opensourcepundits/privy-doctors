@@ -45,8 +45,6 @@ export const actions = {
 		const { consult, doctor } = await context(locals, params.pid, Number(params.id));
 		const data = await request.formData();
 		const title = String(data.get('title') ?? '').trim();
-		const detail = String(data.get('detail') ?? '').trim();
-		const note = String(data.get('note') ?? '').trim();
 		if (!title) return { message: 'Name the medication.' };
 		const completes = completionDate(data.get('completes_on'));
 		if (completes === false) return { message: 'Enter a valid completion date for this medicine.' };
@@ -58,9 +56,9 @@ export const actions = {
 		const frequency = tags.find((label) => (frequencyTags as readonly string[]).includes(label));
 		const meal = tags.find((label) => (mealTags as readonly string[]).includes(label));
 		const tagText = [frequency, meal].filter(Boolean).join(' · ');
-		await addConsultOrder(consult.id, 'medication', title, detail, note, completes, tagText);
-		await recordMedicineUse(doctor.id, doctor.name, title, note);
-		await fileSignedMedication(consult.id, title, detail, note, completes, tagText);
+		await addConsultOrder(consult.id, 'medication', title, '', '', completes, tagText);
+		await recordMedicineUse(doctor.id, doctor.name, title, '');
+		await fileSignedMedication(consult.id, title, completes, tagText);
 		return { saved: true };
 	},
 	completion: async ({ request, params, locals }) => {

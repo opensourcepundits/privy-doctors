@@ -64,8 +64,11 @@ export const actions = {
 		const patient = await patientForUser(locals.user.id);
 		if (!patient) redirect(303, '/login');
 		const data = await request.formData();
-		if (String(data.get('confirm') ?? '') !== 'DELETE') {
-			return fail(400, { shred: true, message: 'Type DELETE to confirm.' });
+		if (data.get('understood') !== 'yes') {
+			return fail(400, { shred: true, message: 'Check “I understand” before deleting the record.' });
+		}
+		if (String(data.get('confirm') ?? '').trim().toLowerCase() !== 'confirm') {
+			return fail(400, { shred: true, message: 'Type confirm to delete the record.' });
 		}
 		await shredPatient(patient.id);
 		redirect(303, `/patient/profile?notice=${encodeURIComponent('Medical record deleted')}`);

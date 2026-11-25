@@ -9,6 +9,7 @@
 		body: string;
 		created_at: Date | string;
 		seen_at: Date | string | null;
+		link?: string | null;
 	};
 
 	let {
@@ -104,8 +105,8 @@
 				<p class="text-xs text-[#64748B]">{unseen ? `${unseen} unseen` : 'All seen'}</p>
 			</div>
 			<div class="max-h-96 overflow-y-auto">
-				{#each rows as note}
-					<article class="border-b border-[#E2E8F0] px-4 py-3 last:border-b-0">
+				{#each rows as note (note.id)}
+					<article class="relative border-b border-[#E2E8F0] px-4 py-3 last:border-b-0 {note.link ? 'hover:bg-brand-wash' : ''}">
 						<div class="flex items-start justify-between gap-3">
 							<p class="font-semibold">{note.title}</p>
 							<span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase {note.seen_at ? 'bg-[#F1F5F9] text-[#64748B]' : 'bg-brand-soft text-brand'}">
@@ -115,6 +116,13 @@
 						<p class="mt-1 text-sm"><Mention text={note.body} /></p>
 						<p class="mt-2 text-xs text-[#64748B]">Received {when(note.created_at)}</p>
 						<p class="text-xs text-[#64748B]">{note.seen_at ? `Seen ${when(note.seen_at)}` : 'Not seen yet'}</p>
+						{#if note.link}
+							<a class="absolute inset-0" href={note.link} onclick={close} aria-label="Open {note.title}"></a>
+							<p class="mt-2 inline-flex items-center gap-0.5 text-xs font-semibold text-brand" aria-hidden="true">
+								Open
+								<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+							</p>
+						{/if}
 					</article>
 				{:else}
 					<p class="px-4 py-6 text-sm text-[#334155]">No notifications yet.</p>

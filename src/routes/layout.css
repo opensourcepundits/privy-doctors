@@ -219,14 +219,16 @@ body {
 .btn-sm:hover { background: var(--color-brand-strong); }
 
 .btn:disabled,
-.btn-sm:disabled {
+.btn-sm:disabled,
+.btn-danger:disabled {
 	background: #cbd5e1;
 	color: #64748b;
 	cursor: not-allowed;
 }
 
 .btn:disabled:hover,
-.btn-sm:disabled:hover {
+.btn-sm:disabled:hover,
+.btn-danger:disabled:hover {
 	background: #cbd5e1;
 }
 

@@ -118,7 +118,6 @@ CREATE TABLE prescription_items (
   route text,
   frequency text,
   sig text,
-  indication text,
   quantity int,
   supply_label text,
   refills text,
@@ -278,6 +277,7 @@ CREATE TABLE patient_tasks (
   status text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'received')),
   file_name text,
   stored_name text,
+  file_bytes bytea,
   uploaded_at timestamp
 );
 
@@ -428,8 +428,13 @@ CREATE TABLE IF NOT EXISTS self_report_files (
   file_name text NOT NULL,
   stored_name text NOT NULL,
   content_type text NOT NULL,
-  created_at timestamp NOT NULL
+  created_at timestamp NOT NULL,
+  bytes bytea
 );
+
+ALTER TABLE patient_tasks ADD COLUMN IF NOT EXISTS file_bytes bytea;
+ALTER TABLE self_report_files ADD COLUMN IF NOT EXISTS bytes bytea;
+ALTER TABLE prescription_items DROP COLUMN IF EXISTS indication;
 
 CREATE TABLE IF NOT EXISTS prescription_photos (
   id serial PRIMARY KEY,

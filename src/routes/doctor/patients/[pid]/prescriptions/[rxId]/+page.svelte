@@ -39,7 +39,6 @@
 			<p class="text-sm text-[#64748B]">{item.form} · {item.frequency}</p>
 			<DoseMarks {item} />
 			<p class="mt-2 text-sm">{item.sig}</p>
-			<p class="mt-2 text-sm">{item.indication}</p>
 			<p class="mt-2 text-xs text-[#64748B]">Dispense {item.quantity ?? '—'} · {item.supply_label} · {item.refills}</p>
 			{#if item.completes_on}<p class="mt-1 text-xs text-[#64748B]">Completes {formatDate(item.completes_on)}</p>{/if}
 		</article>

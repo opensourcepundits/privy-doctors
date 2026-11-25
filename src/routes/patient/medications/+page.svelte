@@ -33,8 +33,7 @@
 			<h2 class="font-semibold">{med.name}</h2>
 			<p class="text-sm">{med.strength} {med.form}</p>
 			<DoseMarks item={med} />
-			<p class="mt-2 text-sm">{med.indication}</p>
-			<p class="text-sm text-[#64748B]">{med.schedule_detail}</p>
+			<p class="mt-2 text-sm text-[#64748B]">{med.schedule_detail}</p>
 			<p class="text-xs text-[#64748B]">{med.remaining_label} · {med.refills}</p>
 			{#if med.prescription_completes}<p class="text-xs text-[#64748B]">Prescription completes {formatDate(med.prescription_completes)}</p>{/if}
 			{#if med.completes_on}<p class="text-xs text-[#64748B]">This medicine completes {formatDate(med.completes_on)}</p>{/if}
@@ -53,7 +52,6 @@
 		<article class="card">
 			<p class="font-semibold">{med.name} {med.strength}</p>
 			<p class="text-sm capitalize">{med.status} · <Mention text={med.prescriber} /></p>
-			<p class="text-sm text-[#64748B]">{med.indication}</p>
 		</article>
 	{/each}
 </section>

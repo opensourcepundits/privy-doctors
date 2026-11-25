@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { ageLabel, formatDate, formatTime, initials, liveProcedureYear } from '#lib/format';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import type { PageProps } from './$types';
@@ -10,6 +11,20 @@
 	let draft = $state('');
 	let review = $state<{ field: string; value: string } | null>(null);
 	let localMessage = $state('');
+	let shredDialog = $state<HTMLDialogElement | null>(null);
+	let understood = $state(false);
+	let typed = $state('');
+	const shredReady = $derived(understood && typed.trim().toLowerCase() === 'confirm');
+
+	function openShred() {
+		resetShred();
+		shredDialog?.showModal();
+	}
+
+	function resetShred() {
+		understood = false;
+		typed = '';
+	}
 
 	const raw = $derived({
 		first_name: patient.first_name,
@@ -270,15 +285,62 @@
 	{:else if !data.preview}
 		<article class="card span-2">
 			<p class="kicker">Delete medical record</p>
-			<p class="mt-2">This deletes the key that opens the chart. Clinical notes and files stay stored but cannot be read again. Appointments, invoices, and this login remain.</p>
-			<form class="mt-4 space-y-3" method="POST" action="?/shred">
+			<p class="mt-2">Permanently lock your chart so no one, including you, can read it again. Appointments, invoices, and this login remain.</p>
+			<button class="btn-danger mt-4" type="button" onclick={openShred}>Delete medical record</button>
+		</article>
+
+		<dialog
+			class="m-auto max-h-[calc(100dvh-2rem)] w-[min(30rem,calc(100vw-2rem))] rounded-2xl bg-white p-0 text-[#0F172A] shadow-xl backdrop:bg-[#0F172A]/50"
+			aria-labelledby="shred-title"
+			bind:this={shredDialog}
+			onclose={resetShred}
+		>
+			<form
+				class="space-y-4 p-5 text-sm"
+				method="POST"
+				action="?/shred"
+				use:enhance={() => {
+					return async ({ update }) => {
+						await update({ reset: false });
+					};
+				}}
+			>
+				<div class="flex items-start gap-3">
+					<span class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600">
+						<span class="material-symbols-outlined">warning</span>
+					</span>
+					<div>
+						<h2 id="shred-title" class="display text-lg font-bold">Delete your medical record?</h2>
+						<p class="mt-1 text-[#64748B]">This deletes the encryption key that unlocks your chart.</p>
+					</div>
+				</div>
+				<div>
+					<p class="font-semibold">What happens</p>
+					<ul class="mt-1 list-disc space-y-1 pl-5">
+						<li>Clinical notes, prescriptions, results, vaccinations, certificates, and uploaded files can no longer be opened by you or by any clinician.</li>
+						<li>Your chart shows as a deleted record, and clinicians cannot add anything new to it.</li>
+						<li>Your login, appointments, and invoices remain.</li>
+					</ul>
+				</div>
+				<p class="rounded-xl bg-red-50 px-3 py-2 font-semibold text-red-700">This cannot be undone. The clinic cannot recover the record.</p>
 				{#if form && 'shred' in form && form.shred}
 					<p class="text-sm text-red-600">{form.message}</p>
 				{/if}
-				<label class="block text-[#64748B]" for="shred-confirm">Type DELETE to confirm</label>
-				<input id="shred-confirm" class="field" name="confirm" autocomplete="off" />
-				<button class="btn" type="submit">Delete medical record</button>
+				<label class="flex items-center gap-2 font-semibold">
+					<input type="checkbox" name="understood" value="yes" bind:checked={understood} onchange={() => (typed = '')} />
+					I understand
+				</label>
+				{#if understood}
+					<label class="block" for="shred-confirm">
+						Type <span class="font-mono font-semibold">confirm</span> to proceed
+						<input id="shred-confirm" class="field mt-1" name="confirm" autocomplete="off" spellcheck="false" bind:value={typed} />
+					</label>
+				{/if}
+				<div class="grid grid-cols-2 gap-2">
+					<button class="btn-line" type="button" onclick={() => shredDialog?.close()}>Cancel</button>
+					<button class="btn-danger" type="submit" disabled={!shredReady}>Delete medical record</button>
+				</div>
 			</form>
-		</article>
+		</dialog>
 	{/if}
 </section>

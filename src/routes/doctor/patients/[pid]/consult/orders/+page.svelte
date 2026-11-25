@@ -1,15 +1,28 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type SubmitFunction } from '$app/forms';
 	import ConsultTimer from '#lib/components/ConsultTimer.svelte';
 	import PrescriptionPhotoField from '#lib/components/PrescriptionPhotoField.svelte';
 	import DoseMarks from '#lib/components/DoseMarks.svelte';
 	import Mention from '#lib/components/Mention.svelte';
 	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
 	import { formatDate, isoDate, money, restDays } from '#lib/format';
+	import { priorities, priorityClass, priorityOf } from '#lib/priority';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 	let open = $state<'medication' | 'referral' | 'test' | 'give' | 'order' | null>(null);
+	let sentFrom = $state('');
+
+	function saving(key: string, after?: () => void): SubmitFunction {
+		return () => {
+			sentFrom = key;
+			return async ({ result, update }) => {
+				const failed = result.type === 'failure' || result.type === 'error' || (result.type === 'success' && Boolean(result.data?.message));
+				if (!failed) after?.();
+				await update({ reset: !failed });
+			};
+		};
+	}
 	let proofName = $state('');
 	let certOpen = $state(false);
 	let certReason = $state('');
@@ -21,8 +34,8 @@
 	let specialist = $state('');
 	let picked = $state<number | null>(null);
 	let medQuery = $state('');
-	let medNote = $state('');
 	let medList = $state(false);
+	let testPriority = $state<string>('Routine');
 
 	function timesFor(med: { doctors: Record<string, { times: number }> }) {
 		return med.doctors[String(data.doctor.id)]?.times ?? 0;
@@ -39,7 +52,6 @@
 
 	function chooseMedicine(med: (typeof data.medicines)[number]) {
 		medQuery = med.name;
-		if (!medNote.trim() && med.description) medNote = med.description;
 		medList = false;
 	}
 
@@ -180,24 +192,18 @@
 				In session
 			</p>
 			<h1 class="display text-base font-bold lg:text-xl">Orders and disposition</h1>
+			<p class="text-xs text-[#64748B]">{data.patient.first_name} {data.patient.last_name} · {data.patient.pid}</p>
 		</div>
 	</div>
 	<ConsultTimer startedAt={data.consult.started_at} />
 </header>
 
-<section class="space-y-4 px-4 py-4 lg:px-0">
-	<article class="card">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<div class="flex items-center gap-2">
-				<h2 class="display text-base font-bold">{data.patient.first_name} {data.patient.last_name}</h2>
-				<span class="rounded-md bg-brand-tint px-2 py-0.5 text-[11px] font-semibold text-[#334155]">{data.patient.pid}</span>
-			</div>
-			<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Active encounter</span>
-		</div>
-		<p class="mt-1 text-xs text-[#64748B]">{data.consult.code} · Orders and disposition plan</p>
-	</article>
+{#snippet problem(key: string)}
+	{#if form?.message && sentFrom === key}<p class="text-sm text-red-600">{form.message}</p>{/if}
+{/snippet}
 
-	{#if form?.message}<p class="text-sm text-red-600">{form.message}</p>{/if}
+<section class="space-y-4 px-4 py-4 lg:px-0">
+	{@render problem('')}
 
 	<section class="space-y-2">
 		<div class="flex items-center justify-between gap-2">
@@ -214,7 +220,6 @@
 					open = open === 'medication' ? null : 'medication';
 					if (open === 'medication') {
 						medQuery = '';
-						medNote = '';
 						frequency = '';
 						meal = '';
 						medList = false;
@@ -230,15 +235,13 @@
 				<div class="flex items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 					<div class="min-w-0">
 						<p class="text-sm font-bold">{order.title}</p>
-						{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
-						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 						{#if order.tags}
 							{@const marks = tagsFrom(order.tags)}
 							<div class="mt-1"><DoseMarks item={{ name: order.title, frequency: marks.frequency, schedule_detail: marks.meal }} /></div>
 						{/if}
 						{#if order.completes_on}<p class="text-[11px] text-[#64748B]">Completes {formatDate(order.completes_on)}</p>{/if}
 					</div>
-					<form method="POST" action="?/remove">
+					<form method="POST" action="?/remove" use:enhance={saving('')}>
 						<input type="hidden" name="id" value={order.id} />
 						<button class="grid h-8 w-8 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600" type="submit" aria-label="Remove medication">
 							<span class="material-symbols-outlined text-[18px]">delete_outline</span>
@@ -253,18 +256,15 @@
 					class="space-y-3 rounded-xl border border-dashed border-[#CBD5E1] p-3"
 					method="POST"
 					action="?/medication"
-					use:enhance={() => {
-						return async ({ update }) => {
-							frequency = '';
-							meal = '';
-							medQuery = '';
-							medNote = '';
-							medList = false;
-							open = null;
-							await update();
-						};
-					}}
+					use:enhance={saving('medication', () => {
+						frequency = '';
+						meal = '';
+						medQuery = '';
+						medList = false;
+						open = null;
+					})}
 				>
+					{@render problem('medication')}
 					<div class="relative">
 						<input
 							class="field"
@@ -306,8 +306,6 @@
 							</ul>
 						{/if}
 					</div>
-					<input class="field" name="detail" placeholder="Dose and supply" />
-					<input class="field" name="note" placeholder="Indication" bind:value={medNote} />
 					<fieldset>
 						<legend class="text-sm font-semibold">How often</legend>
 						<div class="mt-1 grid gap-1 sm:grid-cols-2">
@@ -359,7 +357,7 @@
 							<img class="max-h-48 rounded-lg border border-[#E2E8F0] bg-white object-contain" src="/files/prescriptions/{photo.id}" alt={photo.file_name} />
 							<span class="mt-1 block text-xs text-[#64748B]">{photo.file_name}</span>
 						</a>
-						<form method="POST" action="?/removePhoto">
+						<form method="POST" action="?/removePhoto" use:enhance={saving('')}>
 							<input type="hidden" name="id" value={photo.id} />
 							<button class="grid h-8 w-8 place-items-center rounded-lg text-[#64748B] hover:bg-red-50 hover:text-red-600" type="submit" aria-label="Remove prescription photo">
 								<span class="material-symbols-outlined text-[18px]">delete_outline</span>
@@ -367,7 +365,7 @@
 						</form>
 					</div>
 				{/each}
-				<PrescriptionPhotoField />
+				<PrescriptionPhotoField onsend={() => (sentFrom = 'photo')} />
 			</div>
 			<label class="block text-sm font-semibold" for="rx-complete">
 				Prescription completion date
@@ -406,7 +404,7 @@
 							<h3 class="text-sm font-bold"><Mention text={order.title} /></h3>
 							{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
 						</div>
-						<form method="POST" action="?/remove">
+						<form method="POST" action="?/remove" use:enhance={saving('')}>
 							<input type="hidden" name="id" value={order.id} />
 							<button class="btn-sm-line" type="submit">Remove</button>
 						</form>
@@ -419,7 +417,17 @@
 				<p class="text-sm text-[#64748B]">No referrals yet.</p>
 			{/each}
 			{#if open === 'referral'}
-				<form class="card space-y-2" method="POST" action="?/referral">
+				<form
+					class="card space-y-2"
+					method="POST"
+					action="?/referral"
+					use:enhance={saving('referral', () => {
+						specialist = '';
+						picked = null;
+						open = null;
+					})}
+				>
+					{@render problem('referral')}
 					<label class="block text-sm font-semibold" for="specialist-search">
 						Specialist
 						<input
@@ -491,15 +499,18 @@
 						<div class="min-w-0">
 							<p class="text-sm font-bold">{order.title}</p>
 							{#if order.uid}<p class="text-[11px] text-[#64748B]">Order {order.uid}{#if data.consult.uid} · Consultation {data.consult.uid}{/if}</p>{/if}
-							{#if order.detail}<p class="text-[11px] text-brand">{order.detail}</p>{/if}
-							{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
+							{#if priorityOf(order.detail)}
+								<span class="mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] font-semibold {priorityClass(order.detail)}">{priorityOf(order.detail)}</span>
+							{:else if order.detail}
+								<p class="text-[11px] text-brand">{order.detail}</p>
+							{/if}
 							{#if task?.stored_name}
 								<a class="btn-sm mt-1" href="/files/tasks/{task.id}">Result PDF received</a>
 							{:else if task}
 								<p class="text-[11px] text-[#64748B]">On the patient checklist</p>
 							{/if}
 						</div>
-						<form method="POST" action="?/remove">
+						<form method="POST" action="?/remove" use:enhance={saving('')}>
 							<input type="hidden" name="id" value={order.id} />
 							<button class="grid h-7 w-7 place-items-center rounded-lg text-[#64748B] hover:text-red-600" type="submit" aria-label="Remove test">
 								<span class="material-symbols-outlined text-base">close</span>
@@ -510,10 +521,25 @@
 					<p class="text-sm text-[#64748B]">No diagnostics ordered yet.</p>
 				{/each}
 				{#if open === 'test'}
-					<form class="space-y-2" method="POST" action="?/test">
+					<form
+						class="space-y-2"
+						method="POST"
+						action="?/test"
+						use:enhance={saving('test', () => {
+							testPriority = 'Routine';
+							open = null;
+						})}
+					>
+						{@render problem('test')}
 						<input class="field" name="title" placeholder="Test" required />
-						<input class="field" name="detail" placeholder="Priority" />
-						<input class="field" name="note" placeholder="Clinical question" />
+						<label class="block text-sm font-semibold" for="test-priority">
+							Priority
+							<select class="mt-1 h-11 w-full rounded-lg border px-3 font-semibold outline-none focus:ring-2 focus:ring-current/30 {priorityClass(testPriority)}" id="test-priority" name="detail" bind:value={testPriority}>
+								{#each priorities as priority (priority)}
+									<option class={priorityClass(priority)} value={priority}>{priority}</option>
+								{/each}
+							</select>
+						</label>
 						<button class="btn" type="submit">Save diagnostic</button>
 					</form>
 				{/if}
@@ -555,7 +581,6 @@
 				<div class="flex items-start justify-between gap-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-2.5">
 					<div class="min-w-0">
 						<p class="text-sm font-bold">{order.title}</p>
-						{#if order.detail}<p class="text-[11px] text-[#64748B]">{order.detail}</p>{/if}
 						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 						{#if task && task.status !== 'received'}
 							<p class="text-[11px] text-[#64748B]">On the patient to-do list</p>
@@ -568,7 +593,7 @@
 							</a>
 						{/if}
 					</div>
-					<form method="POST" action="?/remove">
+					<form method="POST" action="?/remove" use:enhance={saving('')}>
 						<input type="hidden" name="id" value={order.id} />
 						<button class="grid h-7 w-7 place-items-center rounded-lg text-[#64748B] hover:text-red-600" type="submit" aria-label="Remove vaccination">
 							<span class="material-symbols-outlined text-base">close</span>
@@ -579,7 +604,17 @@
 				<p class="text-sm text-[#64748B]">No vaccinations given or ordered yet.</p>
 			{/each}
 			{#if open === 'give'}
-				<form class="space-y-2" method="POST" action="?/give" enctype="multipart/form-data">
+				<form
+					class="space-y-2"
+					method="POST"
+					action="?/give"
+					enctype="multipart/form-data"
+					use:enhance={saving('give', () => {
+						proofName = '';
+						open = null;
+					})}
+				>
+					{@render problem('give')}
 					<input class="field" name="name" placeholder="Vaccination" required maxlength="120" />
 					<label class="block text-sm font-semibold" for="vax-given">
 						Date given
@@ -608,9 +643,9 @@
 				</form>
 			{/if}
 			{#if open === 'order'}
-				<form class="space-y-2" method="POST" action="?/orderVaccine">
+				<form class="space-y-2" method="POST" action="?/orderVaccine" use:enhance={saving('order', () => (open = null))}>
+					{@render problem('order')}
 					<input class="field" name="name" placeholder="Vaccination" required maxlength="120" />
-					<input class="field" name="detail" placeholder="Where to get it, or any timing" maxlength="160" />
 					<input class="field" name="note" placeholder="Note for the patient" maxlength="500" />
 					<button class="btn" type="submit">Add to patient to-do list</button>
 				</form>
@@ -702,14 +737,25 @@
 				<p class="mt-1 text-[11px] text-[#64748B]">It is filed on the chart when you finalize this consultation.</p>
 				<div class="mt-2 flex gap-2">
 					<button class="btn-sm" type="button" onclick={() => (certOpen = true)}>Edit</button>
-					<form method="POST" action="?/removeCertificate" onsubmit={(event) => { if (!confirm('Remove this medical certificate from the consultation?')) event.preventDefault(); }}>
+					<form
+						method="POST"
+						action="?/removeCertificate"
+						use:enhance={(input) => {
+							if (!confirm('Remove this medical certificate from the consultation?')) {
+								input.cancel();
+								return;
+							}
+							return saving('')(input);
+						}}
+					>
 						<button class="btn-sm-line" type="submit">Remove</button>
 					</form>
 				</div>
 			</div>
 		{/if}
 		{#if certOpen}
-			<form class="space-y-3" method="POST" action="?/certificate">
+			<form class="space-y-3" method="POST" action="?/certificate" use:enhance={saving('certificate', () => (certOpen = false))}>
+				{@render problem('certificate')}
 				<label class="block text-sm font-semibold" for="cert-reason">
 					Reason <span class="text-red-600" aria-hidden="true">*</span>
 					<textarea class="field mt-1" id="cert-reason" name="reason" rows="3" required maxlength="500" bind:value={certReason} placeholder="Unfit for work because of an acute illness"></textarea>
@@ -741,7 +787,8 @@
 			<span class="text-[#64748B]">Ready for final sign-off</span>
 			<span class="font-bold text-emerald-700">{ready} of 3 categories started</span>
 		</div>
-		<form id="finalize" method="POST" action="?/finalize">
+		<form id="finalize" method="POST" action="?/finalize" use:enhance={saving('finalize')}>
+			{@render problem('finalize')}
 			<button class="btn btn-block" type="submit">
 				<span class="material-symbols-outlined text-[19px]">lock</span>
 				Authorize orders and finalize consultation
