@@ -10,13 +10,15 @@
 		pid,
 		portal = 'doctor',
 		backHref = '',
-		backLabel = 'Chart'
+		backLabel = 'Chart',
+		reportHref = ''
 	}: {
 		record: VisitRecord;
 		pid: string;
 		portal?: 'doctor' | 'patient';
 		backHref?: string;
 		backLabel?: string;
+		reportHref?: string;
 	} = $props();
 	const back = $derived(backHref || `/doctor/patients/${pid}`);
 
@@ -52,6 +54,12 @@
 	{/if}
 	{#if record.modality}
 		<p class="mt-1 text-sm">{modes[record.modality] ?? record.modality}</p>
+	{/if}
+	{#if reportHref}
+		<a class="btn mt-4" href={reportHref}>
+			<span class="material-symbols-outlined text-lg">download</span>
+			Generate report
+		</a>
 	{/if}
 	{#if portal === 'doctor' && record.continueHref}
 		<a class="btn mt-4" href={record.continueHref}>Continue consultation</a>

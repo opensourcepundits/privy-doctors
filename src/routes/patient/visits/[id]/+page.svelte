@@ -5,4 +5,11 @@
 	let { data }: PageProps = $props();
 </script>
 
-<VisitRecord record={data.record} pid={data.patient.pid} portal="patient" backHref="/patient/history?view=consultations" backLabel="History" />
+<VisitRecord
+	record={data.record}
+	pid={data.patient.pid}
+	portal="patient"
+	backHref="/patient/history?view=consultations"
+	backLabel="History"
+	reportHref="/patient/visits/{data.encounterId}/report"
+/>

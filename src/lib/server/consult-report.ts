@@ -9,6 +9,7 @@ import {
 	type PatientRow,
 	type VisitRecord
 } from '#lib/server/clinic';
+import { presentChart } from './chart-crypto';
 import { client } from './db';
 import type { ConsultationReport, ReportItem, ReportLine, ReportPrescription } from '#lib/server/consult-pdf';
 
@@ -278,6 +279,81 @@ async function billFor(patientId: number, consultId: number | null) {
 		total: due ?? lines.reduce((sum, line) => sum + line.amount, 0),
 		lines
 	};
+}
+
+export async function loadPatientVisitReport(patientId: number, encounterId: number): Promise<ConsultationReport | null> {
+	await migrateChartCodes();
+	if (!Number.isInteger(encounterId) || encounterId <= 0) return null;
+	const [owned] = await client<{ id: number; pid: string; consultation_id: number | null }[]>`
+		SELECT e.id, p.pid, e.consultation_id
+		FROM encounters e
+		JOIN patients p ON p.id = e.patient_id
+		WHERE e.id = ${encounterId} AND e.patient_id = ${patientId}
+	`;
+	if (!owned) return null;
+	const [patient, record] = await Promise.all([
+		patientByPid(owned.pid),
+		visitByEncounter(patientId, encounterId, 0, owned.pid)
+	]);
+	if (!patient || !record) return null;
+	let clinician: Clinician = {
+		id: 0,
+		name: record.doctor,
+		credentials: '',
+		specialty: record.role,
+		npi: null,
+		practice: record.practice,
+		location: record.location,
+		phone: null
+	};
+	let pharmacy = '';
+	let completesOn: Date | string | null = null;
+	if (owned.consultation_id) {
+		const [stored] = await client<
+			{
+				doctor_id: number;
+				name: string;
+				credentials: string | null;
+				specialty: string | null;
+				npi: string | null;
+				practice: string | null;
+				location: string | null;
+				phone: string | null;
+				pharmacy: string | null;
+				completes_on: Date | string | null;
+			}[]
+		>`
+			SELECT d.id AS doctor_id, d.name, d.credentials, d.specialty, d.npi, d.practice, d.location, d.phone,
+				c.pharmacy, c.completes_on
+			FROM consultations c
+			JOIN doctors d ON d.id = c.doctor_id
+			WHERE c.id = ${owned.consultation_id} AND c.patient_id = ${patientId}
+		`;
+		if (stored) {
+			const consult = await presentChart(patientId, stored);
+			clinician = {
+				id: consult.doctor_id,
+				name: consult.name,
+				credentials: consult.credentials ?? '',
+				specialty: consult.specialty ?? '',
+				npi: consult.npi,
+				practice: consult.practice ?? '',
+				location: consult.location ?? '',
+				phone: consult.phone
+			};
+			pharmacy = consult.pharmacy ?? '';
+			completesOn = consult.completes_on;
+		}
+	}
+	const report = reportFrom(patient, clinician, record, {
+		pharmacy,
+		completesOn,
+		filename: fileName(patient, record.code, owned.id),
+		timed: Boolean(owned.consultation_id)
+	});
+	report.photos = await photosOf(record);
+	report.bill = await billFor(patientId, owned.consultation_id);
+	return report;
 }
 
 export async function loadConsultationReport(clinician: Clinician, kind: string, rawId: string): Promise<ConsultationReport | null> {

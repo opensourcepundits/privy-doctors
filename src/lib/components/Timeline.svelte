@@ -51,7 +51,19 @@
 					{#if event.href && event.image}
 						<a class="btn-sm pointer-events-auto relative z-10 mt-2" href={event.href}>{event.link}</a>
 					{:else if event.href && event.link}
-						<span class="btn-sm mt-2">{event.link}</span>
+						<div class="mt-2 flex items-center gap-2">
+							<span class="btn-sm">{event.link}</span>
+							{#if event.download}
+								<a
+									class="pointer-events-auto relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#E2E8F0] bg-white text-brand hover:bg-brand-soft"
+									href={event.download}
+									aria-label="Download report"
+									title="Download report"
+								>
+									<span class="material-symbols-outlined text-[18px]">download</span>
+								</a>
+							{/if}
+						</div>
 					{/if}
 				</div>
 			</li>

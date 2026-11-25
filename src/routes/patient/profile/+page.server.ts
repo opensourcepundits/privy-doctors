@@ -1,11 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
 import QRCode from 'qrcode';
+import { formatDate } from '#lib/format';
 import {
 	accountEmail,
 	actingPatient,
 	activeAccessCode,
 	createAccessCode,
 	doctorById,
+	encountersFor,
 	ensureRecordToken,
 	patientForUser,
 	recordPayload,
@@ -13,7 +15,7 @@ import {
 	updatePatientField
 } from '#lib/server/clinic';
 
-export function load({ parent }: { parent: () => Promise<{ patient: { id: number; primary_doctor_id: number | null; user_id: number | null }; preview: boolean }> }) {
+export function load({ parent }: { parent: () => Promise<{ patient: { id: number; primary_doctor_id: number | null; user_id: number | null; shredded?: boolean }; preview: boolean }> }) {
 	return {
 		pass: parent().then(async ({ patient, preview }) => {
 			const [clinician, email] = await Promise.all([
@@ -33,6 +35,19 @@ export function load({ parent }: { parent: () => Promise<{ patient: { id: number
 				qr: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
 				code: preview ? null : await activeAccessCode(patient.id)
 			};
+		}),
+		consultations: parent().then(async ({ patient }) => {
+			if (patient.shredded) return [];
+			const rows = await encountersFor(patient.id);
+			return rows.map((row: Record<string, unknown>) => {
+				const focus = typeof row.focus === 'string' && row.focus.trim() ? row.focus.trim() : 'Consultation';
+				const doctor = typeof row.doctor_name === 'string' ? row.doctor_name.trim() : '';
+				const when = row.occurred_on instanceof Date || typeof row.occurred_on === 'string' ? formatDate(row.occurred_on) : '';
+				return {
+					id: Number(row.id),
+					label: [when, focus, doctor].filter(Boolean).join(' · ')
+				};
+			});
 		})
 	};
 }
