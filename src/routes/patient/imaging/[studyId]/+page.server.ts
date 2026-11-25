@@ -18,3 +18,4 @@ export const actions = {
 		if (!removed) return fail(400, { message: 'That scan is not one you can remove.' });
 		redirect(303, '/patient/history?view=images&notice=Scan%20removed');
 	}
+};
