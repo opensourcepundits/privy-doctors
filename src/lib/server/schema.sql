@@ -27,6 +27,7 @@ CREATE TABLE patients (
   record_token text UNIQUE,
   first_name text NOT NULL,
   last_name text NOT NULL,
+  other_names text,
   dob date,
   sex text NOT NULL,
   blood_type text,
@@ -517,6 +518,7 @@ CREATE TABLE IF NOT EXISTS colleague_invites (
 CREATE INDEX IF NOT EXISTS colleague_invites_doctor_id_idx ON colleague_invites (doctor_id);
 CREATE UNIQUE INDEX IF NOT EXISTS colleague_invites_open_doctor_idx ON colleague_invites (doctor_id) WHERE claimed_at IS NULL;
 
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS other_names text;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS nic_bidx text;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS passport_bidx text;
 ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_nic_key;

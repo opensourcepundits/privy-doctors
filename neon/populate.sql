@@ -34,6 +34,7 @@ CREATE TABLE patients (
   record_token text UNIQUE,
   first_name text NOT NULL,
   last_name text NOT NULL,
+  other_names text,
   dob date,
   sex text NOT NULL,
   blood_type text,

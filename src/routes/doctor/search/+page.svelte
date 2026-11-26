@@ -69,6 +69,11 @@
 				<input class="field mt-1" id="last-name" name="last_name" required autocomplete="off" value={form?.lastName ?? ''} />
 			</label>
 		</div>
+		<label class="block text-sm font-semibold" for="other-names">
+			Other names
+			<input class="field mt-1" id="other-names" name="other_names" maxlength="120" autocomplete="off" value={form?.otherNames ?? ''} />
+			<p class="mt-1 text-xs font-normal text-[#64748B]">Maiden name, nickname, or any other name. Optional.</p>
+		</label>
 		<div class="grid gap-3 sm:grid-cols-2">
 			<label class="block text-sm font-semibold" for="dob">
 				Date of birth
@@ -121,7 +126,7 @@
 		{@const roster = patients.filter((patient) => {
 			const needle = query.trim().toLowerCase();
 			if (!needle) return true;
-			const haystack = [patient.first_name, patient.last_name, patient.pid, patient.nic, patient.passport]
+			const haystack = [patient.first_name, patient.last_name, patient.other_names, patient.pid, patient.nic, patient.passport]
 				.filter(Boolean)
 				.join(' ')
 				.toLowerCase();

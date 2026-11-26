@@ -44,6 +44,7 @@ export type PatientRow = {
 	record_token: string | null;
 	first_name: string;
 	last_name: string;
+	other_names: string | null;
 	dob: Date | string | null;
 	shredded?: boolean;
 	sex: string;
@@ -110,6 +111,7 @@ export async function accountEmail(userId: number | null) {
 const patientFields = new Set([
 	'first_name',
 	'last_name',
+	'other_names',
 	'dob',
 	'sex',
 	'blood_type',
@@ -152,6 +154,13 @@ export async function updatePatientField(patientId: number, field: string, raw: 
 				else await sql`UPDATE patients SET last_name = ${await sealText(patientId, 'last_name', value)} WHERE id = ${patientId}`;
 				if (patient.user_id) await sql`UPDATE users SET name = 'Patient' WHERE id = ${patient.user_id} AND role = 'patient'`;
 			});
+			return { ok: true as const };
+		}
+
+		if (field === 'other_names') {
+			if (value.length > 120) return { error: 'Keep other names to 120 characters.' };
+			if ((value || null) === (patient.other_names ?? null)) return { error: 'That is already on file.' };
+			await client`UPDATE patients SET other_names = ${await sealText(patientId, 'other_names', value || null)} WHERE id = ${patientId}`;
 			return { ok: true as const };
 		}
 
@@ -852,6 +861,7 @@ export async function createWalkInPatient(
 	input: {
 		firstName: string;
 		lastName: string;
+		otherNames: string;
 		dob: string;
 		sex: string;
 		phone: string;
@@ -890,6 +900,7 @@ export async function createWalkInPatient(
 			const nextPassport = open?.passport || passport;
 			const nextPhone = open?.phone || input.phone;
 			const nextDob = open?.dob || input.dob;
+			const nextOtherNames = open?.other_names || input.otherNames;
 			await sql`
 				UPDATE patients
 				SET nic = ${await sealText(primary.id, 'nic', nextNic || null)},
@@ -897,7 +908,8 @@ export async function createWalkInPatient(
 					passport = ${await sealText(primary.id, 'passport', nextPassport || null)},
 					passport_bidx = ${identityIndex(nextPassport)},
 					phone = ${await sealText(primary.id, 'phone', nextPhone || null)},
-					dob = ${await sealText(primary.id, 'dob', nextDob ? String(nextDob).slice(0, 10) : null)}
+					dob = ${await sealText(primary.id, 'dob', nextDob ? String(nextDob).slice(0, 10) : null)},
+					other_names = ${await sealText(primary.id, 'other_names', nextOtherNames || null)}
 				WHERE id = ${primary.id}
 			`;
 		});
@@ -913,7 +925,7 @@ export async function createWalkInPatient(
 	const created = await client.begin(async (sql) => {
 		const [row] = await sql<{ id: number }[]>`
 			INSERT INTO patients (
-				primary_doctor_id, pid, record_token, first_name, last_name, dob, sex, phone, nic, passport, concierge_note, invite_token
+				primary_doctor_id, pid, record_token, first_name, last_name, other_names, dob, sex, phone, nic, passport, concierge_note, invite_token
 			)
 			VALUES (
 				${doctorId},
@@ -925,6 +937,7 @@ export async function createWalkInPatient(
 				${recordToken},
 				${input.firstName},
 				${input.lastName},
+				${input.otherNames || null},
 				${input.dob || null},
 				${input.sex},
 				${input.phone || null},
@@ -939,6 +952,7 @@ export async function createWalkInPatient(
 			UPDATE patients
 			SET first_name = ${await sealText(row.id, 'first_name', input.firstName)},
 				last_name = ${await sealText(row.id, 'last_name', input.lastName)},
+				other_names = ${await sealText(row.id, 'other_names', input.otherNames || null)},
 				dob = ${await sealText(row.id, 'dob', input.dob || null)},
 				sex = ${await sealText(row.id, 'sex', input.sex)},
 				phone = ${await sealText(row.id, 'phone', input.phone || null)},
@@ -970,6 +984,7 @@ export async function registerPatient(input: {
 	passwordHash: string;
 	firstName: string;
 	lastName: string;
+	otherNames: string;
 	sex: string;
 	dob: string;
 	phone: string;
@@ -985,7 +1000,7 @@ export async function registerPatient(input: {
 			`;
 			const [patient] = await sql<{ id: number }[]>`
 				INSERT INTO patients (
-					user_id, pid, record_token, first_name, last_name, dob, sex, phone, concierge_note
+					user_id, pid, record_token, first_name, last_name, other_names, dob, sex, phone, concierge_note
 				)
 				VALUES (
 					${user.id},
@@ -997,6 +1012,7 @@ export async function registerPatient(input: {
 					${recordToken},
 					${input.firstName},
 					${input.lastName},
+					${input.otherNames || null},
 					${input.dob || null},
 					${input.sex},
 					${input.phone || null},
@@ -1008,6 +1024,7 @@ export async function registerPatient(input: {
 				UPDATE patients
 				SET first_name = ${await sealText(patient.id, 'first_name', input.firstName)},
 					last_name = ${await sealText(patient.id, 'last_name', input.lastName)},
+					other_names = ${await sealText(patient.id, 'other_names', input.otherNames || null)},
 					dob = ${await sealText(patient.id, 'dob', input.dob || null)},
 					sex = ${await sealText(patient.id, 'sex', input.sex)},
 					phone = ${await sealText(patient.id, 'phone', input.phone || null)},
@@ -1315,7 +1332,7 @@ export async function claimColleagueInvite(
 }
 
 function patientHaystack(patient: PatientRow) {
-	return [patient.first_name, patient.last_name, `${patient.first_name} ${patient.last_name}`, patient.pid, patient.nic, patient.passport]
+	return [patient.first_name, patient.last_name, patient.other_names, `${patient.first_name} ${patient.last_name}`, patient.pid, patient.nic, patient.passport]
 		.filter(Boolean)
 		.join('\n')
 		.toLowerCase();

@@ -30,6 +30,7 @@
 	const raw = $derived({
 		first_name: patient.first_name,
 		last_name: patient.last_name,
+		other_names: patient.other_names ?? '',
 		dob: patient.dob ? String(patient.dob).slice(0, 10) : '',
 		sex: patient.sex,
 		blood_type: patient.blood_type ?? '',
@@ -266,6 +267,7 @@
 		<p class="kicker">Identity</p>
 		{@render editor('first_name', 'First name', 'text')}
 		{@render editor('last_name', 'Last name', 'text')}
+		{@render editor('other_names', 'Other names', 'text')}
 		{@render editor('dob', 'Date of birth', 'date')}
 		{@render editor('sex', 'Sex', 'sex')}
 		{@render editor('blood_type', 'Blood type', 'text')}
