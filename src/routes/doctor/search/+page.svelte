@@ -6,8 +6,8 @@
 
 	let { data, form }: PageProps = $props();
 	let opened = $state(false);
-	let query = $state('');
 	const showNew = $derived(opened || Boolean(form?.offerNew));
+	const searched = $derived(data.q.trim().length > 0);
 
 	function identity(patient: { access: string; nic: string | null; passport: string | null }) {
 		if (patient.access !== 'granted') return 'Record locked';
@@ -25,7 +25,7 @@
 		<h1 class="display text-2xl font-bold lg:text-3xl">{data.intent === 'consult' ? 'Start a consultation' : 'Find a patient'}</h1>
 		<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
 			{#if data.intent === 'consult'}
-				Patients you already care for can be opened now. Everyone else stays locked until they allow access, or until you scan their QR code or enter an access code.
+				Patients who already share their record can be opened now. Search by name, NIC, passport, or PID to find anyone else. A locked record stays hidden until that search.
 			{:else}
 				Search finds a name and record number. The chart stays locked until the patient allows access, or you scan their QR code or enter an access code.
 			{/if}
@@ -112,29 +112,27 @@
 {/if}
 
 {#if data.intent === 'consult'}
-	<label class="relative mx-4 mt-4 block lg:mx-0 lg:max-w-xl">
-		<span class="material-symbols-outlined field-icon text-[#64748B]" aria-hidden="true">search</span>
-		<input class="field field-search" bind:value={query} autocomplete="off" placeholder="Search by name, NIC, or passport" />
-	</label>
+	<form class="px-4 pt-4 lg:max-w-xl lg:px-0" method="GET">
+		<input type="hidden" name="intent" value="consult" />
+		<label class="relative block">
+			<span class="material-symbols-outlined field-icon text-[#64748B]" aria-hidden="true">search</span>
+			<input class="field field-search" name="q" value={data.q} autocomplete="off" placeholder="Search by name, NIC, passport, or PID" />
+			<button class="absolute top-1/2 right-1.5 h-8 -translate-y-1/2 rounded-lg bg-brand px-3.5 text-xs font-semibold text-white" type="submit">Find</button>
+		</label>
+	</form>
 	{#if form?.message && !form?.offerNew}
 		<p class="mx-4 mt-3 text-sm text-red-600 lg:mx-0">{form.message}</p>
 	{/if}
-	<p class="mx-4 mt-3 text-sm text-[#64748B] lg:mx-0">Patients you can open</p>
+	<p class="mx-4 mt-3 text-sm text-[#64748B] lg:mx-0">{searched ? 'Matching patients' : 'Patients you can open'}</p>
+	{#if !searched}
+		<p class="mx-4 text-xs text-[#64748B] lg:mx-0">Patients you can ask for access appear only after you search their name, NIC, passport, or PID.</p>
+	{/if}
 	{#await data.patients}
 		<div class="px-4 py-4 lg:px-0"><Skeleton count={4} /></div>
 	{:then patients}
-		{@const roster = patients.filter((patient) => {
-			const needle = query.trim().toLowerCase();
-			if (!needle) return true;
-			const haystack = [patient.first_name, patient.last_name, patient.other_names, patient.pid, patient.nic, patient.passport]
-				.filter(Boolean)
-				.join(' ')
-				.toLowerCase();
-			return haystack.includes(needle) || `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(needle);
-		})}
-		<p class="mx-4 text-sm text-[#64748B] lg:mx-0">{roster.length} {roster.length === 1 ? 'patient' : 'patients'}</p>
+		<p class="mx-4 text-sm text-[#64748B] lg:mx-0">{patients.length} {patients.length === 1 ? 'patient' : 'patients'}</p>
 		<section class="cards-2 px-4 py-4 lg:px-0">
-		{#each roster as patient}
+		{#each patients as patient}
 			<form class="card lg:flex lg:items-center lg:justify-between lg:gap-6" method="POST" action="?intent=consult&/start">
 				<input type="hidden" name="pid" value={patient.pid} />
 				<div class="flex min-w-0 items-center gap-3">
@@ -163,7 +161,7 @@
 			{/if}
 			</form>
 		{:else}
-			<p class="text-sm text-[#64748B]">No registered patient matches that search.</p>
+			<p class="text-sm text-[#64748B]">{searched ? 'No patient matches that search.' : 'No patients have shared their record with you yet.'}</p>
 		{/each}
 	</section>
 	{:catch}

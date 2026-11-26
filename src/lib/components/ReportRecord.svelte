@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { formatDate, formatTime } from '#lib/format';
 	import { reportChangeLines, type ReportEdit } from '#lib/history';
+	import { reportKindLabel } from '#lib/report-form';
 
 	let {
 		report,
@@ -15,6 +16,8 @@
 			ongoing: boolean;
 			severity: string | null;
 			meds_taken: string | null;
+			kind?: string | null;
+			location?: string | null;
 			detail: string | null;
 			files: { id: number; file_name: string; content_type: string }[];
 			alerted: string[];
@@ -34,13 +37,15 @@
 	<a class="inline-flex items-center gap-1 text-sm font-semibold text-brand" href={backHref}>
 		<span class="material-symbols-outlined text-base">arrow_back</span> {backLabel}
 	</a>
-	<p class="kicker mt-3">Self report · Filed {formatDate(report.created_at)} · {formatTime(report.created_at)}</p>
+	<p class="kicker mt-3">{reportKindLabel(report.kind) ? `Self report · ${reportKindLabel(report.kind)}` : 'Self report'} · Filed {formatDate(report.created_at)} · {formatTime(report.created_at)}</p>
 	<h1 class="display text-2xl font-bold">{report.title}</h1>
 </header>
 
 <section class="space-y-3 px-4 py-4 lg:px-0">
 	<article class="card space-y-2 text-sm">
+		<p><span class="text-[#64748B]">What you reported</span><br />{reportKindLabel(report.kind) || '—'}</p>
 		<p><span class="text-[#64748B]">When it happened</span><br />{formatDate(report.occurred_on)}</p>
+		<p><span class="text-[#64748B]">Where it happened</span><br />{report.location || '—'}</p>
 		<p><span class="text-[#64748B]">How long it lasted</span><br />{report.duration || '—'}</p>
 		<p><span class="text-[#64748B]">Still going on</span><br />{report.ongoing ? 'Yes' : 'No'}</p>
 		<p><span class="text-[#64748B]">How strong it felt</span><br />{strength}</p>

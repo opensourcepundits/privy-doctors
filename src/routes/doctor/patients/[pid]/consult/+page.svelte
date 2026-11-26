@@ -11,6 +11,18 @@
 	let kind = $state('Vital Sign');
 	let narrative = $state('');
 	let loadedId = 0;
+	let modalityToast = $state('');
+	let toastTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function chooseModality(value: 'in_person' | 'telehealth') {
+		if (modality === value) return;
+		modality = value;
+		modalityToast = value === 'telehealth' ? 'Telehealth selected' : 'In person consultation selected';
+		clearTimeout(toastTimer);
+		toastTimer = setTimeout(() => {
+			modalityToast = '';
+		}, 2200);
+	}
 
 	$effect.pre(() => {
 		if (loadedId === data.consult.id) return;
@@ -76,15 +88,24 @@
 				{#if data.referral.note}<span class="text-[#64748B]"> {data.referral.note}</span>{/if}
 			</p>
 		{/if}
-		<div class="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-[#F1F5F9] p-1 text-center text-xs">
+		<div class="mt-3 grid grid-cols-2 gap-2 text-center text-sm">
 			{#each modes as [value, label, icon]}
-				<label class="flex cursor-pointer items-center justify-center gap-1 rounded-lg px-1 py-2 text-[11px] sm:text-xs {modality === value ? 'border border-[#E2E8F0] bg-white font-semibold text-brand shadow-sm' : 'text-[#64748B]'}">
-					<input class="sr-only" type="radio" name="modality" value={value} form="continue" checked={modality === value} onchange={() => (modality = value)} />
-					<span class="material-symbols-outlined text-[15px]">{icon}</span>
+				<label
+					class="flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border px-2 py-3 font-semibold {modality === value
+						? value === 'telehealth'
+							? 'border-indigo-700 bg-indigo-600 text-white shadow-sm'
+							: 'border-teal-700 bg-teal-600 text-white shadow-sm'
+						: 'border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]'}"
+				>
+					<input class="sr-only" type="radio" name="modality" value={value} form="continue" checked={modality === value} onchange={() => chooseModality(value)} />
+					<span class="material-symbols-outlined text-[18px]">{icon}</span>
 					{label}
 				</label>
 			{/each}
 		</div>
+		{#if modalityToast}
+			<p class="mt-2 rounded-full bg-[#0F172A] px-3 py-1 text-center text-sm text-white" role="status">{modalityToast}</p>
+		{/if}
 	</article>
 
 	<div class="grid items-start gap-4 lg:grid-cols-2">

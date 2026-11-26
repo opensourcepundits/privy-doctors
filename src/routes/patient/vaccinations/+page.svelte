@@ -5,6 +5,7 @@
 
 	let { data, form }: PageProps = $props();
 	let proofName = $state('');
+	let adding = $state(Boolean(form?.message));
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
@@ -21,12 +22,30 @@
 {#await data.card}
 	<div class="px-4 py-4 lg:px-0"><Skeleton count={3} /></div>
 {:then card}
+	<div class="mx-4 mt-4 flex items-center justify-between gap-3 rounded-2xl border border-[#E2E8F0] bg-white px-4 py-3 lg:mx-0 lg:max-w-xl">
+		<div>
+			<p class="text-sm font-semibold">{adding ? 'Add a vaccination' : 'Vaccinations done'}</p>
+			<p class="text-xs text-[#64748B]">{adding ? 'Second screen. Record a dose you received elsewhere.' : `${card.vaccinations.length} on this card`}</p>
+		</div>
+		<button
+			class="relative h-7 w-12 shrink-0 rounded-full transition {adding ? 'bg-brand' : 'bg-[#CBD5E1]'}"
+			type="button"
+			role="switch"
+			aria-checked={adding}
+			aria-label={adding ? 'Show vaccinations done' : 'Add a vaccination'}
+			onclick={() => (adding = !adding)}
+		>
+			<span class="absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all {adding ? 'left-5' : 'left-0.5'}"></span>
+		</button>
+	</div>
+
+	{#if !adding}
 	<section class="space-y-3 px-4 py-4 lg:px-0">
-		<p class="text-sm font-semibold">{card.vaccinations.length} recorded</p>
+		<p class="text-sm font-semibold">All vaccinations done</p>
 		<VaxxList shots={card.vaccinations} />
 	</section>
-
-	<section class="mx-4 max-w-xl pb-8 lg:mx-0">
+	{:else}
+	<section class="mx-4 max-w-xl py-4 lg:mx-0">
 		{#if card.preview}
 			<article class="card text-sm">A vaccination is added when the patient is signed in.</article>
 		{:else}
@@ -83,6 +102,7 @@
 			</form>
 		{/if}
 	</section>
+	{/if}
 {:catch}
 	<p class="px-4 py-4 text-sm text-[#64748B] lg:px-0">The vaccination card could not be loaded.</p>
 {/await}

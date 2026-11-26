@@ -1951,6 +1951,8 @@ export async function selfReportsFor(patientId: number) {
 			ongoing: boolean;
 			created_at: Date | string;
 			added_by_patient_id: number | null;
+			kind: string | null;
+			location: string | null;
 		}[]
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
@@ -1997,8 +1999,10 @@ export async function selfReportById(patientId: number, id: number) {
 export async function addSelfReport(
 	patientId: number,
 		input: {
+		kind?: string;
 		title: string;
 		occurredOn: string;
+		location?: string;
 		detail: string;
 		duration: string;
 		severity: string;
@@ -2009,14 +2013,16 @@ export async function addSelfReport(
 ) {
 	const [row] = await client<{ id: number }[]>`
 		INSERT INTO self_reports (
-			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at, added_by_patient_id
+			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at, added_by_patient_id, kind, location
 		) VALUES (
 			${patientId}, ${input.occurredOn}, ${await sealText(patientId, 'title', input.title)},
 			${await sealText(patientId, 'detail', input.detail || null)},
 			${await sealText(patientId, 'duration', input.duration || null)},
 			${await sealText(patientId, 'severity', input.severity || null)},
 			${await sealText(patientId, 'meds_taken', input.meds || null)},
-			${input.ongoing}, ${nowLocal().stamp}, ${input.addedBy ?? null}
+			${input.ongoing}, ${nowLocal().stamp}, ${input.addedBy ?? null},
+			${await sealText(patientId, 'kind', input.kind || null)},
+			${await sealText(patientId, 'location', input.location || null)}
 		)
 		RETURNING id
 	`;
@@ -2051,12 +2057,13 @@ export async function reportAlerted(reportId: number, doctorId: number) {
 	return Boolean(row);
 }
 
-export async function alertClinicians() {
+export async function alertClinicians(patientId: number) {
 	return client<{ id: number; name: string; credentials: string; specialty: string }[]>`
-		SELECT id, name, credentials, specialty
-		FROM doctors
-		WHERE user_id IS NOT NULL
-		ORDER BY name
+		SELECT d.id, d.name, d.credentials, d.specialty
+		FROM doctors d
+		JOIN patient_access a ON a.doctor_id = d.id AND a.patient_id = ${patientId}
+		WHERE a.status = 'granted' AND d.user_id IS NOT NULL
+		ORDER BY d.name
 	`;
 }
 
@@ -2069,7 +2076,11 @@ export async function alertReportDoctors(
 	const ids = [...new Set(doctorIds.filter((id) => Number.isInteger(id) && id > 0))];
 	if (!ids.length) return [] as string[];
 	const doctors = await client<{ id: number; name: string; user_id: number | null }[]>`
-		SELECT id, name, user_id FROM doctors WHERE id = ANY(${ids}) AND user_id IS NOT NULL
+		SELECT d.id, d.name, d.user_id
+		FROM doctors d
+		JOIN patient_access a ON a.doctor_id = d.id AND a.status = 'granted'
+		JOIN self_reports r ON r.patient_id = a.patient_id AND r.id = ${reportId}
+		WHERE d.id = ANY(${ids}) AND d.user_id IS NOT NULL
 	`;
 	const names: string[] = [];
 	for (const doctor of doctors) {
@@ -2094,8 +2105,10 @@ export async function updateSelfReport(
 	patientId: number,
 	id: number,
 	input: {
+		kind: string;
 		title: string;
 		occurredOn: string;
+		location: string;
 		detail: string;
 		duration: string;
 		severity: string;
@@ -2106,8 +2119,10 @@ export async function updateSelfReport(
 	const current = await selfReportById(patientId, id);
 	if (!current) return { error: 'That self report is not on this record.' };
 	const before = {
+		kind: current.kind ?? '',
 		title: current.title,
 		occurred_on: isoDate(current.occurred_on),
+		location: current.location ?? '',
 		detail: current.detail ?? '',
 		duration: current.duration ?? '',
 		severity: current.severity ?? '',
@@ -2115,8 +2130,10 @@ export async function updateSelfReport(
 		ongoing: current.ongoing ? 'true' : 'false'
 	};
 	const after = {
+		kind: input.kind,
 		title: input.title,
 		occurred_on: input.occurredOn,
+		location: input.location,
 		detail: input.detail,
 		duration: input.duration,
 		severity: input.severity,
@@ -2135,7 +2152,9 @@ export async function updateSelfReport(
 			duration = ${await sealText(patientId, 'duration', input.duration || null)},
 			severity = ${await sealText(patientId, 'severity', input.severity || null)},
 			meds_taken = ${await sealText(patientId, 'meds_taken', input.meds || null)},
-			ongoing = ${input.ongoing}
+			ongoing = ${input.ongoing},
+			kind = ${await sealText(patientId, 'kind', input.kind || null)},
+			location = ${await sealText(patientId, 'location', input.location || null)}
 		WHERE id = ${id} AND patient_id = ${patientId}
 	`;
 	await client`
@@ -4233,7 +4252,7 @@ export async function finalizeConsult(
 			INSERT INTO care_orders (patient_id, consultation_uid, order_uid, kind, title, ordered_by, status, schedule_label, instructions)
 			VALUES (
 				${consult.patient_id}, ${consult.uid}, ${order.uid}, 'diagnostic',
-				${await sealText(consult.patient_id, 'title', order.title)}, ${doctor.name}, ${priorityOf(order.detail) ?? 'Routine'},
+				${await sealText(consult.patient_id, 'title', order.title)}, ${doctor.name}, ${priorityOf(order.detail) ?? 'Low'},
 				${'Ordered ' + formatDate(date)},
 				NULL
 			)
