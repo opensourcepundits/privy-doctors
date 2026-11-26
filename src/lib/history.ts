@@ -1,4 +1,5 @@
 import { formatDate, formatTime, isoDate, liveProcedureYear, toLive } from '#lib/format';
+import { reportKindLabel } from '#lib/report-form';
 
 export type TimelineEvent = {
 	at: number;
@@ -44,6 +45,8 @@ type Report = {
 	title: string;
 	detail: string | null;
 	meds_taken: string | null;
+	kind?: string | null;
+	location?: string | null;
 	edits?: ReportEdit[];
 	files?: { id: number; file_name: string; content_type: string }[];
 	alerted?: string[];
@@ -51,8 +54,10 @@ type Report = {
 };
 
 const reportFields: Record<string, string> = {
+	kind: 'What you reported',
 	title: 'Title',
 	occurred_on: 'When it happened',
+	location: 'Where it happened',
 	duration: 'How long it lasted',
 	severity: 'How strong it felt',
 	meds_taken: 'Medicines taken',
@@ -61,6 +66,7 @@ const reportFields: Record<string, string> = {
 };
 
 function reportValue(field: string, value: string) {
+	if (field === 'kind') return reportKindLabel(value) || 'empty';
 	if (field === 'ongoing') return value === 'true' ? 'Yes' : 'No';
 	if (field === 'severity') return value === 'mild' ? 'Mild' : value === 'moderate' ? 'Moderate' : value === 'severe' ? 'Severe' : 'Not sure';
 	if (field === 'occurred_on' && value) return formatDate(value);
@@ -192,10 +198,10 @@ export function historyEvents(
 			items.push({
 				...when,
 				at: when.at + report.id,
-				kind: 'Self report',
+				kind: reportKindLabel(report.kind) ? `Self report · ${reportKindLabel(report.kind)}` : 'Self report',
 				tone: 'bg-rose-600',
 				title: report.title,
-				meta: [strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
+				meta: [report.location, strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
 				body: report.detail ?? '',
 				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : '', report.added_by ? `Added by ${report.added_by}` : ''].filter(Boolean).join(' '),
 				href: links.report ? links.report(report.id) : '',

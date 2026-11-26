@@ -5,8 +5,9 @@ import { sealPatientFile } from '#lib/server/chart-crypto';
 import { addReportFile, addSelfReport, alertClinicians, alertReportDoctors, patientForUser } from '#lib/server/clinic';
 import { saveReportFile, sniffDocument } from '#lib/server/uploads';
 
-export async function load() {
-	return { today: isoDate(new Date()), clinicians: await alertClinicians() };
+export async function load({ parent }: { parent: () => Promise<{ patient: { id: number } }> }) {
+	const { patient } = await parent();
+	return { today: isoDate(new Date()), clinicians: await alertClinicians(patient.id) };
 }
 
 export const actions = {

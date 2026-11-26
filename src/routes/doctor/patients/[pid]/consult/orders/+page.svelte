@@ -6,7 +6,7 @@
 	import Mention from '#lib/components/Mention.svelte';
 	import { frequencyTags, mealTags, tagsFrom } from '#lib/doses';
 	import { formatDate, isoDate, money, restDays } from '#lib/format';
-	import { priorities, priorityClass, priorityOf } from '#lib/priority';
+	import { priorities, priorityClass, priorityOf, prioritySwatch } from '#lib/priority';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -35,7 +35,8 @@
 	let picked = $state<number | null>(null);
 	let medQuery = $state('');
 	let medList = $state(false);
-	let testPriority = $state<string>('Routine');
+	let testPriority = $state<string>('Low');
+	let priorityOpen = $state(false);
 
 	function timesFor(med: { doctors: Record<string, { times: number }> }) {
 		return med.doctors[String(data.doctor.id)]?.times ?? 0;
@@ -531,20 +532,52 @@
 						method="POST"
 						action="?/test"
 						use:enhance={saving('test', () => {
-							testPriority = 'Routine';
+							testPriority = 'Low';
+							priorityOpen = false;
 							open = null;
 						})}
 					>
 						{@render problem('test')}
 						<input class="field" name="title" placeholder="Test" required />
-						<label class="block text-sm font-semibold" for="test-priority">
-							Priority
-							<select class="mt-1 h-11 w-full rounded-lg border px-3 font-semibold outline-none focus:ring-2 focus:ring-current/30 {priorityClass(testPriority)}" id="test-priority" name="detail" bind:value={testPriority}>
-								{#each priorities as priority (priority)}
-									<option class={priorityClass(priority)} value={priority}>{priority}</option>
-								{/each}
-							</select>
-						</label>
+						<div class="relative">
+							<p class="text-sm font-semibold" id="test-priority-label">Priority</p>
+							<button
+								class="mt-1 flex h-11 w-full items-center justify-between rounded-lg border px-3 font-semibold {priorityClass(testPriority)}"
+								type="button"
+								aria-haspopup="listbox"
+								aria-labelledby="test-priority-label"
+								aria-expanded={priorityOpen}
+								onclick={() => (priorityOpen = !priorityOpen)}
+							>
+								<span class="flex items-center gap-2">
+									<span class="h-2.5 w-2.5 rounded-full {prioritySwatch(testPriority)}"></span>
+									{testPriority}
+								</span>
+								<span class="material-symbols-outlined text-base">expand_more</span>
+							</button>
+							{#if priorityOpen}
+								<ul class="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-lg" role="listbox">
+									{#each priorities as priority (priority)}
+										<li>
+											<button
+												class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold {priorityClass(priority)}"
+												type="button"
+												role="option"
+												aria-selected={testPriority === priority}
+												onclick={() => {
+													testPriority = priority;
+													priorityOpen = false;
+												}}
+											>
+												<span class="h-2.5 w-2.5 rounded-full {prioritySwatch(priority)}"></span>
+												{priority}
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+							<input type="hidden" name="detail" value={testPriority} />
+						</div>
 						<button class="btn" type="submit">Save diagnostic</button>
 					</form>
 				{/if}
@@ -553,32 +586,35 @@
 	</div>
 
 	<section class="space-y-2">
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<h2 class="display flex items-center gap-2 text-sm font-bold">
-				<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
-					<span class="material-symbols-outlined text-[18px]">vaccines</span>
-				</span>
-				Vaccinations
-			</h2>
-			<div class="flex flex-wrap gap-2">
-				<button
-					class="inline-flex h-8 items-center gap-1 rounded-lg bg-brand px-2.5 text-xs font-semibold text-white"
-					type="button"
-					onclick={() => {
-						proofName = '';
-						open = open === 'give' ? null : 'give';
-					}}
-				>
-					<span class="material-symbols-outlined text-base">vaccines</span>
-					Give vaccination
-				</button>
-				<button class="inline-flex h-8 items-center gap-1 rounded-lg border border-[#E2E8F0] bg-white px-2.5 text-xs font-semibold" type="button" onclick={() => (open = open === 'order' ? null : 'order')}>
-					<span class="material-symbols-outlined text-base">add</span>
-					Order vaccination
-				</button>
-			</div>
+		<h2 class="display flex items-center gap-2 text-sm font-bold">
+			<span class="grid h-7 w-7 place-items-center rounded-lg border border-brand-tint bg-brand-soft text-brand">
+				<span class="material-symbols-outlined text-[18px]">vaccines</span>
+			</span>
+			Vaccinations
+		</h2>
+		<div class="grid gap-2 sm:grid-cols-2">
+			<button
+				class="rounded-2xl border p-3 text-left {open === 'give' ? 'border-emerald-700 bg-emerald-600 text-white' : 'border-emerald-200 bg-emerald-50 text-emerald-950'}"
+				type="button"
+				onclick={() => {
+					proofName = '';
+					open = open === 'give' ? null : 'give';
+				}}
+			>
+				<span class="material-symbols-outlined text-[22px]">vaccines</span>
+				<span class="mt-1 block text-sm font-bold">Record a dose given now</span>
+				<span class="mt-1 block text-xs {open === 'give' ? 'text-emerald-50' : 'text-emerald-800'}">The patient received it during this visit. It is written on the vaccination card today.</span>
+			</button>
+			<button
+				class="rounded-2xl border p-3 text-left {open === 'order' ? 'border-amber-700 bg-amber-500 text-amber-950' : 'border-amber-200 bg-amber-50 text-amber-950'}"
+				type="button"
+				onclick={() => (open = open === 'order' ? null : 'order')}
+			>
+				<span class="material-symbols-outlined text-[22px]">assignment</span>
+				<span class="mt-1 block text-sm font-bold">Order a dose for later</span>
+				<span class="mt-1 block text-xs {open === 'order' ? 'text-amber-900' : 'text-amber-800'}">The patient still needs this vaccination. It goes on their to-do list until they record it.</span>
+			</button>
 		</div>
-		<p class="text-xs text-[#64748B]">Giving one records it on the patient’s vaccination card now. Ordering one adds it to their to-do list. A photo of the record is optional when it is given.</p>
 		<div class="card space-y-2">
 			{#each vaccines as order}
 				{@const task = data.consult.tasks.find((item) => item.order_id === order.id)}
@@ -588,9 +624,9 @@
 						<p class="text-sm font-bold">{order.title}</p>
 						{#if order.note}<p class="text-[11px] text-[#64748B]">{order.note}</p>{/if}
 						{#if task && task.status !== 'received'}
-							<p class="text-[11px] text-[#64748B]">On the patient to-do list</p>
+							<p class="mt-1 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Ordered for later</p>
 						{:else}
-							<p class="text-[11px] text-emerald-700">Recorded on the vaccination card</p>
+							<p class="mt-1 inline-block rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Dose given in this visit</p>
 						{/if}
 						{#if shot?.proof_name}
 							<a class="mt-2 block overflow-hidden rounded-lg border border-[#E2E8F0]" href="/files/vaccinations/{shot.id}" target="_blank" rel="noreferrer">
@@ -644,15 +680,15 @@
 						/>
 						{#if proofName}<p class="mt-1 text-xs text-[#64748B]">{proofName}</p>{/if}
 					</div>
-					<button class="btn" type="submit">Record vaccination</button>
+					<button class="btn" type="submit">Save dose on the vaccination card</button>
 				</form>
 			{/if}
 			{#if open === 'order'}
 				<form class="space-y-2" method="POST" action="?/orderVaccine" use:enhance={saving('order', () => (open = null))}>
 					{@render problem('order')}
 					<input class="field" name="name" placeholder="Vaccination" required maxlength="120" />
-					<input class="field" name="note" placeholder="Note for the patient" maxlength="500" />
-					<button class="btn" type="submit">Add to patient to-do list</button>
+					<input class="field" name="note" placeholder="What the patient should know" maxlength="500" />
+					<button class="btn" type="submit">Put on the patient to-do list</button>
 				</form>
 			{/if}
 		</div>

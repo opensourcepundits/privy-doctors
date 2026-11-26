@@ -372,7 +372,9 @@ CREATE TABLE self_reports (
   severity text,
   meds_taken text,
   ongoing boolean NOT NULL DEFAULT false,
-  created_at timestamp NOT NULL
+  created_at timestamp NOT NULL,
+  kind text,
+  location text
 );
 
 CREATE TABLE self_report_edits (
@@ -539,6 +541,17 @@ CREATE TABLE IF NOT EXISTS chart_crypto_state (
 );
 
 ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id);
+ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS kind text;
+ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS location text;
+
+UPDATE care_orders
+SET status = CASE status
+	WHEN 'Routine' THEN 'Low'
+	WHEN 'Urgent' THEN 'Medium'
+	WHEN 'STAT' THEN 'High'
+	ELSE status
+END
+WHERE kind = 'diagnostic' AND status IN ('Routine', 'Urgent', 'STAT');
 ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id);
 ALTER TABLE imaging_studies ADD COLUMN IF NOT EXISTS added_file_type text;
 

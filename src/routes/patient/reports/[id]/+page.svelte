@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ReportRecord from '#lib/components/ReportRecord.svelte';
+	import { reportKinds } from '#lib/report-form';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -7,6 +8,7 @@
 	const severityLabel = { mild: 'Mild', moderate: 'Moderate', severe: 'Severe' } as const;
 	const severity = $derived(form?.severity ?? report.severity ?? '');
 	const ongoing = $derived(form?.ongoing ?? report.ongoing);
+	let kind = $state(form?.kind ?? report.kind ?? '');
 </script>
 
 <ReportRecord report={report} backHref="/patient/history?view=reports" backLabel="History" />
@@ -29,6 +31,17 @@
 			{#if form?.message}
 				<p class="text-sm text-red-600">{form.message}</p>
 			{/if}
+			<label class="block text-sm font-semibold" for="kind">
+				What you are reporting
+				<select class="field mt-1" id="kind" name="kind" required bind:value={kind}>
+					{#if !kind}
+						<option value="">Choose</option>
+					{/if}
+					{#each reportKinds as [value, label]}
+						<option {value}>{label}</option>
+					{/each}
+				</select>
+			</label>
 			<label class="block text-sm font-semibold" for="title">
 				Title
 				<input class="field mt-1" id="title" name="title" required maxlength="120" autocomplete="off" value={form?.title ?? report.title} />
@@ -36,6 +49,10 @@
 			<label class="block text-sm font-semibold" for="occurred-on">
 				When it happened
 				<input class="field mt-1" id="occurred-on" name="occurred_on" type="date" required max={data.today} value={form?.occurredOn ?? data.occurredOn} />
+			</label>
+			<label class="block text-sm font-semibold" for="location">
+				Where it happened
+				<input class="field mt-1" id="location" name="location" maxlength="160" autocomplete="off" value={form?.location ?? report.location ?? ''} placeholder={kind === 'scan' ? 'Clinic or hospital where the scan was done' : 'Home, clinic, or another place'} />
 			</label>
 			<label class="block text-sm font-semibold" for="duration">
 				How long it lasted

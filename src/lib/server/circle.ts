@@ -212,8 +212,10 @@ export async function addTrusteeTreatment(actorId: number, pid: string, input: {
 	const detail = input.detail.trim();
 	if (detail.length > 1000) return { error: 'Keep the note to 1000 characters.' as const };
 	await addSelfReport(access.ownerId, {
+		kind: 'treatment',
 		title,
 		occurredOn,
+		location: '',
 		detail,
 		duration: '',
 		severity: '',

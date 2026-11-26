@@ -42,8 +42,24 @@ async function roster(locals: App.Locals, q: string, intent: string | null) {
 	if (!locals.user) return [];
 	const doctor = await doctorForUser(locals.user.id);
 	if (!doctor) return [];
-	const rows = await searchPatients(doctor.id, intent === 'consult' ? '' : q);
-	return rows.map(forDoctor);
+	const needle = q.trim().toLowerCase();
+	const rows = await searchPatients(doctor.id, intent === 'consult' && needle.length < 2 ? '' : q.trim());
+	if (intent !== 'consult') return rows.map(forDoctor);
+	const genericPid = /^(p|pi|pid|pid-)$/.test(needle);
+	return rows
+		.filter((row) => {
+			if (row.access === 'granted') {
+				if (!needle) return true;
+				return [row.first_name, row.last_name, row.other_names, row.pid, row.nic, row.passport]
+					.filter(Boolean)
+					.join(' ')
+					.toLowerCase()
+					.includes(needle);
+			}
+			if (!needle || needle.length < 2 || genericPid) return false;
+			return true;
+		})
+		.map(forDoctor);
 }
 
 async function openOrAsk(doctorId: number, pid: string) {

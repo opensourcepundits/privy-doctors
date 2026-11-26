@@ -376,7 +376,9 @@ export const selfReports = pgTable('self_reports', {
 	medsTaken: text('meds_taken'),
 	ongoing: boolean('ongoing').notNull(),
 	createdAt: timestamp('created_at').notNull(),
-	addedByPatientId: integer('added_by_patient_id')
+	addedByPatientId: integer('added_by_patient_id'),
+	kind: text('kind'),
+	location: text('location')
 });
 
 export const selfReportFiles = pgTable('self_report_files', {
