@@ -4,18 +4,53 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let view = $state<'shared' | 'granted'>('shared');
+	let moved = $state(false);
 	const switches = [
 		['view_chart', 'View chart'],
 		['accept_access', 'Accept doctor requests'],
 		['add_records', 'Add treatments and scans']
 	] as const;
 
+	function show(next: 'shared' | 'granted') {
+		if (next === view) return;
+		moved = true;
+		view = next;
+	}
+
 	function powersOn(person: { view_chart: boolean; accept_access: boolean; add_records: boolean }) {
 		return switches.filter(([power]) => person[power]).map(([, label]) => label);
 	}
 </script>
 
-<header class="px-4 pt-6 lg:px-0">
+<div class="sticky top-14 z-20 bg-canvas/95 px-4 pt-3 pb-2 backdrop-blur lg:hidden">
+	<div class="relative grid grid-cols-2 rounded-full bg-[#E2E8F0] p-1" role="tablist" aria-label="Circle lists">
+		<span
+			class="circle-pill absolute top-1 bottom-1 left-1 w-[calc(50%-0.25rem)] rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none {view === 'granted' ? 'translate-x-full' : ''}"
+			aria-hidden="true"
+		></span>
+		<button
+			class="relative z-10 rounded-full px-2 py-2 text-sm font-semibold {view === 'shared' ? 'text-brand' : 'text-[#64748B]'}"
+			type="button"
+			role="tab"
+			aria-selected={view === 'shared'}
+			onclick={() => show('shared')}
+		>
+			I have access
+		</button>
+		<button
+			class="relative z-10 rounded-full px-2 py-2 text-sm font-semibold {view === 'granted' ? 'text-brand' : 'text-[#64748B]'}"
+			type="button"
+			role="tab"
+			aria-selected={view === 'granted'}
+			onclick={() => show('granted')}
+		>
+			I granted access
+		</button>
+	</div>
+</div>
+
+<header class="px-4 pt-4 lg:px-0 lg:pt-6">
 	<a class="text-sm font-semibold text-brand" href="/patient/profile">Profile</a>
 	<h1 class="display mt-2 text-2xl font-bold lg:text-3xl">My circle</h1>
 	<p class="mt-1 max-w-2xl text-sm text-[#64748B]">
@@ -28,7 +63,7 @@
 		<p class="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 lg:col-span-2">{form.message}</p>
 	{/if}
 
-	<section class="space-y-3">
+	<section class="space-y-3 {view === 'shared' ? (moved ? 'circle-swap' : '') : 'max-lg:hidden'}">
 		<div>
 			<h2 class="display text-lg font-semibold">Charts you can open</h2>
 			<p class="mt-1 text-sm text-[#64748B]">Patients who added you to their circle.</p>
@@ -54,7 +89,7 @@
 		{/if}
 	</section>
 
-	<section class="space-y-3">
+	<section class="space-y-3 {view === 'granted' ? (moved ? 'circle-swap' : '') : 'max-lg:hidden'}">
 		<div>
 			<h2 class="display text-lg font-semibold">Who can open your chart</h2>
 			<p class="mt-1 text-sm text-[#64748B]">Each switch controls what that person can do. You can remove a treatment or scan they added.</p>
@@ -143,3 +178,28 @@
 		{/if}
 	</section>
 </div>
+
+<style>
+	@media (max-width: 1023px) {
+		.circle-swap {
+			animation: circle-swap 220ms ease;
+		}
+	}
+
+	@keyframes circle-swap {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.circle-swap {
+			animation: none;
+		}
+	}
+</style>
