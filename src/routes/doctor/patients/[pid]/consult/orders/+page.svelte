@@ -166,7 +166,7 @@
 	}
 </script>
 
-<header class="flex items-center justify-between gap-3 px-4 pt-5 lg:px-0">
+<header class="sticky top-14 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E8F0] bg-canvas/95 px-4 py-3 backdrop-blur lg:bg-shell-desk/95 lg:px-0">
 	<div class="flex min-w-0 items-center gap-2">
 		<a class="grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-white" href="/doctor/patients/{data.patient.pid}/consult" aria-label="Back to notes">
 			<span class="material-symbols-outlined">arrow_back</span>
@@ -179,7 +179,14 @@
 			<h1 class="display text-base font-bold lg:text-xl">Orders and disposition</h1>
 		</div>
 	</div>
-	<ConsultTimer startedAt={data.consult.started_at} />
+	<div class="flex items-center gap-2">
+		<form method="POST" action="/doctor/session?/cancel" onsubmit={(event) => { if (!confirm(`Cancel this consultation with ${data.patient.first_name} ${data.patient.last_name}? Notes from this session will be discarded.`)) event.preventDefault(); }}>
+			<input type="hidden" name="id" value={data.consult.id} />
+			<input type="hidden" name="return" value="/doctor/patients/{data.patient.pid}" />
+			<button class="btn-sm-danger" type="submit">Cancel consultation</button>
+		</form>
+		<ConsultTimer startedAt={data.consult.started_at} />
+	</div>
 </header>
 
 <section class="space-y-4 px-4 py-4 lg:px-0">
