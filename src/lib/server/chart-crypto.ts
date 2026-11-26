@@ -37,6 +37,7 @@ type ChartState = { dek: Buffer | null; shredded: boolean };
 const TEXT_FIELDS = new Set([
 	'first_name',
 	'last_name',
+	'other_names',
 	'sex',
 	'blood_type',
 	'phone',
@@ -101,6 +102,7 @@ const JSON_FIELDS = new Set(['allergies', 'conditions', 'surgeries', 'vessels', 
 const PATIENT_TEXT = [
 	'first_name',
 	'last_name',
+	'other_names',
 	'dob',
 	'sex',
 	'blood_type',
@@ -256,6 +258,7 @@ async function migrate() {
 		)
 	`;
 	for (const statement of [
+		`ALTER TABLE patients ADD COLUMN IF NOT EXISTS other_names text`,
 		`ALTER TABLE patients ADD COLUMN IF NOT EXISTS nic_bidx text`,
 		`ALTER TABLE patients ADD COLUMN IF NOT EXISTS passport_bidx text`,
 		`ALTER TABLE patients DROP CONSTRAINT IF EXISTS patients_nic_key`,

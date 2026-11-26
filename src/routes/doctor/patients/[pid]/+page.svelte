@@ -132,6 +132,9 @@
 		</div>
 		<div>
 			<h1 class="display text-2xl font-bold">{data.patient.first_name} {data.patient.last_name}</h1>
+			{#if data.patient.other_names}
+				<p class="text-sm text-[#64748B]">Other names: {data.patient.other_names}</p>
+			{/if}
 			{#if data.patient.shredded}
 				<p class="text-sm text-[#64748B]">This medical record was deleted.</p>
 			{/if}

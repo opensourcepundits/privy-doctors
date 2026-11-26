@@ -88,14 +88,16 @@ export const actions = {
 		const data = await request.formData();
 		const firstName = String(data.get('first_name') ?? '').trim();
 		const lastName = String(data.get('last_name') ?? '').trim();
+		const otherNames = String(data.get('other_names') ?? '').trim();
 		const dob = String(data.get('dob') ?? '').trim();
 		const sex = String(data.get('sex') ?? '').trim();
 		const phone = String(data.get('phone') ?? '').trim();
 		const nic = String(data.get('nic') ?? '').trim();
 		const passport = String(data.get('passport') ?? '').trim();
-		const entered = { offerNew: true, firstName, lastName, dob, sex, phone, nic, passport, name: `${firstName} ${lastName}`.trim() };
+		const entered = { offerNew: true, firstName, lastName, otherNames, dob, sex, phone, nic, passport, name: `${firstName} ${lastName}`.trim() };
 
 		if (!firstName || !lastName) return fail(400, { ...entered, message: 'Enter a first and last name.' });
+		if (otherNames.length > 120) return fail(400, { ...entered, message: 'Keep other names to 120 characters.' });
 		if (dob && (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || Number.isNaN(Date.parse(dob)) || dob < '1900-01-01' || dob > liveDay())) {
 			return fail(400, { ...entered, message: 'Enter a valid date of birth on or before today.' });
 		}
@@ -118,7 +120,7 @@ export const actions = {
 
 		let created;
 		try {
-			created = await createWalkInPatient(doctor.id, { firstName, lastName, dob, sex, phone, nic, passport });
+			created = await createWalkInPatient(doctor.id, { firstName, lastName, otherNames, dob, sex, phone, nic, passport });
 		} catch (error) {
 			const constraint = error && typeof error === 'object' && 'constraint_name' in error ? String(error.constraint_name) : '';
 			if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {

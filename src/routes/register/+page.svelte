@@ -21,6 +21,11 @@
 					<input class="field" id="lastName" name="lastName" autocomplete="family-name" required value={form?.lastName ?? ''} />
 				</div>
 			</div>
+			<div>
+				<label class="block text-sm font-semibold" for="otherNames">Other names</label>
+				<input class="field" id="otherNames" name="otherNames" maxlength="120" autocomplete="off" value={form?.otherNames ?? ''} />
+				<p class="mt-1 text-xs text-[#64748B]">Maiden name, nickname, or any other name you use. Optional.</p>
+			</div>
 			<label class="block text-sm font-semibold" for="email">Email</label>
 			<input class="field" id="email" name="email" type="email" autocomplete="email" required value={form?.email ?? ''} />
 			<label class="block text-sm font-semibold" for="password">Password</label>
