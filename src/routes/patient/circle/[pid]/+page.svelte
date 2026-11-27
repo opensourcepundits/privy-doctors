@@ -4,6 +4,7 @@
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+	let treatmentOngoing = $state(false);
 </script>
 
 <header class="px-4 pt-6 lg:px-0">
@@ -49,8 +50,24 @@
 			<p class="font-semibold">Add a treatment</p>
 			<p class="text-xs text-[#64748B]">It is tagged as added by you. {data.access.name} can remove it later.</p>
 			<input class="field" name="title" required maxlength="120" placeholder="Treatment" />
-			<input class="field" name="occurred_on" type="date" required max={data.today} value={data.today} />
-			<textarea class="field" name="detail" maxlength="1000" placeholder="What was done or noticed"></textarea>
+			<label class="block text-sm font-semibold">
+				Started
+				<input class="field mt-1" name="occurred_on" type="date" required max={data.today} value={data.today} />
+			</label>
+			<label class="flex items-center gap-2 text-sm font-semibold">
+				<input type="checkbox" name="ongoing" value="yes" bind:checked={treatmentOngoing} />
+				It is still going on
+			</label>
+			{#if !treatmentOngoing}
+				<label class="block text-sm font-semibold">
+					Ended
+					<input class="field mt-1" name="ended_on" type="date" required max={data.today} />
+				</label>
+			{/if}
+			<label class="block text-sm font-semibold">
+				Notes
+				<textarea class="field mt-1" name="detail" maxlength="1000" placeholder="Anything a clinician should know"></textarea>
+			</label>
 			<button class="btn" type="submit">Add treatment</button>
 		</form>
 		<form class="card space-y-2" method="POST" action="?/scan" enctype="multipart/form-data" use:enhance>

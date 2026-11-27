@@ -35,6 +35,8 @@ export const actions = {
 		const result = await addTrusteeTreatment(actor.id, params.pid, {
 			title: String(data.get('title') ?? ''),
 			occurredOn: String(data.get('occurred_on') ?? ''),
+			endedOn: String(data.get('ended_on') ?? ''),
+			ongoing: data.get('ongoing') === 'yes',
 			detail: String(data.get('detail') ?? '')
 		});
 		if ('error' in result) return fail(400, { message: result.error, form: 'treatment' });

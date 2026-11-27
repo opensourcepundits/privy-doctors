@@ -366,6 +366,7 @@ CREATE TABLE self_reports (
   id serial PRIMARY KEY,
   patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   occurred_on date NOT NULL,
+  ended_on date,
   title text NOT NULL,
   detail text,
   duration text,
@@ -543,6 +544,7 @@ CREATE TABLE IF NOT EXISTS chart_crypto_state (
 ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id);
 ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS kind text;
 ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS location text;
+ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS ended_on date;
 
 UPDATE care_orders
 SET status = CASE status
