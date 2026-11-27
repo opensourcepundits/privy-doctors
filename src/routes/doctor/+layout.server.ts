@@ -1,7 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import { clinicianDirectory, doctorForUser, incomingReferrals, notificationsFor, openConsultsForDoctor } from '#lib/server/clinic';
 
-export async function load({ locals }) {
+export async function load({ locals, depends }) {
+	depends('doctor:open-consults');
 	if (!locals.user) redirect(303, '/doctors/login');
 	if (locals.user.role !== 'doctor') redirect(303, '/patient');
 	const doctor = await doctorForUser(locals.user.id);

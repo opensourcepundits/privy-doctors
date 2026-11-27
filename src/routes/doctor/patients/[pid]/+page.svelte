@@ -23,53 +23,51 @@
 		['tasks', 'Tasks']
 	] as const;
 
-	let chart = $state<null | Awaited<PageProps['data']['chart']>>(null);
-	let chartFailed = $state(false);
-	$effect(() => {
-		let on = true;
-		chart = null;
-		chartFailed = false;
-		data.chart.then(
-			(value) => {
-				if (on) chart = value;
-			},
-			() => {
-				if (on) chartFailed = true;
-			}
-		);
-		return () => {
-			on = false;
-		};
-	});
+	type Chart = Awaited<PageProps['data']['chart']>;
 
-	const links = $derived({
-		lab: (id: number) => `/doctor/patients/${data.patient.pid}/labs/${id}`,
-		image: (id: number) => `/doctor/patients/${data.patient.pid}/imaging/${id}`,
-		visit: (id: number) => `/doctor/patients/${data.patient.pid}/visits/${id}`,
-		report: (id: number) => `/doctor/patients/${data.patient.pid}/reports/${id}`,
-		procedure: (item: { year: string; name: string }) =>
-			`/doctor/patients/${data.patient.pid}/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`,
-		vaccine: () => `/doctor/patients/${data.patient.pid}?tab=tasks`
-	});
-	const source = $derived({
-		encounters: chart?.encounters ?? [],
-		reports: chart?.reports ?? [],
-		labs: chart?.labs ?? [],
-		imaging: chart?.imaging ?? [],
-		surgeries: data.patient.surgeries,
-		vaccinations: chart?.vaccinations ?? []
-	});
-	const sessionEvents = $derived.by(() => {
-		if (!chart) return [];
-		const loaded = chart;
-		const covered = new Set(loaded.encounters.map((visit) => visit.consultation_id).filter(Boolean));
-		return loaded.consultations
-			.filter((consult) => !covered.has(consult.id))
-			.filter((consult) => !loaded.encounters.some((visit) => visit.focus === 'Signed consultation' && consult.narrative && visit.findings === consult.narrative))
-			.map((consult) => {
+	function needsBanner(loaded: Chart) {
+		return loaded.consultations.filter(
+			(consult) =>
+				consult.status === 'in_session' &&
+				consult.doctor_id === data.doctor.id &&
+				!data.openConsults.some((open) => open.id === consult.id)
+		);
+	}
+
+	function chartEventsFor(loaded: Chart) {
+		const slice: HistorySlice | '' =
+			tab === 'timeline' ? 'all' : tab === 'consults' ? 'consultations' : tab === 'images' ? 'images' : tab === 'labs' ? 'diagnostics' : '';
+		if (!slice) return [];
+		const links = {
+			lab: (id: number) => `/doctor/patients/${data.patient.pid}/labs/${id}`,
+			image: (id: number) => `/doctor/patients/${data.patient.pid}/imaging/${id}`,
+			visit: (id: number) => `/doctor/patients/${data.patient.pid}/visits/${id}`,
+			report: (id: number) => `/doctor/patients/${data.patient.pid}/reports/${id}`,
+			procedure: (item: { year: string; name: string }) =>
+				`/doctor/patients/${data.patient.pid}/procedures?year=${encodeURIComponent(item.year)}&name=${encodeURIComponent(item.name)}`,
+			vaccine: () => `/doctor/patients/${data.patient.pid}?tab=tasks`
+		};
+		const events = historyEvents(
+			{
+				encounters: loaded.encounters,
+				reports: loaded.reports,
+				labs: loaded.labs,
+				imaging: loaded.imaging,
+				surgeries: data.patient.surgeries,
+				vaccinations: loaded.vaccinations
+			},
+			slice,
+			links
+		);
+		if (slice === 'all' || slice === 'consultations') {
+			const covered = new Set(loaded.encounters.map((visit) => visit.consultation_id).filter(Boolean));
+			for (const consult of loaded.consultations) {
+				if (covered.has(consult.id)) continue;
+				if (loaded.encounters.some((visit) => visit.focus === 'Signed consultation' && consult.narrative && visit.findings === consult.narrative)) continue;
 				const date = consult.started_at instanceof Date ? consult.started_at : new Date(consult.started_at);
 				const note = (consult.narrative ?? '').trim();
-				return {
+				const live = consult.status === 'in_session' && consult.doctor_id === data.doctor.id;
+				events.push({
 					at: date.getTime(),
 					day: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
 					year: String(date.getFullYear()),
@@ -79,26 +77,18 @@
 					meta: [[consult.doctor_name, consult.credentials].filter(Boolean).join(', '), consult.status === 'in_session' ? 'In progress' : consult.status].filter(Boolean).join(' · '),
 					body: '',
 					note: '',
-					href: `/doctor/patients/${data.patient.pid}/consults/${consult.id}`,
-					link: 'Open consultation',
+					href: live ? `/doctor/patients/${data.patient.pid}/consult` : `/doctor/patients/${data.patient.pid}/consults/${consult.id}`,
+					link: live ? 'Resume consultation' : 'Open consultation',
 					image: ''
-				} satisfies TimelineEvent;
-			});
-	});
-	const chartEvents = $derived.by(() => {
-		if (!chart) return [];
-		const slice: HistorySlice | '' =
-			tab === 'timeline' ? 'all' : tab === 'consults' ? 'consultations' : tab === 'images' ? 'images' : tab === 'labs' ? 'diagnostics' : '';
-		if (!slice) return [];
-		const events = historyEvents(source, slice, links);
-		if (slice === 'all' || slice === 'consultations') {
-			events.push(...sessionEvents);
+				});
+			}
 			events.sort((a, b) => b.at - a.at);
 		}
 		return events;
-	});
-	const prescriptionEvents = $derived(
-		(chart?.prescriptions ?? []).map((order) => {
+	}
+
+	function prescriptionEventsFor(loaded: Chart) {
+		return loaded.prescriptions.map((order) => {
 			const date = order.ordered_at instanceof Date ? order.ordered_at : new Date(order.ordered_at);
 			return {
 				at: date.getTime(),
@@ -118,9 +108,23 @@
 				link: 'Open prescription',
 				image: order.photos[0] ? `/files/prescriptions/${order.photos[0].id}` : ''
 			} satisfies TimelineEvent;
-		})
-	);
+		});
+	}
 </script>
+
+{#await data.chart then loaded}
+	{#each needsBanner(loaded) as consult (consult.id)}
+		<div class="mx-4 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm lg:mx-0">
+			<p class="min-w-0 flex-1">Consultation in progress with <span class="font-semibold">{data.patient.first_name} {data.patient.last_name}</span>.</p>
+			<a class="btn-sm" href="/doctor/patients/{data.patient.pid}/consult">Resume</a>
+			<form method="POST" action="/doctor/session?/cancel" onsubmit={(event) => { if (!confirm(`Cancel the consultation with ${data.patient.first_name} ${data.patient.last_name}? Notes from this session will be discarded.`)) event.preventDefault(); }}>
+				<input type="hidden" name="id" value={consult.id} />
+				<input type="hidden" name="return" value={page.url.pathname} />
+				<button class="btn-sm-danger" type="submit">Cancel</button>
+			</form>
+		</div>
+	{/each}
+{:catch}{/await}
 
 <header class="px-4 pt-5 lg:px-0">
 	<a class="inline-flex items-center gap-1 text-sm font-semibold text-brand" href="/doctor">
@@ -162,7 +166,7 @@
 </header>
 
 <nav class="mt-4 flex gap-2 overflow-x-auto px-4 lg:px-0">
-	{#each tabs as [id, label]}
+	{#each tabs as [id, label] (id)}
 		<a
 			class="shrink-0 rounded-full px-3 py-2 text-sm font-semibold {tab === id ? 'bg-brand text-white' : 'bg-white text-[#64748B]'}"
 			href="?tab={id}">{label}</a>
@@ -180,26 +184,28 @@
 	{:else if tab === 'tasks'}
 		<p class="mb-3 max-w-2xl text-sm text-[#64748B]">Tests and vaccinations ordered during a consultation. A test stays here until the patient uploads the PDF. A vaccination is recorded on the card, with an optional photo.</p>
 	{/if}
-	{#if chartFailed}
-		<p class="text-sm text-[#64748B]">The chart could not be loaded.</p>
-	{:else if !chart}
+	{#await data.chart}
 		<Skeleton count={4} />
-	{:else if tab === 'timeline' || tab === 'consults' || tab === 'images' || tab === 'labs'}
-		<Timeline events={chartEvents} />
-	{:else if tab === 'prescriptions'}
-		<Timeline events={prescriptionEvents} />
-	{:else if tab === 'tasks'}
-		<div class="mb-6 max-w-3xl space-y-3">
-			<div>
-				<h2 class="display text-lg font-semibold">Vaccination card</h2>
-				<p class="mt-1 text-sm text-[#64748B]">Vaccinations given in clinic, recorded after an order, or added by the patient.</p>
+	{:then loaded}
+		{#if tab === 'timeline' || tab === 'consults' || tab === 'images' || tab === 'labs'}
+			<Timeline events={chartEventsFor(loaded)} />
+		{:else if tab === 'prescriptions'}
+			<Timeline events={prescriptionEventsFor(loaded)} />
+		{:else if tab === 'tasks'}
+			<div class="mb-6 max-w-3xl space-y-3">
+				<div>
+					<h2 class="display text-lg font-semibold">Vaccination card</h2>
+					<p class="mt-1 text-sm text-[#64748B]">Vaccinations given in clinic, recorded after an order, or added by the patient.</p>
+				</div>
+				<VaxxList shots={loaded.vaccinations} viewer="doctor" />
 			</div>
-			<VaxxList shots={chart.vaccinations} viewer="doctor" />
-		</div>
-		<div class="span-2">
-			<TaskChecklist tasks={chart.tasks} />
-		</div>
-	{/if}
+			<div class="span-2">
+				<TaskChecklist tasks={loaded.tasks} />
+			</div>
+		{/if}
+	{:catch}
+		<p class="text-sm text-[#64748B]">The chart could not be loaded.</p>
+	{/await}
 	{#if tab === 'prescriptions'}
 		<a class="btn mt-2 max-w-3xl" href="/doctor/patients/{data.patient.pid}/consult/orders">Create prescription order</a>
 	{/if}
