@@ -372,6 +372,7 @@ CREATE TABLE self_reports (
   id serial PRIMARY KEY,
   patient_id int NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   occurred_on date NOT NULL,
+  ended_on date,
   title text NOT NULL,
   detail text,
   duration text,
@@ -665,5 +666,6 @@ CREATE TABLE IF NOT EXISTS prescription_photos (
 ALTER TABLE prescription_photos ADD COLUMN IF NOT EXISTS bytes bytea;
 
 ALTER TABLE patients ALTER COLUMN dob DROP NOT NULL;
+ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS ended_on date;
 
 COMMIT;

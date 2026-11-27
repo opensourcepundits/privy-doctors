@@ -9,12 +9,14 @@ function attach<T, E extends Record<string, unknown>>(row: T, extra: E): T & E {
 	return { ...(row as object), ...extra } as T & E;
 }
 import { tagsFrom } from '#lib/doses';
+import { parseMeds } from '#lib/report-form';
 import { CLINIC_DAY, formatDate, formatLongDate, formatTime, isoDate, liveDay } from '#lib/format';
 import { priorityOf } from '#lib/priority';
 import { addDays, localStamp, openSlots, parseClock, type WindowRow } from '#lib/schedule';
 import {
 	ChartDeleted,
 	discardDek,
+	ensureChartCrypto,
 	identityIndex,
 	openPatientFile,
 	presentChart,
@@ -1939,6 +1941,7 @@ export type SelfReportEdit = {
 };
 
 export async function selfReportsFor(patientId: number) {
+	await ensureChartCrypto();
 	const rows = await client<
 		{
 			id: number;
@@ -1953,6 +1956,7 @@ export async function selfReportsFor(patientId: number) {
 			added_by_patient_id: number | null;
 			kind: string | null;
 			location: string | null;
+			ended_on: Date | string | null;
 		}[]
 	>`
 		SELECT * FROM self_reports WHERE patient_id = ${patientId} ORDER BY occurred_on DESC, id DESC
@@ -2002,6 +2006,7 @@ export async function addSelfReport(
 		kind?: string;
 		title: string;
 		occurredOn: string;
+		endedOn?: string;
 		location?: string;
 		detail: string;
 		duration: string;
@@ -2013,9 +2018,9 @@ export async function addSelfReport(
 ) {
 	const [row] = await client<{ id: number }[]>`
 		INSERT INTO self_reports (
-			patient_id, occurred_on, title, detail, duration, severity, meds_taken, ongoing, created_at, added_by_patient_id, kind, location
+			patient_id, occurred_on, ended_on, title, detail, duration, severity, meds_taken, ongoing, created_at, added_by_patient_id, kind, location
 		) VALUES (
-			${patientId}, ${input.occurredOn}, ${await sealText(patientId, 'title', input.title)},
+			${patientId}, ${input.occurredOn}, ${input.endedOn || null}, ${await sealText(patientId, 'title', input.title)},
 			${await sealText(patientId, 'detail', input.detail || null)},
 			${await sealText(patientId, 'duration', input.duration || null)},
 			${await sealText(patientId, 'severity', input.severity || null)},
@@ -2108,6 +2113,7 @@ export async function updateSelfReport(
 		kind: string;
 		title: string;
 		occurredOn: string;
+		endedOn: string;
 		location: string;
 		detail: string;
 		duration: string;
@@ -2122,6 +2128,7 @@ export async function updateSelfReport(
 		kind: current.kind ?? '',
 		title: current.title,
 		occurred_on: isoDate(current.occurred_on),
+		ended_on: isoDate(current.ended_on),
 		location: current.location ?? '',
 		detail: current.detail ?? '',
 		duration: current.duration ?? '',
@@ -2129,15 +2136,17 @@ export async function updateSelfReport(
 		meds_taken: current.meds_taken ?? '',
 		ongoing: current.ongoing ? 'true' : 'false'
 	};
+	const sameMeds = JSON.stringify(parseMeds(before.meds_taken)) === JSON.stringify(parseMeds(input.meds));
 	const after = {
 		kind: input.kind,
 		title: input.title,
 		occurred_on: input.occurredOn,
+		ended_on: input.endedOn,
 		location: input.location,
 		detail: input.detail,
 		duration: input.duration,
 		severity: input.severity,
-		meds_taken: input.meds,
+		meds_taken: sameMeds ? before.meds_taken : input.meds,
 		ongoing: input.ongoing ? 'true' : 'false'
 	};
 	const changes = (Object.keys(before) as (keyof typeof before)[])
@@ -2147,11 +2156,12 @@ export async function updateSelfReport(
 	await client`
 		UPDATE self_reports
 		SET occurred_on = ${input.occurredOn},
+			ended_on = ${input.endedOn || null},
 			title = ${await sealText(patientId, 'title', input.title)},
 			detail = ${await sealText(patientId, 'detail', input.detail || null)},
 			duration = ${await sealText(patientId, 'duration', input.duration || null)},
 			severity = ${await sealText(patientId, 'severity', input.severity || null)},
-			meds_taken = ${await sealText(patientId, 'meds_taken', input.meds || null)},
+			meds_taken = ${await sealText(patientId, 'meds_taken', after.meds_taken || null)},
 			ongoing = ${input.ongoing},
 			kind = ${await sealText(patientId, 'kind', input.kind || null)},
 			location = ${await sealText(patientId, 'location', input.location || null)}

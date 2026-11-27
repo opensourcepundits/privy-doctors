@@ -1,5 +1,5 @@
 import { formatDate, formatTime, isoDate, liveProcedureYear, toLive } from '#lib/format';
-import { reportKindLabel } from '#lib/report-form';
+import { medsLabel, reportKindLabel, reportShows } from '#lib/report-form';
 
 export type TimelineEvent = {
 	at: number;
@@ -47,6 +47,7 @@ type Report = {
 	meds_taken: string | null;
 	kind?: string | null;
 	location?: string | null;
+	ended_on?: Date | string | null;
 	edits?: ReportEdit[];
 	files?: { id: number; file_name: string; content_type: string }[];
 	alerted?: string[];
@@ -62,14 +63,16 @@ const reportFields: Record<string, string> = {
 	severity: 'How strong it felt',
 	meds_taken: 'Medicines taken',
 	ongoing: 'Still going on',
-	detail: 'What you noticed'
+	detail: 'Notes',
+	ended_on: 'Ended'
 };
 
 function reportValue(field: string, value: string) {
 	if (field === 'kind') return reportKindLabel(value) || 'empty';
 	if (field === 'ongoing') return value === 'true' ? 'Yes' : 'No';
 	if (field === 'severity') return value === 'mild' ? 'Mild' : value === 'moderate' ? 'Moderate' : value === 'severe' ? 'Severe' : 'Not sure';
-	if (field === 'occurred_on' && value) return formatDate(value);
+	if (field === 'occurred_on' || field === 'ended_on') return value ? formatDate(value) : 'empty';
+	if (field === 'meds_taken') return medsLabel(value) || 'empty';
 	return value || 'empty';
 }
 
@@ -193,17 +196,19 @@ export function historyEvents(
 	if (include.has('reports')) {
 		for (const report of source.reports ?? []) {
 			const when = stamped(report.occurred_on);
-			const strength = report.severity === 'mild' ? 'Mild' : report.severity === 'moderate' ? 'Moderate' : report.severity === 'severe' ? 'Severe' : '';
+			const modules = reportShows(report.kind, true);
+			const strength = !modules.symptom ? '' : report.severity === 'mild' ? 'Mild' : report.severity === 'moderate' ? 'Moderate' : report.severity === 'severe' ? 'Severe' : '';
 			const alerted = (report.alerted ?? []).join(', ');
+			const ended = modules.range && report.ended_on ? `Until ${formatDate(report.ended_on)}` : '';
 			items.push({
 				...when,
 				at: when.at + report.id,
 				kind: reportKindLabel(report.kind) ? `Self report · ${reportKindLabel(report.kind)}` : 'Self report',
 				tone: 'bg-rose-600',
 				title: report.title,
-				meta: [report.location, strength, report.duration, report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
+				meta: [report.location, ended, strength, modules.symptom ? report.duration : '', report.ongoing ? 'Still going on' : ''].filter(Boolean).join(' · ') || 'Filed by the patient',
 				body: report.detail ?? '',
-				note: [report.meds_taken ? `Medicines taken: ${report.meds_taken}` : '', alerted ? `Alerted ${alerted}` : '', report.added_by ? `Added by ${report.added_by}` : ''].filter(Boolean).join(' '),
+				note: [report.meds_taken ? `Medicines taken: ${medsLabel(report.meds_taken)}` : '', alerted ? `Alerted ${alerted}` : '', report.added_by ? `Added by ${report.added_by}` : ''].filter(Boolean).join(' '),
 				href: links.report ? links.report(report.id) : '',
 				link: links.report ? 'Open report' : '',
 				image: '',

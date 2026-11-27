@@ -369,6 +369,7 @@ export const selfReports = pgTable('self_reports', {
 	id: serial('id').primaryKey(),
 	patientId: integer('patient_id').notNull(),
 	occurredOn: date('occurred_on').notNull(),
+	endedOn: date('ended_on'),
 	title: text('title').notNull(),
 	detail: text('detail'),
 	duration: text('duration'),

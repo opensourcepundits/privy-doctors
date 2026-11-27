@@ -273,6 +273,7 @@ async function migrate() {
 		`ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS added_by_patient_id int REFERENCES patients(id)`,
 		`ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS kind text`,
 		`ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS location text`,
+		`ALTER TABLE self_reports ADD COLUMN IF NOT EXISTS ended_on date`,
 		`UPDATE care_orders SET status = 'Low' WHERE kind = 'diagnostic' AND status = 'Routine'`,
 		`UPDATE care_orders SET status = 'Medium' WHERE kind = 'diagnostic' AND status = 'Urgent'`,
 		`UPDATE care_orders SET status = 'High' WHERE kind = 'diagnostic' AND status = 'STAT'`,

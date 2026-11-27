@@ -202,25 +202,36 @@ function onDate(value: string) {
 	return text;
 }
 
-export async function addTrusteeTreatment(actorId: number, pid: string, input: { title: string; occurredOn: string; detail: string }) {
+export async function addTrusteeTreatment(
+	actorId: number,
+	pid: string,
+	input: { title: string; occurredOn: string; endedOn: string; ongoing: boolean; detail: string }
+) {
 	const access = await trusteeFor(actorId, pid);
 	if (!access?.add_records) return { error: 'You cannot add records to this chart.' as const };
 	const title = input.title.trim();
 	if (!title || title.length > 120) return { error: 'Name the treatment in 120 characters or fewer.' as const };
 	const occurredOn = onDate(input.occurredOn);
-	if (!occurredOn) return { error: 'Enter the date. It cannot be in the future.' as const };
+	if (!occurredOn) return { error: 'Enter the start date. It cannot be in the future.' as const };
+	let endedOn = '';
+	if (!input.ongoing) {
+		endedOn = onDate(input.endedOn) ?? '';
+		if (!endedOn) return { error: 'Enter the end date. It cannot be in the future.' as const };
+		if (endedOn < occurredOn) return { error: 'End the treatment on or after the day it started.' as const };
+	}
 	const detail = input.detail.trim();
 	if (detail.length > 1000) return { error: 'Keep the note to 1000 characters.' as const };
 	await addSelfReport(access.ownerId, {
 		kind: 'treatment',
 		title,
 		occurredOn,
+		endedOn,
 		location: '',
 		detail,
 		duration: '',
 		severity: '',
 		meds: '',
-		ongoing: false,
+		ongoing: input.ongoing,
 		addedBy: actorId
 	});
 	return { saved: true as const };
