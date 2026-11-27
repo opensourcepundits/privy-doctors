@@ -30,7 +30,7 @@
 		<span class="material-symbols-outlined text-lg">calendar_month</span>
 		Book an appointment
 	</a>
-	<a class="btn" href="/patient/report">
+	<a class="btn-line" href="/patient/report">
 		<span class="material-symbols-outlined text-lg">personal_injury</span>
 		Report something
 	</a>

@@ -117,7 +117,7 @@
 </script>
 
 <div class={className}>
-	<button class="btn" type="button" aria-haspopup="dialog" aria-expanded={open} disabled={busy} onclick={() => load(false)}>
+	<button class="btn-line" type="button" aria-haspopup="dialog" aria-expanded={open} disabled={busy} onclick={() => load(false)}>
 		<span class="material-symbols-outlined text-lg">{busy && !open ? 'progress_activity' : 'person_add'}</span>
 		Invite a Colleague
 	</button>
