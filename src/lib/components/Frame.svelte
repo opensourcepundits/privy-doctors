@@ -61,6 +61,16 @@
 		goto(`${url.pathname}${url.search}${url.hash}`, { replace: true, shallow: true, state: page.state });
 	}
 
+	const monogram = $derived(
+		who
+			.replace(/^Dr\.?\s+/i, '')
+			.split(/\s+/)
+			.slice(0, 2)
+			.map((part) => part[0] ?? '')
+			.join('')
+			.toUpperCase()
+	);
+
 	function dismiss() {
 		hidden = notice ?? ' ';
 		clearNotice();
@@ -88,74 +98,84 @@
 </script>
 
 <div class="scheme-{scheme}">
-	<div class="min-h-dvh bg-shell lg:bg-shell-desk">
-		<div class="mx-auto min-h-dvh w-full max-w-[440px] bg-canvas shadow-xl lg:grid lg:max-w-none lg:grid-cols-[260px_minmax(0,1fr)] lg:shadow-none">
-			<aside class="sticky top-0 hidden h-dvh flex-col border-r border-[#E2E8F0] bg-white lg:flex">
-				<div class="h-1 bg-brand"></div>
-				<div class="px-5 pt-5 pb-4">
-					<p class="display text-lg font-bold text-brand">careOS</p>
-					<p class="text-xs text-[#64748B]">Private practice</p>
-				</div>
-				<nav class="flex flex-1 flex-col gap-1 px-3">
+	<div class="min-h-dvh bg-shell lg:bg-canvas">
+		<div class="mx-auto min-h-dvh w-full max-w-[440px] bg-canvas shadow-xl lg:grid lg:max-w-none lg:grid-cols-[244px_minmax(0,1fr)] lg:shadow-none">
+			<aside class="sticky top-0 hidden h-dvh flex-col border-r border-line bg-white lg:flex">
+				<a class="flex h-16 items-center border-b border-line px-5 text-lg font-semibold tracking-tight text-ink" href="/{scheme}">
+					care<span class="font-mono font-medium text-brand">OS</span>
+				</a>
+				<p class="kicker px-5 pt-5 pb-2">{scheme === 'doctor' ? 'Clinic' : 'Patient portal'}</p>
+				<nav class="flex flex-1 flex-col" aria-label="Main">
 					{#each nav as item}
 						<a
 							href={item.href}
-							class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold {current(item.href)
-								? 'bg-brand/10 text-brand'
-								: 'text-[#64748B] hover:bg-canvas hover:text-[#0F172A]'}"
+							aria-current={current(item.href) ? 'page' : undefined}
+							class="relative flex h-11 items-center gap-3 px-5 text-sm font-medium {current(item.href)
+								? 'bg-brand-wash text-ink before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-brand'
+								: 'text-muted hover:bg-canvas hover:text-ink'}"
 						>
-							<span class="material-symbols-outlined">{item.icon}</span>
+							<span class="material-symbols-outlined text-[20px] {current(item.href) ? 'text-brand' : ''}">{item.icon}</span>
 							{item.label}
 							{#if item.badge}
-								<span class="ml-auto rounded-full bg-brand px-1.5 text-[10px] leading-4 font-bold text-white">{item.badge}</span>
+								<span class="nums ml-auto rounded-sm bg-brand px-1.5 text-[10px] leading-4 font-semibold text-white">{item.badge}</span>
 							{/if}
 						</a>
 					{/each}
 				</nav>
 				{#if who}
-					<div class="border-t border-[#E2E8F0] px-5 py-4">
-						<p class="text-sm font-semibold text-[#0F172A]">{who}</p>
-						<p class="text-xs text-[#64748B]">{role}</p>
+					<div class="flex items-center gap-3 border-t border-line px-5 py-4">
+						<span class="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-ink font-mono text-xs font-medium text-white">{monogram}</span>
+						<span class="min-w-0">
+							<span class="block truncate text-sm font-semibold text-ink">{who}</span>
+							<span class="block truncate text-xs text-muted">{role}</span>
+						</span>
 					</div>
 				{/if}
 			</aside>
 			<div class="relative pb-24 lg:min-h-dvh lg:pb-12">
-				<div class="h-1 bg-brand lg:hidden"></div>
-				<div class="lg:mx-auto lg:max-w-6xl lg:px-8 lg:pt-4">
-					<div class="sticky top-0 z-30 flex items-center justify-end gap-2 bg-canvas/95 px-4 py-2 backdrop-blur lg:bg-shell-desk/95 lg:px-0">
+				<header class="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-line bg-white/95 px-4 backdrop-blur lg:h-16 lg:justify-end lg:px-8">
+					<a class="text-lg font-semibold tracking-tight text-ink lg:hidden" href="/{scheme}">care<span class="font-mono font-medium text-brand">OS</span></a>
+					<div class="flex min-w-0 items-center justify-end gap-2">
 						{#if shown}
-							<p class="flex min-w-0 max-w-[min(100%,18rem)] items-center gap-2 rounded-full bg-[#0F172A] py-1 pl-3 pr-1 text-sm text-white shadow-md">
+							<p class="flex min-w-0 max-w-[min(100%,18rem)] items-center gap-2 rounded-md bg-ink py-1 pl-3 pr-1 text-sm text-white" role="status">
 								<span class="truncate">{shown}</span>
-								<button class="grid h-6 w-6 shrink-0 place-items-center rounded-full text-white/80 hover:bg-white/15" type="button" aria-label="Dismiss notice" onclick={dismiss}>
+								<button class="grid h-6 w-6 shrink-0 place-items-center rounded text-white/80 hover:bg-white/15" type="button" aria-label="Dismiss notice" onclick={dismiss}>
 									<span class="material-symbols-outlined text-[16px]">close</span>
 								</button>
 							</p>
 						{/if}
 						<Bell notes={notifications} {markSeen} />
 					</div>
+				</header>
+				<div class="lg:mx-auto lg:max-w-6xl lg:px-8 lg:pt-2">
 					{@render children()}
 				</div>
 			</div>
 		</div>
 	</div>
 
-	<nav class="fixed inset-x-0 bottom-0 z-20 mx-auto flex max-w-[440px] items-end justify-around border-t border-[#E2E8F0] bg-white/95 px-1 py-2 backdrop-blur lg:hidden">
+	<nav class="fixed inset-x-0 bottom-0 z-20 mx-auto grid max-w-[440px] grid-cols-5 border-t border-line bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden" aria-label="Main">
 		{#each nav as item}
 			<a
 				href={item.href}
-				class="flex min-w-0 flex-1 flex-col items-center gap-1 text-center text-[10px] font-semibold {item.fab
-					? '-mt-5 h-14 w-14 flex-none justify-center rounded-full bg-brand text-white shadow-lg'
-					: current(item.href)
-						? 'text-brand'
-						: 'text-[#64748B]'}"
+				aria-current={current(item.href) ? 'page' : undefined}
+				class="relative flex min-w-0 flex-col items-center gap-0.5 pt-2.5 text-center text-[11px] font-medium {current(item.href)
+					? 'text-brand before:absolute before:inset-x-4 before:top-0 before:h-[2px] before:bg-brand'
+					: 'text-muted'}"
 			>
-				<span class="relative">
-					<span class="material-symbols-outlined">{item.icon}</span>
-					{#if item.badge && !item.fab}
-						<span class="absolute -top-1 -right-2 grid min-w-4 place-items-center rounded-full bg-brand px-1 text-[9px] leading-4 font-bold text-white">{item.badge}</span>
-					{/if}
-				</span>
-				{#if !item.fab}<span class="max-w-full truncate px-0.5">{item.label}</span>{/if}
+				{#if item.fab}
+					<span class="grid h-8 w-10 place-items-center rounded-md bg-brand text-white">
+						<span class="material-symbols-outlined">{item.icon}</span>
+					</span>
+				{:else}
+					<span class="relative grid h-8 place-items-center">
+						<span class="material-symbols-outlined">{item.icon}</span>
+						{#if item.badge}
+							<span class="nums absolute -top-0.5 -right-3 grid min-w-4 place-items-center rounded-sm bg-brand px-1 text-[9px] leading-4 font-semibold text-white">{item.badge}</span>
+						{/if}
+					</span>
+				{/if}
+				<span class="max-w-full truncate px-0.5">{item.label}</span>
 			</a>
 		{/each}
 	</nav>

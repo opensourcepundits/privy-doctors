@@ -13,6 +13,6 @@
 	};
 </script>
 
-<span class="inline-flex h-6 items-center rounded-full px-2 text-[11px] font-semibold {tones[tone]}">
+<span class="inline-flex h-5 items-center rounded-sm px-1.5 font-mono text-[10.5px] font-medium tracking-wide uppercase {tones[tone]}">
 	{@render children()}
 </span>

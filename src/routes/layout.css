@@ -1,22 +1,35 @@
 @import 'tailwindcss';
 
-/* Clinic is the doctor workspace: cool teal on a gray canvas.
-   Care is the patient portal: deep blue on warm paper.
+/* Clinical record look: IBM Plex Sans for reading, Plex Mono for times,
+   IDs and labels; tight corners, hairline rules, almost no shadow.
+   Both portals share one canvas. Only the brand colour changes:
+   Clinic (doctor) is a deep green-teal, Care (patient) is a muted navy.
    Tokens are overridden by .scheme-doctor and .scheme-patient. */
 @theme {
-	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-	--color-ink: #0f172a;
-	--color-canvas: #f8fafc;
-	--color-line: #e2e8f0;
-	--color-muted: #64748b;
-	--color-brand: #0d7377;
-	--color-brand-strong: #0a5c5f;
-	--color-brand-soft: #e5f3f3;
-	--color-brand-tint: #d2eaea;
-	--color-brand-wash: #f2fafa;
-	--color-brand-accent: #14b8a6;
-	--color-shell: #d9e3ee;
-	--color-shell-desk: #eef3f8;
+	--font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+	--radius-md: 0.25rem;
+	--radius-lg: 0.375rem;
+	--radius-xl: 0.5rem;
+	--radius-2xl: 0.5rem;
+	--radius-3xl: 0.625rem;
+	--shadow-sm: 0 1px 0 rgb(22 25 27 / 0.05);
+	--shadow-md: 0 2px 6px rgb(22 25 27 / 0.08);
+	--shadow-lg: 0 6px 16px rgb(22 25 27 / 0.1);
+	--shadow-xl: 0 12px 32px rgb(22 25 27 / 0.12);
+	--color-ink: #16191b;
+	--color-canvas: #f3f4f2;
+	--color-line: #dcdfdc;
+	--color-line-strong: #c3c8c5;
+	--color-muted: #5d6562;
+	--color-brand: #17605a;
+	--color-brand-strong: #0f4a45;
+	--color-brand-soft: #e4eeec;
+	--color-brand-tint: #cfe0dd;
+	--color-brand-wash: #f1f6f5;
+	--color-brand-accent: #2f8f86;
+	--color-shell: #e4e6e3;
+	--color-shell-desk: #f3f4f2;
 	--color-red-50: #f8f1f0;
 	--color-red-100: #f3e4e2;
 	--color-red-200: #e7cdc9;
@@ -30,43 +43,39 @@
 }
 
 .scheme-doctor {
-	--color-brand: #0d7377;
-	--color-brand-strong: #0a5c5f;
-	--color-brand-soft: #e5f3f3;
-	--color-brand-tint: #d2eaea;
-	--color-brand-wash: #f2fafa;
-	--color-brand-accent: #14b8a6;
-	--color-shell: #d9e3ee;
-	--color-shell-desk: #eef3f8;
-	--color-canvas: #f8fafc;
+	--color-brand: #17605a;
+	--color-brand-strong: #0f4a45;
+	--color-brand-soft: #e4eeec;
+	--color-brand-tint: #cfe0dd;
+	--color-brand-wash: #f1f6f5;
+	--color-brand-accent: #2f8f86;
 }
 
 .scheme-patient {
-	--color-brand: #1f4e89;
-	--color-brand-strong: #173a68;
-	--color-brand-soft: #e7effa;
-	--color-brand-tint: #d4e3f6;
-	--color-brand-wash: #f3f7fc;
-	--color-brand-accent: #3d7cc4;
-	--color-shell: #e6ddd2;
-	--color-shell-desk: #f3eee6;
-	--color-canvas: #fbf7f2;
+	--color-brand: #26487a;
+	--color-brand-strong: #1a355c;
+	--color-brand-soft: #e6ebf3;
+	--color-brand-tint: #d0dbeb;
+	--color-brand-wash: #f2f5f9;
+	--color-brand-accent: #4a6fa5;
 }
 
 body {
 	margin: 0;
 	background: var(--color-shell);
 	color: var(--color-ink);
-	font-family: Inter, sans-serif;
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
 }
 
 .display {
-	font-family: 'Plus Jakarta Sans', Inter, sans-serif;
-	letter-spacing: -0.02em;
+	font-family: var(--font-sans);
+	font-weight: 600;
+	letter-spacing: -0.01em;
 }
 
 .material-symbols-outlined {
-	font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+	font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 	font-size: 22px;
 	line-height: 1;
 	vertical-align: middle;
@@ -78,10 +87,9 @@ body {
 
 .card {
 	border: 1px solid var(--color-line);
-	border-radius: 1rem;
+	border-radius: 0.5rem;
 	background: white;
 	padding: 1rem;
-	box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
 }
 
 .btn {
@@ -97,10 +105,10 @@ body {
 	gap: 0.4rem;
 	padding: 0.5rem 1rem;
 	border: 0;
-	border-radius: 0.5rem;
+	border-radius: 0.375rem;
 	background: var(--color-brand);
 	color: white;
-	font-weight: 650;
+	font-weight: 600;
 	font-size: 0.95rem;
 	line-height: 1.2;
 	text-align: center;
@@ -124,8 +132,9 @@ body {
 	min-height: 3rem;
 	flex: 0 0 3rem;
 	place-items: center;
-	border-top-right-radius: 0.5rem;
-	border-bottom-right-radius: 0.5rem;
+	border-left: 1px solid rgb(255 255 255 / 0.22);
+	border-top-right-radius: 0.375rem;
+	border-bottom-right-radius: 0.375rem;
 	background: var(--color-brand);
 	color: white;
 	cursor: pointer;
@@ -149,11 +158,11 @@ body {
 	justify-content: center;
 	gap: 0.4rem;
 	padding: 0.5rem 1rem;
-	border-radius: 0.5rem;
-	border: 1px solid var(--color-brand);
-	background: transparent;
-	color: var(--color-brand);
-	font-weight: 650;
+	border-radius: 0.375rem;
+	border: 1px solid var(--color-line-strong);
+	background: white;
+	color: var(--color-ink);
+	font-weight: 600;
 	font-size: 0.95rem;
 	line-height: 1.2;
 	text-align: center;
@@ -161,7 +170,7 @@ body {
 	cursor: pointer;
 }
 
-.btn-line:hover { background: var(--color-brand-soft); }
+.btn-line:hover { border-color: var(--color-brand); color: var(--color-brand); }
 
 .btn-danger {
 	box-sizing: border-box;
@@ -176,10 +185,10 @@ body {
 	gap: 0.4rem;
 	padding: 0.5rem 1rem;
 	border: 0;
-	border-radius: 0.5rem;
+	border-radius: 0.375rem;
 	background: #a35d58;
 	color: white;
-	font-weight: 650;
+	font-weight: 600;
 	font-size: 0.95rem;
 	line-height: 1.2;
 	text-align: center;
@@ -201,8 +210,8 @@ body {
 	justify-content: center;
 	gap: 0.3rem;
 	padding: 0.3rem 0.75rem;
-	border-radius: 0.5rem;
-	font-weight: 650;
+	border-radius: 0.25rem;
+	font-weight: 600;
 	font-size: 0.8rem;
 	line-height: 1.2;
 	text-align: center;
@@ -249,10 +258,11 @@ body {
 .btn-sm-danger:hover { background: #8a4e4a; }
 
 .field {
-	height: 2.75rem;
+	height: 3rem;
 	width: 100%;
-	border-radius: 0.5rem;
-	border: 1px solid #cbd5e1;
+	border-radius: 0.375rem;
+	border: 1px solid var(--color-line-strong);
+	color: var(--color-ink);
 	background: white;
 	padding: 0 0.75rem;
 	font: inherit;
@@ -263,12 +273,12 @@ body {
 .select-brand:focus {
 	border-color: var(--color-brand);
 	background: white;
-	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 20%, transparent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 18%, transparent);
 }
 
 input.field.field-search {
-	height: 2.75rem;
-	border-radius: 0.75rem;
+	height: 3rem;
+	border-radius: 0.375rem;
 	padding-left: 2.75rem;
 	padding-right: 5.25rem;
 }
@@ -324,19 +334,25 @@ textarea.field {
 }
 
 .kicker {
-	font-size: 0.68rem;
-	font-weight: 700;
-	letter-spacing: 0.08em;
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	font-weight: 500;
+	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--color-muted);
 }
 
 .kicker.asis {
+	font-family: var(--font-sans);
 	letter-spacing: 0.02em;
 	text-transform: none;
 }
 
-.nums { font-variant-numeric: tabular-nums; }
+.nums {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
+}
 
 .action-row {
 	display: grid;

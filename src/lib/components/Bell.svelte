@@ -72,7 +72,7 @@
 
 <div class="relative {open ? 'z-50' : ''}" bind:this={root}>
 	<button
-		class="relative z-50 grid h-10 w-10 place-items-center rounded-full border-2 border-brand bg-brand text-white shadow-sm"
+		class="relative z-50 grid h-10 w-10 place-items-center rounded-md border border-line bg-white text-ink hover:border-line-strong"
 		type="button"
 		aria-label={unseen ? `Notifications, ${unseen} unseen` : 'Notifications'}
 		aria-expanded={open}
@@ -80,7 +80,7 @@
 	>
 		<span class="material-symbols-outlined {open ? 'fill text-[#FBBF24]' : ''}">{open ? 'notifications_active' : 'notifications'}</span>
 		{#if unseen}
-			<span class="absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-full border-2 border-white bg-brand px-1 text-[10px] leading-4 font-bold text-white">{unseen > 9 ? '9+' : unseen}</span>
+			<span class="absolute -top-1 -right-1 grid min-w-4 place-items-center rounded-sm bg-brand px-1 font-mono text-[10px] leading-4 font-medium text-white">{unseen > 9 ? '9+' : unseen}</span>
 		{/if}
 	</button>
 	{#if markSeen}
