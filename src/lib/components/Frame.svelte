@@ -106,7 +106,7 @@
 				</a>
 				<p class="kicker px-5 pt-5 pb-2">{scheme === 'doctor' ? 'Clinic' : 'Patient portal'}</p>
 				<nav class="flex flex-1 flex-col" aria-label="Main">
-					{#each nav as item}
+					{#each nav as item (item.href)}
 						<a
 							href={item.href}
 							aria-current={current(item.href) ? 'page' : undefined}
@@ -154,18 +154,25 @@
 		</div>
 	</div>
 
-	<nav class="fixed inset-x-0 bottom-0 z-20 mx-auto grid max-w-[440px] grid-cols-5 border-t border-line bg-white pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden" aria-label="Main">
-		{#each nav as item}
+	<nav class="fixed inset-x-0 bottom-0 z-20 mx-auto grid max-w-[440px] grid-cols-5 items-end border-t border-line bg-white pb-[max(0.35rem,env(safe-area-inset-bottom))] lg:hidden" aria-label="Main">
+		{#each nav as item (item.href)}
 			<a
 				href={item.href}
 				aria-current={current(item.href) ? 'page' : undefined}
-				class="relative flex min-w-0 flex-col items-center gap-0.5 pt-2.5 text-center text-[11px] font-medium {current(item.href)
-					? 'text-brand before:absolute before:inset-x-4 before:top-0 before:h-[2px] before:bg-brand'
-					: 'text-muted'}"
+				class="relative flex min-w-0 flex-col items-center text-center text-[11px] font-medium {item.fab
+					? 'self-stretch'
+					: current(item.href)
+						? 'gap-0.5 pt-2.5 text-brand before:absolute before:inset-x-4 before:top-0 before:h-[2px] before:bg-brand'
+						: 'gap-0.5 pt-2.5 text-muted'}"
 			>
 				{#if item.fab}
-					<span class="grid h-8 w-10 place-items-center rounded-md bg-brand text-white">
-						<span class="material-symbols-outlined">{item.icon}</span>
+					<span
+						class="absolute inset-x-1.5 -top-4 bottom-2 flex flex-col items-center justify-center gap-0.5 rounded-full px-1 text-white shadow-[0_5px_0_var(--color-brand-strong),0_14px_22px_color-mix(in_srgb,var(--color-brand)_55%,transparent)] {current(item.href)
+							? 'bg-brand-strong'
+							: 'bg-brand'}"
+					>
+						<span class="material-symbols-outlined fill text-[26px]">{item.icon}</span>
+						<span class="max-w-full truncate px-0.5 text-[11px] font-semibold tracking-wide">{item.label}</span>
 					</span>
 				{:else}
 					<span class="relative grid h-8 place-items-center">
@@ -174,8 +181,8 @@
 							<span class="nums absolute -top-0.5 -right-3 grid min-w-4 place-items-center rounded-sm bg-brand px-1 text-[9px] leading-4 font-semibold text-white">{item.badge}</span>
 						{/if}
 					</span>
+					<span class="max-w-full truncate px-0.5">{item.label}</span>
 				{/if}
-				<span class="max-w-full truncate px-0.5">{item.label}</span>
 			</a>
 		{/each}
 	</nav>
