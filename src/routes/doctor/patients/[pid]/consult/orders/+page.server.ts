@@ -240,10 +240,13 @@ export const actions = {
 		const data = await request.formData();
 		const draft = chargesFrom(data);
 		const completes = completionDate(data.get('completes_on'));
-		const kept = { billMode: draft.billMode, billTotal: draft.billTotal, items: draft.items };
+		const consultTitle = String(data.get('consult_title') ?? '').replace(/\s+/g, ' ').trim();
+		const kept = { billMode: draft.billMode, billTotal: draft.billTotal, items: draft.items, consultTitle };
 		if (completes === false) return { message: 'Enter a valid completion date for the prescription.', completesOn: '', ...kept };
 		if ('error' in draft) return { message: draft.error, completesOn: completes ?? '', ...kept };
-		const filed = await finalizeConsult(consult.id, completes, draft.lines);
+		if (!consultTitle) return { message: 'Enter the consultation title.', completesOn: completes ?? '', ...kept };
+		if (consultTitle.length > 160) return { message: 'Keep the consultation title to 160 characters.', completesOn: completes ?? '', ...kept };
+		const filed = await finalizeConsult(consult.id, completes, draft.lines, consultTitle);
 		if (filed && 'error' in filed) return { message: filed.error, completesOn: completes ?? '', ...kept };
 		const notice = filedNotice(filed);
 		redirect(303, `/doctor/patients/${patient.pid}?tab=consults&notice=${notice}`);

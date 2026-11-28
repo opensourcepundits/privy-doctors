@@ -1893,17 +1893,27 @@ export async function visitByEncounter(patientId: number, encounterId: number, d
 	);
 }
 
+async function encounterFocus(patientId: number, consultId: number) {
+	const [row] = await client<{ focus: string | null }[]>`
+		SELECT focus FROM encounters WHERE patient_id = ${patientId} AND consultation_id = ${consultId} ORDER BY id DESC LIMIT 1
+	`;
+	if (!row?.focus) return '';
+	const opened = await presentChart(patientId, row);
+	return opened.focus?.trim() ?? '';
+}
+
 export async function visitByConsult(patientId: number, consultId: number, doctorId: number, pid: string) {
 	const linked = await consultParts(patientId, consultId);
 	if (!linked) return null;
 	const { consult, entries, orders, tasks } = linked;
 	const doctor = [consult.doctor_name, consult.credentials].filter(Boolean).join(', ');
 	const day = isoDate(consult.started_at);
-	const [prescriptions, referrals, photos, certificates] = await Promise.all([
+	const [prescriptions, referrals, photos, certificates, titled] = await Promise.all([
 		prescriptionsOnVisit(patientId, day, doctor, consult.id),
 		referralsOnVisit(patientId, day, consult.doctor_name, consult.id),
 		prescriptionPhotos(consult.id),
-		certificatesOnVisit(patientId, consult.id)
+		certificatesOnVisit(patientId, consult.id),
+		encounterFocus(patientId, consult.id)
 	]);
 	const open = consult.status === 'in_session' && consult.doctor_id === doctorId;
 	const editable = consult.status === 'signed' && consult.doctor_id === doctorId;
@@ -1918,7 +1928,7 @@ export async function visitByConsult(patientId: number, consultId: number, docto
 			practice: consult.practice ?? '',
 			location: consult.location ?? '',
 			kind: consult.specialty ? `${consult.specialty} Consult` : 'Consultation',
-			focus: consult.narrative?.trim() ? consult.narrative.trim().split('\n')[0] : 'Consultation in progress',
+			focus: titled || (consult.narrative?.trim() ? consult.narrative.trim().split('\n')[0] : 'Consultation in progress'),
 			findings: '',
 			plan: '',
 			narrative: consult.narrative ?? '',
@@ -2413,8 +2423,10 @@ export async function consultHistory(doctorId: number) {
 	const consults = await client<
 		{
 			id: number;
+			patient_id: number;
 			code: string;
 			narrative: string | null;
+			focus: string | null;
 			started_at: Date | string;
 			pid: string;
 			first_name: string;
@@ -2422,7 +2434,8 @@ export async function consultHistory(doctorId: number) {
 			specialty: string;
 		}[]
 	>`
-		SELECT c.id, c.patient_id, c.code, c.narrative, c.started_at, p.pid, p.first_name, p.last_name, d.specialty
+		SELECT c.id, c.patient_id, c.code, c.narrative, c.started_at, p.pid, p.first_name, p.last_name, d.specialty,
+			(SELECT e.focus FROM encounters e WHERE e.consultation_id = c.id ORDER BY e.id DESC LIMIT 1) AS focus
 		FROM consultations c
 		JOIN patients p ON p.id = c.patient_id
 		JOIN doctors d ON d.id = c.doctor_id
@@ -2475,7 +2488,7 @@ export async function consultHistory(doctorId: number) {
 			id: consult.id,
 			code: consult.code,
 			when: consult.started_at,
-			title: consult.narrative?.trim().split('\n')[0] || 'Signed consultation',
+			title: consult.focus?.trim() || consult.narrative?.trim().split('\n')[0] || 'Signed consultation',
 			pid: consult.pid,
 			first_name: consult.first_name,
 			last_name: consult.last_name,
@@ -4156,8 +4169,11 @@ function nowLocal() {
 export async function finalizeConsult(
 	consultId: number,
 	completesOn: string | null,
-	charges: { description: string; amount: number }[]
+	charges: { description: string; amount: number }[],
+	title: string
 ) {
+	const focus = title.replace(/\s+/g, ' ').trim();
+	if (!focus || focus.length > 160) return { error: 'Enter the consultation title.' };
 	if (!charges.length) return { error: 'Enter the consultation bill.' };
 	const [consult] = await client<
 		{
@@ -4211,7 +4227,7 @@ export async function finalizeConsult(
 		VALUES (
 			${consult.patient_id}, ${doctor.name}, ${doctor.specialty}, ${doctor.practice},
 			${date}, ${`${doctor.specialty} Consult`},
-			${await sealText(consult.patient_id, 'focus', 'Signed consultation')},
+			${await sealText(consult.patient_id, 'focus', focus)},
 			${await sealText(consult.patient_id, 'findings', openedConsult.narrative ?? '')},
 			${await sealText(consult.patient_id, 'plan', 'Orders authorized and transmitted.')},
 			${doctor.location}, 'finalized', ${consult.id}

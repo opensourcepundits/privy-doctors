@@ -152,6 +152,7 @@
 	let billTotal = $state('');
 	let billLines = $state([{ description: '', amount: '' }]);
 	let billReady = false;
+	let consultTitle = $state('');
 
 	$effect.pre(() => {
 		if (!form || !('billMode' in form) || billReady) return;
@@ -837,6 +838,19 @@
 		</div>
 		<form id="finalize" method="POST" action="?/finalize" use:enhance={saving('finalize')}>
 			{@render problem('finalize')}
+			<label class="mb-3 block text-sm font-semibold" for="consult-title">
+				Consultation title <span class="text-red-600" aria-hidden="true">*</span>
+				<input
+					class="field mt-1"
+					id="consult-title"
+					name="consult_title"
+					required
+					maxlength="160"
+					bind:value={consultTitle}
+					placeholder="diagnosis of chikungunya"
+				/>
+			</label>
+			<p class="mb-3 text-xs text-[#64748B]">This title appears in the patient history.</p>
 			<button class="btn btn-block" type="submit">
 				<span class="material-symbols-outlined text-[19px]">lock</span>
 				Authorize orders and finalize consultation
