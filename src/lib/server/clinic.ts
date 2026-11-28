@@ -1371,7 +1371,11 @@ export async function patientsForDoctor(doctorId: number, query: string) {
 
 export async function encountersFor(patientId: number) {
 	const rows = await client`
-		SELECT * FROM encounters WHERE patient_id = ${patientId} ORDER BY occurred_on DESC
+		SELECT e.*, c.started_at
+		FROM encounters e
+		LEFT JOIN consultations c ON c.id = e.consultation_id
+		WHERE e.patient_id = ${patientId}
+		ORDER BY COALESCE(c.started_at, e.occurred_on::timestamptz) DESC, e.id DESC
 	`;
 	return presentChart(patientId, rows);
 }

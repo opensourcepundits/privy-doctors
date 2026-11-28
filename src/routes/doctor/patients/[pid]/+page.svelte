@@ -5,8 +5,8 @@
 	import VaxxList from '#lib/components/VaxxList.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
-	import { ageLabel, formatDate } from '#lib/format';
-	import { historyEvents, type HistorySlice, type TimelineEvent } from '#lib/history';
+	import { ageLabel, formatDate, toLive } from '#lib/format';
+	import { byRecent, historyEvents, type HistorySlice, type TimelineEvent } from '#lib/history';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -69,6 +69,7 @@
 				const live = consult.status === 'in_session' && consult.doctor_id === data.doctor.id;
 				events.push({
 					at: date.getTime(),
+					rank: consult.id,
 					day: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
 					year: String(date.getFullYear()),
 					kind: 'Consultation',
