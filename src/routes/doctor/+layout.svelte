@@ -1,10 +1,22 @@
 <script lang="ts">
+	import { afterNavigate, invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { setContext } from 'svelte';
 	import Frame from '#lib/components/Frame.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { data, children }: LayoutProps = $props();
+	const openConsults = 'doctor:open-consults';
+
+	afterNavigate((navigation) => {
+		if (navigation.type === 'enter') return;
+		invalidate(openConsults);
+	});
+
+	function recheckOpenConsults() {
+		if (document.visibilityState !== 'visible') return;
+		invalidate(openConsults);
+	}
 	setContext('mentions', {
 		get doctors() {
 			return data.directory;
@@ -32,6 +44,13 @@
 	]);
 </script>
 
+<svelte:document onvisibilitychange={recheckOpenConsults} />
+<svelte:window
+	onpageshow={(event) => {
+		if (event.persisted) invalidate(openConsults);
+	}}
+/>
+
 <Frame
 	scheme="doctor"
 	{path}
@@ -43,7 +62,7 @@
 	notifications={data.notifications}
 	markSeen="/doctor/notifications?/seen"
 >
-	{#each sessions as session}
+	{#each sessions as session (session.id)}
 		<div class="mx-4 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm lg:mx-0">
 			<p class="min-w-0 flex-1">Consultation in progress with <span class="font-semibold">{session.first_name} {session.last_name}</span>.</p>
 			<a class="btn-sm" href="/doctor/patients/{session.pid}/consult">Resume</a>
