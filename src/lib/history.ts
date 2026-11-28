@@ -15,13 +15,19 @@ export type TimelineEvent = {
 	link: string;
 	download?: string;
 	image: string;
+	rank?: number;
 	log?: string[];
 	files?: { href: string; name: string; image: boolean }[];
 };
 
+export function byRecent(a: { at: number; rank?: number }, b: { at: number; rank?: number }) {
+	return b.at - a.at || (b.rank ?? 0) - (a.rank ?? 0);
+}
+
 type Encounter = {
 	id: number;
 	occurred_on: Date | string;
+	started_at?: Date | string | null;
 	focus: string | null;
 	doctor_name: string | null;
 	kind: string | null;
@@ -178,8 +184,12 @@ export function historyEvents(
 	const items: TimelineEvent[] = [];
 	if (include.has('consultations')) {
 		for (const visit of source.encounters ?? []) {
+			const shown = stamped(visit.occurred_on);
+			const clock = visit.started_at ? stamped(visit.started_at) : shown;
 			items.push({
-				...stamped(visit.occurred_on),
+				...shown,
+				at: clock.at,
+				rank: visit.id,
 				kind: 'Consultation',
 				tone: 'bg-brand',
 				title: visit.focus ?? 'Consultation',
@@ -297,5 +307,5 @@ export function historyEvents(
 			});
 		}
 	}
-	return items.sort((a, b) => b.at - a.at);
+	return items.sort(byRecent);
 }

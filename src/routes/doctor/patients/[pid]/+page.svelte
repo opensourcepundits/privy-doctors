@@ -5,8 +5,8 @@
 	import VaxxList from '#lib/components/VaxxList.svelte';
 	import Skeleton from '#lib/components/Skeleton.svelte';
 	import Timeline from '#lib/components/Timeline.svelte';
-	import { ageLabel, formatDate } from '#lib/format';
-	import { historyEvents, type HistorySlice, type TimelineEvent } from '#lib/history';
+	import { ageLabel, formatDate, toLive } from '#lib/format';
+	import { byRecent, historyEvents, type HistorySlice, type TimelineEvent } from '#lib/history';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -67,10 +67,11 @@
 			.filter((consult) => !covered.has(consult.id))
 			.filter((consult) => !loaded.encounters.some((visit) => visit.focus === 'Signed consultation' && consult.narrative && visit.findings === consult.narrative))
 			.map((consult) => {
-				const date = consult.started_at instanceof Date ? consult.started_at : new Date(consult.started_at);
+				const date = toLive(consult.started_at);
 				const note = (consult.narrative ?? '').trim();
 				return {
 					at: date.getTime(),
+					rank: consult.id,
 					day: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(date),
 					year: String(date.getFullYear()),
 					kind: 'Consultation',
@@ -93,7 +94,7 @@
 		const events = historyEvents(source, slice, links);
 		if (slice === 'all' || slice === 'consultations') {
 			events.push(...sessionEvents);
-			events.sort((a, b) => b.at - a.at);
+			events.sort(byRecent);
 		}
 		return events;
 	});
