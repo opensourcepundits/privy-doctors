@@ -170,7 +170,7 @@
 
 	const itemSum = $derived(
 		billLines.reduce((sum, line) => {
-			const text = line.amount.trim();
+			const text = String(line.amount ?? '').trim();
 			if (!/^\d+(\.\d{0,2})?$/.test(text)) return sum;
 			return sum + Number(text);
 		}, 0)
